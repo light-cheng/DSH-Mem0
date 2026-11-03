@@ -275,7 +275,7 @@ node scripts/smoke-sidecar.mjs
 
 - Package name: `dsh-mem0`, `private: false`, with `dsh.bundle` and `dsh-plugin` keywords.
 - Marketplace inclusion requires a public GitHub repository, the `dsh-plugin` topic, a repository at least 1 day old, and a `data/plugins/<owner>__<repo>.yml` entry in `awesome-dsh-plugin` with category `memory`.
-- The repository is linked through `repository` / `homepage`: `https://github.com/light-cheng/DSH-Mem0`. It includes `screenshots.json`, localized screenshots under `assets/screenshots/` (Chinese) and `assets/screenshots/en/` (English). When submitting the awesome entry, add raw URLs to `awesome-dsh-plugin`'s `data/screenshots.json`; otherwise the marketplace extracts images from the README.
+- The repository is linked through `repository` / `homepage`: `https://github.com/light-cheng/DSH-Mem0`. It includes `screenshots.json` with eight marketplace screenshots, plus localized sets under `assets/screenshots/` (Chinese) and `assets/screenshots/en/` (English). The market reads `screenshots.json` from this repository; only the plugin YAML is submitted to awesome-dsh-plugin.
 - The plugin ships a visual settings page (`dsh.client` + `plugins.bundle.config`). A GUI is not required for listing, but this plugin provides one so users can configure all three backends and test the connection right after installation.
 - OSS mode depends on external Python/Qdrant/embedding services; the README states this clearly and does not describe the plugin as "zero dependencies".
 

@@ -275,7 +275,7 @@ node scripts/smoke-sidecar.mjs
 
 - 包名：`dsh-mem0`，`private: false`，已带 `dsh.bundle` 与 `dsh-plugin` 关键词。
 - 市场收录需要公开 GitHub 仓库、`dsh-plugin` topic、仓库创建满 1 天，并在 `awesome-dsh-plugin` 提交一个 `data/plugins/<owner>__<repo>.yml`，分类选 `memory`。
-- 仓库已绑定 `repository` / `homepage`：`https://github.com/light-cheng/DSH-Mem0`。仓库包含 `screenshots.json`，以及 `assets/screenshots/`（中文）和 `assets/screenshots/en/`（英文）两套界面图；提交 awesome 条目时把 raw URL 加到 `awesome-dsh-plugin` 的 `data/screenshots.json`，不提交时市场会从 README 自动抽取。
+- 仓库已绑定 `repository` / `homepage`：`https://github.com/light-cheng/DSH-Mem0`。仓库根目录的 `screenshots.json` 提供 8 张市场截图，另有 `assets/screenshots/`（中文）和 `assets/screenshots/en/`（英文）两套界面图。市场直接读取本仓库的 `screenshots.json`；提交到 awesome-dsh-plugin 的只有插件 YAML。
 - 插件自带可视化配置页（`dsh.client` + `plugins.bundle.config`），上架不要求 GUI，但本插件已提供，便于用户安装后直接配置三种后端并测试连接。
 - OSS 模式依赖外部 Python/Qdrant/embedding 服务，README 已明确声明，不应描述成“零依赖”插件。
 

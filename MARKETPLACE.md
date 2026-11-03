@@ -31,16 +31,16 @@ This file is the remaining checklist for publishing the universal build.
    ```bash
    npm publish --access public
    ```
-6. Add screenshots if desired (optional, recommended):
+6. Screenshots are optional but recommended:
    - the repository already contains localized screenshot sets in
      `assets/screenshots/` (Chinese) and `assets/screenshots/en/` (English):
-     plugin page, auto/platform/OSS settings, test success, memory
-     activity/recent memories, maintenance, memory library, recall preview,
-     and editable memory summary;
-   - add 1-9 GitHub-hosted raster image URLs to `data/screenshots.json` in the
-     awesome-dsh-plugin repository, keyed by this repository's GitHub URL;
-   - without curated screenshots, the market falls back to images extracted
-     from the README.
+     plugin page, auto settings, test success, memory activity/recent
+     memories, maintenance, memory library, foreground status, and the
+     editable memory summary;
+   - declare 1-8 image paths in `screenshots.json` at the repository root.
+     The market reads this file from your own repository; only the plugin
+     YAML is submitted to awesome-dsh-plugin. The current manifest keeps
+     eight images.
 
 ## awesome-dsh-plugin entry
 

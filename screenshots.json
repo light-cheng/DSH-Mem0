@@ -9,14 +9,6 @@
       "alt": "Mem0 connection settings with automatic backend detection and live status"
     },
     {
-      "path": "assets/screenshots/en/03-settings-platform.png",
-      "alt": "Mem0 Platform backend configuration"
-    },
-    {
-      "path": "assets/screenshots/en/04-settings-oss.png",
-      "alt": "Local Mem0 OSS backend configuration"
-    },
-    {
       "path": "assets/screenshots/en/05-test-success.png",
       "alt": "Successful connection test with the green Connected state"
     },
@@ -35,10 +27,6 @@
     {
       "path": "assets/screenshots/en/10-memory-library.png",
       "alt": "Searchable memory library showing every memory stored for the current user"
-    },
-    {
-      "path": "assets/screenshots/en/11-recall-preview.png",
-      "alt": "Last recall preview with the recalled memory texts, IDs and latency"
     },
     {
       "path": "assets/screenshots/en/12-memory-summary.png",
