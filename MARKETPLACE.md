@@ -85,7 +85,7 @@ in the profile patch. Screenshots are optional and fall back to README images.
 
 ## Current verification
 
-- Node unit tests: 57 passing.
+- Node unit tests: 58 passing.
 - Python unit tests: 4 passing.
 - Real local OSS smoke test: passed (add/search/get/update/delete).
 - DSH `mem0_status` on the installed universal plugin: `backend: oss`,

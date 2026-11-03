@@ -125,6 +125,54 @@ test('hygiene dedupes, prunes, writes profile state and exposes status', async (
   }
 })
 
+test('startup rebuilds a legacy flat generated profile without deleting memories', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-legacy-profile-'))
+  try {
+    const removed = []
+    const client = {
+      async list() {
+        return { results: [memory('a', 'Likes tea'), memory('b', 'Works on DSH plugins')] }
+      },
+      async remove(id) {
+        removed.push(id)
+      },
+    }
+    const state = new MaintenanceState(path.join(dir, 'maintenance.json'))
+    const oldLastRun = '2026-11-01T00:00:00.000Z'
+    state.write({
+      version: 1,
+      userId: 'dsh-user',
+      profile: {
+        userId: 'dsh-user',
+        text: '- Likes tea\n- Works on DSH plugins',
+        tokens: 12,
+        items: 2,
+        updatedAt: '2026-11-01T00:00:00.000Z',
+        manual: false,
+        source: 'generated',
+      },
+      hygiene: { lastRunAt: oldLastRun, lastReport: { deleted: 0 } },
+    })
+    const maintenance = new MemoryMaintenance({
+      client,
+      config: config({ hygieneEnabled: true, profileEnabled: true, storageMaxMemories: 10 }),
+      state,
+      activity: {},
+      logger: { warn() {}, debug() {} },
+    })
+    const report = await maintenance.maybeRun('startup')
+    assert.ok(report)
+    assert.equal(report.deleted, 0)
+    assert.equal(report.pruned, 0)
+    assert.equal(report.profileItems, 2)
+    assert.deepEqual(removed, [])
+    assert.match(maintenance.profileBlock(), /^## /m)
+    assert.equal(state.read().hygiene.lastRunAt, oldLastRun)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('hygiene disabled still builds a profile without deleting memories', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-profile-only-'))
   try {
