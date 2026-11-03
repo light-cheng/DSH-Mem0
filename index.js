@@ -15,6 +15,7 @@ import { CircuitBreaker, Mem0SidecarClient } from './lib/sidecar-client.js'
 import { Mem0RestClient } from './lib/rest-client.js'
 import { Config, resolveConfig } from './lib/config.js'
 import { MemoryLifecycle } from './lib/memory-lifecycle.js'
+import { MemoryLocalizer } from './lib/memory-localizer.js'
 import { MemoryMaintenance } from './lib/memory-maintenance.js'
 import { MaintenanceState } from './lib/maintenance-state.js'
 import { createMem0Tools } from './lib/tools.js'
@@ -57,14 +58,17 @@ export function apply(ctx, rawConfig) {
   const config = resolveConfig(rawConfig)
   const logger = ctx.logger
   const activity = { recall: null, capture: null, maintenance: null }
+  const localizer = new MemoryLocalizer({ logger })
   const runtime = {
     config,
     client: undefined,
     breaker: undefined,
     lifecycle: undefined,
     maintenance: undefined,
+    localizer,
     activity,
   }
+  ctx.inject?.(['llm', 'agentDefaultModel'], (sub) => localizer.setServices(sub))
 
   // The settings page edits volatile fields in the running fiber. A backend,
   // endpoint, API key or memory-behaviour change needs a fresh client and
@@ -133,7 +137,7 @@ export function apply(ctx, rawConfig) {
     )
   }
 
-  const tools = createMem0Tools(client, config)
+  const tools = createMem0Tools(client, config, { maintenance })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
     return () => {

@@ -2,7 +2,7 @@
   "name": "dsh-mem0",
   "version": "0.2.0",
   "private": false,
-  "description": "Mem0 long-term memory for DeepSeek Harness: managed Platform, self-hosted server or local OSS, with a visual settings page, automatic recall/capture, a compact user profile, token budgets and weekly memory hygiene.",
+  "description": "Mem0 long-term memory for DeepSeek Harness: managed Platform, self-hosted server or local OSS, with a visual settings page, automatic recall/capture, editable memory summary, token budgets and weekly memory hygiene.",
   "icon": "assets/icon.png",
   "type": "module",
   "main": "./index.js",
@@ -24,12 +24,14 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
+    "README.zh-CN.md",
+    "RELEASE.md",
     "MARKETPLACE.md",
     "LICENSE"
   ],
   "scripts": {
     "test": "node --test",
-    "check": "node --check index.js && node --check client.js && node --check lib/config.js && node --check lib/redact.js && node --check lib/rest-client.js && node --check lib/sidecar-client.js && node --check lib/tools.js && node --check lib/memory-lifecycle.js && node --check lib/gui-routes.js && node --check lib/memory-maintenance.js && node --check lib/maintenance-state.js && node --check lib/token-budget.js",
+    "check": "node --check index.js && node --check client.js && node --check lib/config.js && node --check lib/redact.js && node --check lib/rest-client.js && node --check lib/sidecar-client.js && node --check lib/tools.js && node --check lib/memory-lifecycle.js && node --check lib/gui-routes.js && node --check lib/memory-maintenance.js && node --check lib/maintenance-state.js && node --check lib/token-budget.js && node --check lib/memory-localizer.js",
     "smoke": "node scripts/smoke-sidecar.mjs"
   },
   "keywords": [

@@ -32,10 +32,11 @@ This file is the remaining checklist for publishing the universal build.
    npm publish --access public
    ```
 6. Add screenshots if desired (optional, recommended):
-   - the repository already contains eleven screenshots in
-     `assets/screenshots/` (plugin page, auto/platform/OSS settings, test
-     success, memory activity/recent memories, maintenance, memory library,
-     recall preview, and the English UI);
+   - the repository already contains localized screenshot sets in
+     `assets/screenshots/` (Chinese) and `assets/screenshots/en/` (English):
+     plugin page, auto/platform/OSS settings, test success, memory
+     activity/recent memories, maintenance, memory library, recall preview,
+     and editable memory summary;
    - add 1-9 GitHub-hosted raster image URLs to `data/screenshots.json` in the
      awesome-dsh-plugin repository, keyed by this repository's GitHub URL;
    - without curated screenshots, the market falls back to images extracted
@@ -52,8 +53,8 @@ url: https://github.com/OWNER/REPO
 name: OWNER/REPO
 category: memory
 description:
-  en: Long-term Mem0 memory for DSH with Platform, self-hosted server or local OSS backends, automatic recall and capture, and six memory tools.
-  zh: 为 DSH 提供 Mem0 长期记忆，支持 Platform、自托管 server 或本地 OSS，包含自动召回、自动保存和六个记忆工具。
+  en: Long-term Mem0 memory for DSH with Platform, self-hosted server or local OSS backends, automatic recall and capture, editable memory summary, and nine memory tools.
+  zh: 为 DSH 提供 Mem0 长期记忆，支持 Platform、自托管 server 或本地 OSS，包含自动召回、自动保存和九个记忆工具。
 icon: https://raw.githubusercontent.com/OWNER/REPO/main/assets/icon.png
 ```
 
@@ -84,7 +85,7 @@ in the profile patch. Screenshots are optional and fall back to README images.
 
 ## Current verification
 
-- Node unit tests: 48 passing.
+- Node unit tests: 57 passing.
 - Python unit tests: 4 passing.
 - Real local OSS smoke test: passed (add/search/get/update/delete).
 - DSH `mem0_status` on the installed universal plugin: `backend: oss`,

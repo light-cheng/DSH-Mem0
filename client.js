@@ -16,6 +16,7 @@ window.__ModuleLoader__.load({
     const ACTIVITY_PATH = 'dsh-mem0/gui/activity'
     const HYGIENE_PATH = 'dsh-mem0/gui/hygiene'
     const MEMORIES_PATH = 'dsh-mem0/gui/memories'
+    const PROFILE_PATH = 'dsh-mem0/gui/profile'
 
     const en = {
       title: 'Mem0 connection',
@@ -181,6 +182,23 @@ window.__ModuleLoader__.load({
       memoryCountFiltered: '{shown} of {total} memories',
       memoryBrowserError: 'Could not read memories',
       recallPreviewTitle: 'Last recalled memories',
+      profileSummaryTitle: 'Memory summary',
+      profileSummaryHint: 'Editable memory summary, injected before relevant memories during recall.',
+      profileSummaryEmpty: 'No memory summary yet. It is generated after the next maintenance pass.',
+      profileSummaryDisabled: 'Memory summary is disabled.',
+      profileSummaryItems: 'items',
+      profileSummaryUpdated: 'Updated',
+      profileEditHint: 'Edit the summary and save. The new text is used on the next turn. Markdown headings and bullets are supported.',
+      profileEdit: 'Edit summary',
+      profileCancel: 'Cancel',
+      profileSave: 'Save memory summary',
+      profileSaving: 'Saving…',
+      profileSaved: 'Saved',
+      profileReset: 'Rebuild from memories',
+      profileResetHint: 'Discard manual edits and rebuild from stored memories.',
+      profileManual: 'Edited manually',
+      profileGenerated: 'Generated',
+      profileTooLong: 'Memory summary is too long.',
       recallPreviewEmpty: 'The last recall returned no memory text.',
       memoryScore: 'score',
       refresh: 'Refresh',
@@ -351,6 +369,23 @@ window.__ModuleLoader__.load({
       memoryCountFiltered: '显示 {shown} / 共 {total} 条',
       memoryBrowserError: '读取记忆失败',
       recallPreviewTitle: '上次召回的记忆',
+      profileSummaryTitle: '记忆摘要',
+      profileSummaryHint: '可编辑的记忆摘要，召回时优先注入。',
+      profileSummaryEmpty: '尚未生成记忆摘要；下次维护后会自动生成。',
+      profileSummaryDisabled: '记忆摘要已关闭。',
+      profileSummaryItems: '条',
+      profileSummaryUpdated: '更新于',
+      profileEditHint: '编辑记忆摘要并保存，下一轮对话即可使用；支持 Markdown 标题和列表。',
+      profileEdit: '编辑摘要',
+      profileCancel: '取消',
+      profileSave: '保存记忆摘要',
+      profileSaving: '正在保存…',
+      profileSaved: '已保存',
+      profileReset: '从记忆重建',
+      profileResetHint: '丢弃手动编辑，按已存记忆重新生成。',
+      profileManual: '手动编辑',
+      profileGenerated: '自动生成',
+      profileTooLong: '记忆摘要内容超出预算。',
       recallPreviewEmpty: '上次召回没有返回可展示的记忆内容。',
       memoryScore: '相关度',
       refresh: '刷新',
@@ -433,6 +468,16 @@ window.__ModuleLoader__.load({
       .mem0-search-row{display:flex;align-items:center;gap:8px;margin:10px 0}
       .mem0-search-row .mem0-input{flex:1;min-width:0}
       .mem0-recall-preview{margin-top:9px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
+      .mem0-profile{margin:10px 0 0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto}
+      .mem0-profile-preview{margin:10px 0 0;padding:14px 16px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:1.7;max-height:320px;overflow:auto;word-break:break-word}
+      .mem0-profile-preview>*:first-child{margin-top:0}
+      .mem0-profile-heading{margin:14px 0 6px;font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
+      .mem0-profile-item{position:relative;margin:4px 0;padding-left:14px}
+      .mem0-profile-item:before{content:'•';position:absolute;left:0;color:var(--dsw-alias-label-tertiary)}
+      .mem0-profile-paragraph{margin:6px 0}
+      .mem0-profile-edit{display:block;width:100%;box-sizing:border-box;margin:10px 0 0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:1.6;resize:vertical;min-height:150px}
+      .mem0-profile-edit:focus{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+      .mem0-profile-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
       .mem0-recall-item + .mem0-recall-item{margin-top:7px;padding-top:7px;border-top:1px solid var(--dsw-alias-border-l1)}
       .mem0-recall-text{font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
       .mem0-recall-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:3px;color:var(--dsw-alias-label-tertiary);font-size:11px}
@@ -565,6 +610,10 @@ window.__ModuleLoader__.load({
         throw error
       }
       return payload
+    }
+
+    function pageLanguage(t) {
+      return t?.('memoryScore') === '相关度' ? 'zh' : 'en'
     }
 
     function Field(props) {
@@ -799,7 +848,7 @@ window.__ModuleLoader__.load({
         let live = true
         const load = async () => {
           try {
-            const next = await fetchJson(ACTIVITY_PATH)
+            const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(t)}`)
             if (live) {
               setData(next)
               setFailed(false)
@@ -907,6 +956,10 @@ window.__ModuleLoader__.load({
       const [browserOpen, setBrowserOpen] = useState(false)
       const [memoryQuery, setMemoryQuery] = useState('')
       const [memoryState, setMemoryState] = useState({ phase: 'idle', data: null, message: '' })
+      const [profileDraft, setProfileDraft] = useState(null)
+      const [profileEditing, setProfileEditing] = useState(false)
+      const [profileState, setProfileState] = useState('idle')
+      const [profileMessage, setProfileMessage] = useState('')
 
       useEffect(() => {
         const unsubscribe = form.subscribe(() => setSnapshot(form.getSnapshot()))
@@ -937,7 +990,7 @@ window.__ModuleLoader__.load({
       const refreshStatus = useCallback(async () => {
         setStatus((current) => ({ ...current, phase: current.data ? current.phase : 'loading' }))
         try {
-          const data = await fetchJson(STATUS_PATH)
+          const data = await fetchJson(`${STATUS_PATH}?lang=${pageLanguage(t)}`)
           setStatus({ phase: 'ready', data, message: '' })
           return data
         } catch (error) {
@@ -950,11 +1003,17 @@ window.__ModuleLoader__.load({
         void refreshStatus()
       }, [refreshStatus])
 
+      useEffect(() => {
+        if (status.phase === 'ready' && !profileEditing) {
+          setProfileDraft(status.data?.profileText ?? '')
+        }
+      }, [status, profileEditing])
+
       const loadMemories = useCallback(async (query) => {
         const q = String(query ?? '').trim()
         setMemoryState((current) => ({ phase: 'loading', data: current.data, message: '' }))
         try {
-          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500`)
+          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(t)}`)
           setMemoryState({ phase: 'ready', data, message: '' })
         } catch (error) {
           setMemoryState({ phase: 'error', data: null, message: error.message })
@@ -1041,6 +1100,79 @@ window.__ModuleLoader__.load({
           setStatus({ phase: 'error', data: null, message: error.message })
           setTestState('error')
         }
+      }
+
+      const saveProfile = async () => {
+        if (!draft?.profileEnabled) return
+        setProfileState('saving')
+        setProfileMessage('')
+        try {
+          const response = await fetchJson(PROFILE_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text: profileDraft ?? '' }),
+          })
+          if (!response?.ok) throw new Error(response?.error || t('saveFailed'))
+          setProfileDraft(response.profileText ?? '')
+          setStatus((current) =>
+            current.data
+              ? {
+                  ...current,
+                  data: {
+                    ...current.data,
+                    profileText: response.profileText ?? '',
+                    maintenance: response.maintenance ?? current.data.maintenance,
+                  },
+                }
+              : current,
+          )
+          setProfileEditing(false)
+          setProfileState('saved')
+          setProfileMessage(t('profileSaved'))
+        } catch (error) {
+          setProfileState('error')
+          setProfileMessage(error.message || t('profileTooLong'))
+        }
+      }
+
+      const resetProfile = async () => {
+        if (!draft?.profileEnabled) return
+        setProfileState('saving')
+        setProfileMessage('')
+        try {
+          const response = await fetchJson(PROFILE_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ reset: true }),
+          })
+          if (!response?.ok) throw new Error(response?.error || t('saveFailed'))
+          setProfileDraft(response.profileText ?? '')
+          setStatus((current) =>
+            current.data
+              ? {
+                  ...current,
+                  data: {
+                    ...current.data,
+                    profileText: response.profileText ?? '',
+                    maintenance: response.maintenance ?? current.data.maintenance,
+                  },
+                }
+              : current,
+          )
+          setProfileEditing(false)
+          setProfileState('saved')
+          setProfileMessage(t('profileSaved'))
+        } catch (error) {
+          setProfileState('error')
+          setProfileMessage(error.message || t('saveFailed'))
+        }
+      }
+
+      const cancelProfileEdit = () => {
+        setProfileDraft(status.data?.profileText ?? '')
+        setProfileEditing(false)
+        setProfileState('idle')
+        setProfileMessage('')
       }
 
       const runHygiene = async () => {
@@ -1145,6 +1277,16 @@ window.__ModuleLoader__.load({
       const recall = data?.activity?.recall ?? null
       const maintenance = data?.maintenance ?? null
       const recentMemories = Array.isArray(data?.recentMemories) ? data.recentMemories : []
+      const profileText = typeof data?.profileText === 'string' ? data.profileText.trim() : ''
+      const profileMeta = []
+      if (maintenance?.profile) {
+        profileMeta.push(`${maintenance.profile.items ?? 0} ${t('profileSummaryItems')}`)
+        if (maintenance.profile.tokens !== undefined) profileMeta.push(`${maintenance.profile.tokens} tok`)
+        if (maintenance.profile.manual) profileMeta.push(t('profileManual'))
+        if (maintenance.profile.updatedAt) {
+          profileMeta.push(`${t('profileSummaryUpdated')} ${activityTime(maintenance.profile.updatedAt)}`)
+        }
+      }
       const maintenanceMeta = []
       if (maintenance?.lastRunAt) {
         maintenanceMeta.push(`${t('hygieneLastRun')} ${activityTime(maintenance.lastRunAt)}`)
@@ -1280,6 +1422,25 @@ window.__ModuleLoader__.load({
         )
       }
 
+      const renderProfilePreview = (value) => {
+        const lines = String(value ?? '').split('\n')
+        return h(
+          'div',
+          { className: 'mem0-profile-preview' },
+          lines.map((line, index) => {
+            const text = line.trim()
+            if (!text) return null
+            if (/^#{1,6}\s+/.test(text)) {
+              return h('h4', { key: index, className: 'mem0-profile-heading' }, text.replace(/^#{1,6}\s+/, ''))
+            }
+            if (/^[-*]\s+/.test(text)) {
+              return h('div', { key: index, className: 'mem0-profile-item' }, text.replace(/^[-*]\s+/, ''))
+            }
+            return h('p', { key: index, className: 'mem0-profile-paragraph' }, text)
+          }),
+        )
+      }
+
       return h(
         'div',
         { className: 'mem0-page' },
@@ -1340,6 +1501,92 @@ window.__ModuleLoader__.load({
           status.phase === 'error' || (data && data.ok === false)
             ? h('p', { className: 'mem0-error' }, data?.error ?? status.message)
             : null,
+        ),
+        h(
+          'div',
+          { className: 'mem0-card mem0-section' },
+          h(
+            'div',
+            { className: 'mem0-section-head' },
+            h('h3', { className: 'mem0-section-title' }, t('profileSummaryTitle')),
+            profileMeta.length > 0 ? h('span', { className: 'mem0-hint' }, profileMeta.join(' · ')) : null,
+          ),
+          h('p', { className: 'mem0-section-hint' }, t('profileSummaryHint')),
+          profileEditing
+            ? h('textarea', {
+                className: 'mem0-profile-edit',
+                value: profileDraft ?? '',
+                placeholder: draft.profileEnabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled'),
+                disabled: !draft.profileEnabled || profileState === 'saving',
+                rows: 8,
+                onChange: (event) => {
+                  setProfileDraft(event.target.value)
+                  setProfileState('editing')
+                  setProfileMessage('')
+                },
+              })
+            : (profileDraft ?? profileText).trim()
+              ? renderProfilePreview(profileDraft ?? profileText)
+              : h('p', { className: 'mem0-hint' }, draft.profileEnabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled')),
+          profileEditing ? h('p', { className: 'mem0-hint' }, t('profileEditHint')) : null,
+          h(
+            'div',
+            { className: 'mem0-profile-actions' },
+            profileEditing
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'mem0-primary',
+                    disabled: !draft.profileEnabled || profileState === 'saving' || !String(profileDraft ?? '').trim(),
+                    onClick: saveProfile,
+                  },
+                  profileState === 'saving' ? t('profileSaving') : t('profileSave'),
+                )
+              : h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'mem0-primary',
+                    disabled: !draft.profileEnabled || profileState === 'saving',
+                    onClick: () => {
+                      setProfileEditing(true)
+                      setProfileState('editing')
+                      setProfileMessage('')
+                    },
+                  },
+                  t('profileEdit'),
+                ),
+            profileEditing
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'mem0-secondary',
+                    disabled: profileState === 'saving',
+                    onClick: cancelProfileEdit,
+                  },
+                  t('profileCancel'),
+                )
+              : h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'mem0-secondary',
+                    disabled: !draft.profileEnabled || profileState === 'saving',
+                    onClick: resetProfile,
+                  },
+                  t('profileReset'),
+                ),
+            profileMessage
+              ? h(
+                  'span',
+                  { className: profileState === 'error' ? 'mem0-error' : 'mem0-hint' },
+                  profileMessage,
+                )
+              : null,
+          ),
+          h('p', { className: 'mem0-hint' }, t('profileResetHint')),
         ),
         h(
           'div',

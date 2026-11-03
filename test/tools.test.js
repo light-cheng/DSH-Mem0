@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createMem0Tools } from '../lib/tools.js'
 
-function toolMap(client) {
+function toolMap(client, maintenance) {
   const config = {
     backend: 'platform',
     collectionName: 'dsh_mem0',
@@ -10,7 +10,7 @@ function toolMap(client) {
     agentId: 'dsh',
     baseUrl: 'https://api.mem0.ai',
   }
-  return new Map(createMem0Tools(client, config).map((tool) => [tool.name, tool]))
+  return new Map(createMem0Tools(client, config, { maintenance }).map((tool) => [tool.name, tool]))
 }
 
 function fakeClient(overrides = {}) {
@@ -60,12 +60,15 @@ function fakeClient(overrides = {}) {
   }
 }
 
-test('registers the six memory tools with the expected names', () => {
+test('registers the memory tools with the expected names', () => {
   const tools = toolMap(fakeClient())
   assert.deepEqual([...tools.keys()].sort(), [
     'mem0_add',
     'mem0_delete',
     'mem0_get',
+    'mem0_profile_get',
+    'mem0_profile_reset',
+    'mem0_profile_update',
     'mem0_search',
     'mem0_status',
     'mem0_update',
@@ -128,4 +131,28 @@ test('all tools return a readable failure instead of throwing', async () => {
   })
   const result = await toolMap(client).get('mem0_search').execute({ query: 'x' }, {})
   assert.match(result, /mem0_search failed: backend down/)
+})
+
+test('profile tools read, update and reset editable memory summary', async () => {
+  let text = '- Likes tea'
+  const maintenance = {
+    profileBlock: () => text,
+    setProfileText: (value) => {
+      text = String(value)
+      return { profile: { items: text ? text.split('\n').length : 0, tokens: 12 } }
+    },
+    resetProfile: async () => {
+      text = '- Rebuilt from memories'
+      return { profile: { items: 1, tokens: 20 } }
+    },
+  }
+  const tools = toolMap(fakeClient(), maintenance)
+  assert.match(await tools.get('mem0_profile_get').execute({}, {}), /Likes tea/)
+  assert.match(
+    await tools.get('mem0_profile_update').execute({ text: '- Likes coffee' }, {}),
+    /Updated memory summary/,
+  )
+  assert.equal(text, '- Likes coffee')
+  assert.match(await tools.get('mem0_profile_reset').execute({}, {}), /Rebuilt memory summary/)
+  assert.equal(text, '- Rebuilt from memories')
 })

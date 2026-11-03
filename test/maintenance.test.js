@@ -64,6 +64,7 @@ test('dedupe and profile builder keep one copy and respect the profile budget', 
   assert.equal(duplicates.length, 1)
   const profile = buildProfile(unique, 40)
   assert.match(profile.text, /likes tea/i)
+  assert.match(profile.text, /^## /m)
   assert.ok(profile.tokens <= 40)
   assert.ok(profile.items >= 1)
 })
@@ -166,4 +167,36 @@ test('recall block prepends the compact profile without breaking delimiters', ()
   assert.match(block, /<mem0-relevant-memories>/)
   assert.match(block, /Likes tea/)
   assert.ok(block.endsWith('</mem0-relevant-memories>'))
+})
+
+test('manual long-term memory persists across hygiene and can be rebuilt', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-manual-profile-'))
+  try {
+    const client = {
+      async list() {
+        return { results: [memory('a', 'Likes tea'), memory('b', 'Works on DSH plugins')] }
+      },
+      async remove() {},
+    }
+    const state = new MaintenanceState(path.join(dir, 'maintenance.json'))
+    const maintenance = new MemoryMaintenance({
+      client,
+      config: config({ storeMaxMemories: 10 }),
+      state,
+      activity: {},
+      logger: { warn() {}, debug() {} },
+    })
+    await maintenance.run('manual')
+    const saved = maintenance.setProfileText('- User likes oolong tea')
+    assert.equal(saved.profile.manual, true)
+    assert.equal(maintenance.profileBlock(), '- User likes oolong tea')
+    await maintenance.run('manual')
+    assert.equal(maintenance.profileBlock(), '- User likes oolong tea')
+    assert.equal(maintenance.status().profile.manual, true)
+    const reset = await maintenance.resetProfile()
+    assert.equal(reset.profile.manual, false)
+    assert.match(maintenance.profileBlock(), /Likes tea/)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
 })
