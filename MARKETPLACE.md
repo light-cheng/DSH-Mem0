@@ -109,8 +109,10 @@ in the profile patch. Screenshots are optional and fall back to README images.
   removals, 0 deleted, 0 failed.
 - Memory library rendered in the real Plugins page: “查看全部记忆” opened a
   searchable list of all 14 real OSS memories; searching `Node` returned
-  `显示 1 / 共 1 条`. The recall preview was exercised with a synthetic activity
-  payload and rendered the recalled texts, IDs, count and latency in Chinese.
+  `显示 1 / 共 1 条`. The published screenshot uses synthetic demo memories to
+  avoid exposing personal data. The recall preview was exercised with a
+  synthetic activity payload and rendered the recalled texts, IDs, count and
+  latency in Chinese.
 - Screenshots in `assets/screenshots/` were captured from the real DSH Plugins
   page at 1440×1100 (the maintenance crop is 1440×957; the recall card is
   820×303).
