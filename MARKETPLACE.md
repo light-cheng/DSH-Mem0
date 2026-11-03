@@ -49,19 +49,21 @@ Create `data/plugins/<owner>__<repo>.yml` in the
 repository:
 
 ```yaml
-url: https://github.com/OWNER/REPO
-name: OWNER/REPO
+url: https://github.com/light-cheng/DSH-Mem0
+name: light-cheng/DSH-Mem0
 category: memory
 description:
-  en: Long-term Mem0 memory for DSH with Platform, self-hosted server or local OSS backends, automatic recall and capture, editable memory summary, and nine memory tools.
-  zh: 为 DSH 提供 Mem0 长期记忆，支持 Platform、自托管 server 或本地 OSS，包含自动召回、自动保存和九个记忆工具。
-icon: https://raw.githubusercontent.com/OWNER/REPO/main/assets/icon.png
+  en: "Mem0-backed long-term memory for DeepSeek Harness with managed Platform, self-hosted server and local OSS backends; visual settings, automatic recall and capture, editable memory summary, token budgets and weekly memory hygiene."
+  zh: "为 DeepSeek Harness 提供基于 Mem0 的长期记忆，支持 Platform、自建 Server 和本地 OSS 后端，带可视化设置、自动召回与保存、可编辑记忆摘要、Token 预算和每周记忆巡检。"
+icon: https://raw.githubusercontent.com/light-cheng/DSH-Mem0/main/assets/icon.png
+tarball: https://github.com/light-cheng/DSH-Mem0/releases/download/v0.2.1/dsh-mem0-0.2.1.tgz
 ```
 
 `category: memory` is the intended category. `icon` is optional; if omitted,
 the storefront uses the owner avatar. The catalog prefers a raster PNG/JPEG/WebP
 icon; this repository's `assets/icon.png` is the 512×512 raster icon, and the
-package also uses it for the DSH Plugin Manager tile.
+package also uses it for the DSH Plugin Manager tile. The optional `tarball`
+points at the prebuilt v0.2.1 GitHub release asset.
 
 ## Market behavior
 
@@ -73,7 +75,8 @@ does.
 A plugin-provided GUI is **not** a listing requirement. This plugin ships both
 halves: the Host bundle plus a browser settings page registered at
 `plugins.bundle.config`, so users can configure it in the DSH Plugins page or
-in the profile patch. Screenshots are optional and fall back to README images.
+in the profile patch. The repository's `screenshots.json` exposes eight
+marketplace screenshots; the market reads that file from this repository.
 
 ## Configuration for users
 
