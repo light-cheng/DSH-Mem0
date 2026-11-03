@@ -15,10 +15,11 @@ This file is the remaining checklist for publishing the universal build.
 
 1. Repository metadata now points at `https://github.com/light-cheng/DSH-Mem0`:
    `repository`, `homepage` and `bugs`.
-2. The public GitHub repository is `light-cheng/DSH-Mem0`; add the
-   `dsh-plugin` topic.
-3. Wait until the repository is at least one day old. The current
-   awesome-dsh-plugin rules have **no commit-count bar**.
+2. The public GitHub repository is `light-cheng/DSH-Mem0`; the `dsh-plugin`
+   topic is set (plus `dsh`, `deepseek`, `mem0`, `memory`).
+3. The repository was created on 2026-11-03 00:22 UTC; wait until it is at
+   least one day old before submitting. The current awesome-dsh-plugin rules
+   have **no commit-count bar**.
 4. Run:
    ```bash
    pnpm install --ignore-scripts --frozen-lockfile
