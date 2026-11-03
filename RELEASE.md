@@ -4,7 +4,7 @@ English is the default; the Chinese version follows below.
 
 ## English
 
-### v0.2.0 — first public release
+### v0.2.1 — first public release
 
 DSH-Mem0 is a universal long-term memory plugin for DeepSeek Harness. It supports Mem0 Platform, a self-hosted Mem0 REST server, and a local Mem0 OSS Python sidecar behind one configuration surface.
 
@@ -24,7 +24,7 @@ Verification: 58 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 ## 简体中文
 
-### v0.2.0 — 首个公开版本
+### v0.2.1 — 首个公开版本
 
 DSH-Mem0 是 DeepSeek Harness 的通用长期记忆插件，在同一套配置下支持 Mem0 Platform、自托管 Mem0 REST server 和本地 Mem0 OSS Python sidecar。
 
