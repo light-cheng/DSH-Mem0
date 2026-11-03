@@ -4,6 +4,14 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### v0.2.2 — detailed hygiene report
+
+- The Memory maintenance card now expands into a detailed hygiene report: start/end time, duration, memory and token counts before and after, summary item/token counts, and itemized duplicate, budget-pruned, deleted and failed entries.
+- Reports produced by older versions remain readable with a legacy fallback note.
+- The new report labels are localized in English and Chinese.
+
+Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pack` pass.
+
 ### v0.2.1 — first public release
 
 DSH-Mem0 is a universal long-term memory plugin for DeepSeek Harness. It supports Mem0 Platform, a self-hosted Mem0 REST server, and a local Mem0 OSS Python sidecar behind one configuration surface.
@@ -24,6 +32,14 @@ Highlights:
 Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pack` pass.
 
 ## 简体中文
+
+### v0.2.2 — 详细巡检报告
+
+- 「记忆维护」卡片现在可以展开详细巡检报告：开始/结束时间、耗时、巡检前后的记忆数量与 token、摘要条数与 token，以及重复、预算清理、删除和失败明细。
+- 旧版本生成的报告仍可读取，并显示兼容提示。
+- 新增报告字段已提供中英文文案。
+
+验证：59 个 Node 测试和 4 个 Python 测试通过；`npm run check` 与 `npm pack` 通过。
 
 ### v0.2.1 — 首个公开版本
 
