@@ -114,6 +114,18 @@ window.__ModuleLoader__.load({
       hygieneReasonSchedule: 'Scheduled',
       hygieneReasonStartup: 'Startup',
       hygieneReasonManual: 'Manual',
+      hygieneDetails: 'Report details',
+      hygieneReportWindow: 'Run time',
+      hygieneReportDuration: 'Duration',
+      hygieneReportStore: 'Stored memories',
+      hygieneReportStoreTokens: 'Stored tokens',
+      hygieneReportProfile: 'Memory summary',
+      hygieneDuplicateDetails: 'Duplicate details',
+      hygienePrunedDetails: 'Budget-pruned details',
+      hygieneDeletedDetails: 'Deleted details',
+      hygieneFailedDetails: 'Failed details',
+      hygieneNoDetails: 'None',
+      hygieneLegacyDetails: 'This report was created by an older version; only summary counts are available.',
       advanced: 'Advanced options',
       captureMaxChars: 'Capture length limit',
       captureMaxCharsHint: 'Characters per message when capturing, 50–4000.',
@@ -305,6 +317,18 @@ window.__ModuleLoader__.load({
       hygieneReasonSchedule: '定时',
       hygieneReasonStartup: '启动检查',
       hygieneReasonManual: '手动',
+      hygieneDetails: '巡检详情',
+      hygieneReportWindow: '运行时间',
+      hygieneReportDuration: '耗时',
+      hygieneReportStore: '存储记忆',
+      hygieneReportStoreTokens: '存储 tokens',
+      hygieneReportProfile: '记忆摘要',
+      hygieneDuplicateDetails: '重复明细',
+      hygienePrunedDetails: '预算清理明细',
+      hygieneDeletedDetails: '删除明细',
+      hygieneFailedDetails: '失败明细',
+      hygieneNoDetails: '无',
+      hygieneLegacyDetails: '该报告由旧版本生成，只有汇总数量。',
       advanced: '高级选项',
       captureMaxChars: '单条保存长度上限',
       captureMaxCharsHint: '自动保存时每条消息截断的字符数，50–4000。',
@@ -464,6 +488,11 @@ window.__ModuleLoader__.load({
       .mem0-activity-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}
       .mem0-activity-main{font-size:12px;color:var(--dsw-alias-label-secondary);margin:0;line-height:1.5}
       .mem0-activity-meta{font-size:11px;color:var(--dsw-alias-label-tertiary);margin:0;line-height:1.5;word-break:break-word}
+      .mem0-report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;font-size:12px;color:var(--dsw-alias-label-secondary);margin:8px 0}
+      .mem0-report-details-list{display:flex;flex-direction:column;gap:8px}
+      .mem0-report-block strong{display:block;font-size:12px;margin-bottom:2px}
+      .mem0-report-list{margin:0;padding-left:18px;font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.5;word-break:break-word}
+      @media(max-width:640px){.mem0-report-grid{grid-template-columns:1fr}}
       .mem0-state-ok{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary);background:var(--dsw-alias-state-success-tertiary)}
       .mem0-state-warn{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-primary);background:var(--dsw-alias-state-warn-tertiary)}
       .mem0-state-error{color:var(--dsw-alias-label-error);border-color:var(--dsw-alias-label-error);background:var(--dsw-alias-bg-layer-2)}
@@ -730,6 +759,22 @@ window.__ModuleLoader__.load({
       if (reason === 'manual') return t('hygieneReasonManual')
       if (reason === 'startup') return t('hygieneReasonStartup')
       return t('hygieneReasonSchedule')
+    }
+
+    function reportDetail(t, label, items, formatter) {
+      const list = Array.isArray(items) ? items.filter(Boolean) : []
+      return h(
+        'div',
+        { className: 'mem0-report-block' },
+        h('strong', null, label),
+        list.length > 0
+          ? h(
+              'ul',
+              { className: 'mem0-report-list' },
+              list.map((item, index) => h('li', { key: `${label}-${index}` }, formatter(item))),
+            )
+          : h('p', { className: 'mem0-hint' }, t('hygieneNoDetails')),
+      )
     }
 
     function statusLabel(t, backend) {
@@ -2011,6 +2056,32 @@ window.__ModuleLoader__.load({
                 `${t('hygieneLastReport')} · ${hygieneReason(t, lastReport.reason)}${
                   lastReport.finishedAt ? ` · ${activityTime(lastReport.finishedAt)}` : ''
                 } · ${formatHygieneReport(t, lastReport)}`,
+              )
+            : null,
+          lastReport
+            ? h(
+                'details',
+                { className: 'mem0-details mem0-report-details' },
+                h('summary', null, t('hygieneDetails')),
+                h(
+                  'div',
+                  { className: 'mem0-report-grid' },
+                  h('span', null, `${t('hygieneReportWindow')}: ${activityTime(lastReport.startedAt)} → ${activityTime(lastReport.finishedAt)}`),
+                  h('span', null, `${t('hygieneReportDuration')}: ${lastReport.durationMs ?? '—'} ms`),
+                  h('span', null, `${t('hygieneReportStore')}: ${lastReport.storeBefore ?? lastReport.scanned ?? 0} → ${lastReport.storeCount ?? 0}`),
+                  h('span', null, `${t('hygieneReportStoreTokens')}: ${lastReport.storeTokensBefore ?? 0} → ${lastReport.storeTokens ?? 0}`),
+                  h('span', null, `${t('hygieneReportProfile')}: ${lastReport.profileItems ?? 0} · ${lastReport.profileTokens ?? 0} tok`),
+                ),
+                ['duplicateDetails', 'prunedDetails', 'deletedDetails', 'failedDetails'].some((key) => Array.isArray(lastReport[key]))
+                  ? h(
+                      'div',
+                      { className: 'mem0-report-details-list' },
+                      reportDetail(t, t('hygieneDuplicateDetails'), lastReport.duplicateDetails, (item) => item.preview || item.id),
+                      reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => item.preview || item.id),
+                      reportDetail(t, t('hygieneDeletedDetails'), lastReport.deletedDetails, (item) => item.preview || item.id),
+                      reportDetail(t, t('hygieneFailedDetails'), lastReport.failedDetails, (item) => `${item.id}: ${item.error}`),
+                    )
+                  : h('p', { className: 'mem0-hint' }, t('hygieneLegacyDetails')),
               )
             : null,
           maintenance?.lastError
