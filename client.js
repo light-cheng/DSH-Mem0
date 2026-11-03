@@ -15,6 +15,7 @@ window.__ModuleLoader__.load({
     const TEST_PATH = 'dsh-mem0/gui/test'
     const ACTIVITY_PATH = 'dsh-mem0/gui/activity'
     const HYGIENE_PATH = 'dsh-mem0/gui/hygiene'
+    const MEMORIES_PATH = 'dsh-mem0/gui/memories'
 
     const en = {
       title: 'Mem0 connection',
@@ -108,36 +109,6 @@ window.__ModuleLoader__.load({
       hygieneOk: 'Hygiene completed',
       hygieneFailed: 'Hygiene failed',
       hygieneReport: 'Scanned {scanned}, duplicates {duplicates}, pruned {pruned}, deleted {deleted}, failed {failed}.',
-      maintenanceTitle: '记忆维护',
-      maintenanceHint: '从已存事实重建精简画像，并按周清理重复项、把存储控制在预算内。不会额外调用模型。',
-      captureFilter: '保存过滤',
-      captureFilterHint: '启发式会跳过问候、简短确认和纯命令回合。',
-      captureFilterHeuristic: '启发式（推荐）',
-      captureFilterOff: '保存每个已完成回合',
-      profileEnabled: '生成精简用户画像',
-      profileEnabledHint: '从记忆中提取短画像，并在相关记忆之前注入。',
-      profileBudgetTokens: '画像预算（tokens）',
-      profileBudgetTokensHint: '注入画像的上限，128–8000。',
-      memoryBudgetTokens: '召回记忆预算（tokens）',
-      memoryBudgetTokensHint: '注入原始召回记忆的上限，128–20000。',
-      storeMaxMemories: '最大记忆条数',
-      storeMaxMemoriesHint: '超过后按价值清理最低的记忆，20–5000。',
-      storeMaxTokens: '最大存储 tokens',
-      storeMaxTokensHint: '超过估算上限后按价值清理最低的记忆，500–200000。',
-      hygieneEnabled: '每周记忆卫生巡检',
-      hygieneEnabledHint: '到期时在启动后运行，之后每小时检查；也可以手动触发。',
-      hygieneIntervalDays: '巡检间隔（天）',
-      hygieneIntervalDaysHint: '默认 7 天，范围 1–90。',
-      hygieneLastRun: '上次运行',
-      hygieneNextRun: '下次运行',
-      hygieneNever: '尚未运行',
-      hygieneDue: '现在到期',
-      hygieneProfile: '画像',
-      hygieneRun: '立即巡检',
-      hygieneRunning: '正在巡检…',
-      hygieneOk: '巡检完成',
-      hygieneFailed: '巡检失败',
-      hygieneReport: '扫描 {scanned}，重复 {duplicates}，预算清理 {pruned}，删除 {deleted}，失败 {failed}。',
       advanced: 'Advanced options',
       captureMaxChars: 'Capture length limit',
       captureMaxCharsHint: 'Characters per message when capturing, 50–4000.',
@@ -198,6 +169,20 @@ window.__ModuleLoader__.load({
       recentTitle: 'Recent memories',
       recentEmpty: 'No memories yet. Completed turns will appear here after automatic capture.',
       recentError: 'Could not read recent memories',
+      memoryBrowserTitle: 'Memory library',
+      memoryBrowserHint: 'Search and browse every memory stored for this user. The list is read directly from the configured backend.',
+      memoryBrowserOpen: 'View all memories',
+      memoryBrowserClose: 'Hide memory library',
+      memorySearchPlaceholder: 'Search memory text or ID…',
+      memorySearch: 'Search',
+      memoryLoading: 'Loading memories…',
+      memoryEmpty: 'No memories match this search.',
+      memoryCount: '{count} memories',
+      memoryCountFiltered: '{shown} of {total} memories',
+      memoryBrowserError: 'Could not read memories',
+      recallPreviewTitle: 'Last recalled memories',
+      recallPreviewEmpty: 'The last recall returned no memory text.',
+      memoryScore: 'score',
       refresh: 'Refresh',
       memoryId: 'ID',
     }
@@ -264,6 +249,36 @@ window.__ModuleLoader__.load({
       announceToAgentHint: '在系统提示中加入一段记忆能力说明。',
       includeSubagents: '包含子代理',
       includeSubagentsHint: '允许被委派的子代理也使用自动记忆。',
+      maintenanceTitle: '记忆维护',
+      maintenanceHint: '从已存事实重建精简画像，并按周清理重复项、把存储控制在预算内。不会额外调用模型。',
+      captureFilter: '保存过滤',
+      captureFilterHint: '启发式会跳过问候、简短确认和纯命令回合。',
+      captureFilterHeuristic: '启发式（推荐）',
+      captureFilterOff: '保存每个已完成回合',
+      profileEnabled: '生成精简用户画像',
+      profileEnabledHint: '从记忆中提取短画像，并在相关记忆之前注入。',
+      profileBudgetTokens: '画像预算（tokens）',
+      profileBudgetTokensHint: '注入画像的上限，128–8000。',
+      memoryBudgetTokens: '召回记忆预算（tokens）',
+      memoryBudgetTokensHint: '注入原始召回记忆的上限，128–20000。',
+      storeMaxMemories: '最大记忆条数',
+      storeMaxMemoriesHint: '超过后按价值清理最低的记忆，20–5000。',
+      storeMaxTokens: '最大存储 tokens',
+      storeMaxTokensHint: '超过估算上限后按价值清理最低的记忆，500–200000。',
+      hygieneEnabled: '每周记忆卫生巡检',
+      hygieneEnabledHint: '到期时在启动后运行，之后每小时检查；也可以手动触发。',
+      hygieneIntervalDays: '巡检间隔（天）',
+      hygieneIntervalDaysHint: '默认 7 天，范围 1–90。',
+      hygieneLastRun: '上次运行',
+      hygieneNextRun: '下次运行',
+      hygieneNever: '尚未运行',
+      hygieneDue: '现在到期',
+      hygieneProfile: '画像',
+      hygieneRun: '立即巡检',
+      hygieneRunning: '正在巡检…',
+      hygieneOk: '巡检完成',
+      hygieneFailed: '巡检失败',
+      hygieneReport: '扫描 {scanned}，重复 {duplicates}，预算清理 {pruned}，删除 {deleted}，失败 {failed}。',
       advanced: '高级选项',
       captureMaxChars: '单条保存长度上限',
       captureMaxCharsHint: '自动保存时每条消息截断的字符数，50–4000。',
@@ -324,6 +339,20 @@ window.__ModuleLoader__.load({
       recentTitle: '最近写入的记忆',
       recentEmpty: '还没有记忆。完成的回合会自动保存到这里。',
       recentError: '读取最近记忆失败',
+      memoryBrowserTitle: '记忆库',
+      memoryBrowserHint: '搜索并浏览当前用户存储的全部记忆，列表直接读取配置的后端。',
+      memoryBrowserOpen: '查看全部记忆',
+      memoryBrowserClose: '收起记忆库',
+      memorySearchPlaceholder: '搜索记忆内容或 ID…',
+      memorySearch: '搜索',
+      memoryLoading: '正在读取记忆…',
+      memoryEmpty: '没有匹配的记忆。',
+      memoryCount: '共 {count} 条记忆',
+      memoryCountFiltered: '显示 {shown} / 共 {total} 条',
+      memoryBrowserError: '读取记忆失败',
+      recallPreviewTitle: '上次召回的记忆',
+      recallPreviewEmpty: '上次召回没有返回可展示的记忆内容。',
+      memoryScore: '相关度',
       refresh: '刷新',
       memoryId: 'ID',
     }
@@ -400,6 +429,13 @@ window.__ModuleLoader__.load({
       .mem0-memory:first-child{border-top:0;padding-top:0}
       .mem0-memory-text{font-size:12px;color:var(--dsw-alias-label-primary);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
       .mem0-memory-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
+      .mem0-section-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+      .mem0-search-row{display:flex;align-items:center;gap:8px;margin:10px 0}
+      .mem0-search-row .mem0-input{flex:1;min-width:0}
+      .mem0-recall-preview{margin-top:9px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
+      .mem0-recall-item + .mem0-recall-item{margin-top:7px;padding-top:7px;border-top:1px solid var(--dsw-alias-border-l1)}
+      .mem0-recall-text{font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
+      .mem0-recall-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:3px;color:var(--dsw-alias-label-tertiary);font-size:11px}
       .mem0-dock{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;line-height:1.5;padding:0 2px;cursor:pointer;white-space:nowrap;max-width:100%}
       .mem0-dock:hover{color:var(--dsw-alias-label-secondary)}
       .mem0-globe{width:18px;height:18px;flex:none;color:var(--dsw-alias-label-primary);overflow:visible;transition:color .25s ease,filter .25s ease}
@@ -617,6 +653,10 @@ window.__ModuleLoader__.load({
       const date = new Date(value)
       if (Number.isNaN(date.getTime())) return String(value)
       return date.toLocaleString()
+    }
+
+    function template(text, values) {
+      return String(text).replace(/\{(\w+)\}/g, (_, key) => String(values?.[key] ?? ''))
     }
 
     function statusLabel(t, backend) {
@@ -864,6 +904,9 @@ window.__ModuleLoader__.load({
       const [testState, setTestState] = useState('idle')
       const [hygieneState, setHygieneState] = useState('idle')
       const [hygieneMessage, setHygieneMessage] = useState('')
+      const [browserOpen, setBrowserOpen] = useState(false)
+      const [memoryQuery, setMemoryQuery] = useState('')
+      const [memoryState, setMemoryState] = useState({ phase: 'idle', data: null, message: '' })
 
       useEffect(() => {
         const unsubscribe = form.subscribe(() => setSnapshot(form.getSnapshot()))
@@ -906,6 +949,22 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         void refreshStatus()
       }, [refreshStatus])
+
+      const loadMemories = useCallback(async (query) => {
+        const q = String(query ?? '').trim()
+        setMemoryState((current) => ({ phase: 'loading', data: current.data, message: '' }))
+        try {
+          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500`)
+          setMemoryState({ phase: 'ready', data, message: '' })
+        } catch (error) {
+          setMemoryState({ phase: 'error', data: null, message: error.message })
+        }
+      }, [])
+
+      const toggleBrowser = () => {
+        if (!browserOpen) void loadMemories(memoryQuery)
+        setBrowserOpen((open) => !open)
+      }
 
       const dirty = useMemo(
         () => loaded && draft !== null && (!same(draft, initial) || apiKey.trim().length > 0),
@@ -1323,6 +1382,23 @@ window.__ModuleLoader__.load({
               recall?.error ? h('p', { className: 'mem0-error' }, recall.error) : null,
               recall?.query ? h('p', { className: 'mem0-activity-meta' }, recall.query) : null,
               recallMeta.length > 0 ? h('p', { className: 'mem0-activity-meta' }, recallMeta.join(' · ')) : null,
+              recall?.preview?.length
+                ? h(
+                    'div',
+                    { className: 'mem0-recall-preview' },
+                    h('div', { className: 'mem0-activity-meta' }, t('recallPreviewTitle')),
+                    recall.preview.map((item, index) =>
+                      h(
+                        'div',
+                        { className: 'mem0-recall-item', key: item.id ?? index },
+                        h('div', { className: 'mem0-recall-text' }, item.memory || '—'),
+                        item.id
+                          ? h('div', { className: 'mem0-recall-meta' }, `${t('memoryId')} ${item.id}`)
+                          : null,
+                      ),
+                    ),
+                  )
+                : null,
             ),
           ),
           capture?.status === 'extracting' || capture?.status === 'queued'
@@ -1344,14 +1420,27 @@ window.__ModuleLoader__.load({
             { className: 'mem0-section-head' },
             h('h3', { className: 'mem0-section-title' }, t('recentTitle')),
             h(
-              'button',
-              {
-                type: 'button',
-                className: 'mem0-secondary',
-                onClick: () => void refreshStatus(),
-                disabled: status.phase === 'loading',
-              },
-              t('refresh'),
+              'div',
+              { className: 'mem0-section-actions' },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'mem0-secondary',
+                  onClick: () => void refreshStatus(),
+                  disabled: status.phase === 'loading',
+                },
+                t('refresh'),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'mem0-secondary',
+                  onClick: toggleBrowser,
+                },
+                browserOpen ? t('memoryBrowserClose') : t('memoryBrowserOpen'),
+              ),
             ),
           ),
           data?.recentMemoriesError
@@ -1376,7 +1465,7 @@ window.__ModuleLoader__.load({
                         ? h('span', { className: 'mem0-hint' }, activityTime(memory.createdAt))
                         : null,
                       typeof memory.score === 'number'
-                        ? h('span', { className: 'mem0-hint' }, `score ${memory.score.toFixed(3)}`)
+                        ? h('span', { className: 'mem0-hint' }, `${t('memoryScore')} ${memory.score.toFixed(3)}`)
                         : null,
                     ),
                   ),
@@ -1384,6 +1473,98 @@ window.__ModuleLoader__.load({
               )
             : h('p', { className: 'mem0-empty' }, t('recentEmpty')),
         ),
+        browserOpen
+          ? h(
+              'div',
+              { className: 'mem0-card mem0-section' },
+              h(
+                'div',
+                { className: 'mem0-section-head' },
+                h('h3', { className: 'mem0-section-title' }, t('memoryBrowserTitle')),
+                h(
+                  'button',
+                  { type: 'button', className: 'mem0-secondary', onClick: toggleBrowser },
+                  t('memoryBrowserClose'),
+                ),
+              ),
+              h('p', { className: 'mem0-section-hint' }, t('memoryBrowserHint')),
+              h(
+                'div',
+                { className: 'mem0-search-row' },
+                h('input', {
+                  className: 'mem0-input',
+                  type: 'search',
+                  value: memoryQuery,
+                  placeholder: t('memorySearchPlaceholder'),
+                  onChange: (event) => setMemoryQuery(event.target.value),
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void loadMemories(memoryQuery)
+                    }
+                  },
+                }),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'mem0-primary',
+                    onClick: () => void loadMemories(memoryQuery),
+                    disabled: memoryState.phase === 'loading',
+                  },
+                  t('memorySearch'),
+                ),
+              ),
+              memoryState.phase === 'loading'
+                ? h('p', { className: 'mem0-hint' }, t('memoryLoading'))
+                : memoryState.phase === 'error'
+                  ? h('p', { className: 'mem0-error' }, `${t('memoryBrowserError')}: ${memoryState.message}`)
+                  : memoryState.data?.ok === false
+                    ? h('p', { className: 'mem0-error' }, `${t('memoryBrowserError')}: ${memoryState.data.error}`)
+                    : memoryState.data
+                      ? h(
+                          'div',
+                          null,
+                          h(
+                            'p',
+                            { className: 'mem0-hint' },
+                            memoryQuery.trim()
+                              ? template(t('memoryCountFiltered'), {
+                                  shown: memoryState.data.memories?.length ?? 0,
+                                  total: memoryState.data.total ?? 0,
+                                })
+                              : template(t('memoryCount'), { count: memoryState.data.total ?? 0 }),
+                          ),
+                          (memoryState.data.memories ?? []).length > 0
+                            ? h(
+                                'div',
+                                { className: 'mem0-memory-list' },
+                                memoryState.data.memories.map((memory, index) =>
+                                  h(
+                                    'div',
+                                    { className: 'mem0-memory', key: memory.id ?? index },
+                                    h('div', { className: 'mem0-memory-text' }, memory.memory || '—'),
+                                    h(
+                                      'div',
+                                      { className: 'mem0-memory-meta' },
+                                      memory.id
+                                        ? h('span', { className: 'mem0-chip' }, `${t('memoryId')} ${memory.id}`)
+                                        : null,
+                                      memory.createdAt
+                                        ? h('span', { className: 'mem0-hint' }, activityTime(memory.createdAt))
+                                        : null,
+                                      typeof memory.score === 'number'
+                                        ? h('span', { className: 'mem0-hint' }, `${t('memoryScore')} ${memory.score.toFixed(3)}`)
+                                        : null,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : h('p', { className: 'mem0-empty' }, t('memoryEmpty')),
+                        )
+                      : h('p', { className: 'mem0-hint' }, t('memoryBrowserHint')),
+            )
+          : null,
         h(
           'div',
           { className: 'mem0-section' },

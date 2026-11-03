@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   GUI_ACTIVITY_PATH,
   GUI_HYGIENE_PATH,
+  GUI_MEMORIES_PATH,
   GUI_STATUS_PATH,
   GUI_TEST_PATH,
   registerGuiRoutes,
@@ -48,9 +49,9 @@ function response() {
   }
 }
 
-async function invoke(handler, method) {
+async function invoke(handler, method, url = '/') {
   const res = response()
-  await handler({ method }, res)
+  await handler({ method, url }, res)
   return {
     status: res.statusCode,
     headers: res.headers,
@@ -166,4 +167,42 @@ test('hygiene route runs maintenance and returns its status', async () => {
   const rejected = await invoke(routes.get(GUI_HYGIENE_PATH), 'GET')
   assert.equal(rejected.status, 405)
   assert.equal(rejected.headers.allow, 'POST')
+})
+
+test('memories route lists, filters and sanitizes the memory library', async () => {
+  const routes = harness({
+    config,
+    activity: {
+      recall: {
+        status: 'ok',
+        count: 1,
+        preview: [{ id: 'm1', memory: 'Likes tea' }],
+      },
+    },
+    client: {
+      async list(filter, options) {
+        assert.equal(filter.user_id, 'dsh-user')
+        assert.equal(options.topK, 1000)
+        return {
+          results: [
+            { id: 'm1', memory: 'Likes tea', created_at: '2026-11-02T00:00:00Z', score: 0.9 },
+            { id: 'm2', memory: 'Works on DSH plugins', created_at: '2026-11-01T00:00:00Z' },
+          ],
+        }
+      },
+    },
+  })
+  const all = await invoke(routes.get(GUI_MEMORIES_PATH), 'GET', `${GUI_MEMORIES_PATH}?limit=500`)
+  assert.equal(all.status, 200)
+  assert.equal(all.body.ok, true)
+  assert.equal(all.body.total, 2)
+  assert.equal(all.body.memories.length, 2)
+  const filtered = await invoke(routes.get(GUI_MEMORIES_PATH), 'GET', `${GUI_MEMORIES_PATH}?q=tea`)
+  assert.equal(filtered.body.total, 1)
+  assert.equal(filtered.body.memories[0].id, 'm1')
+  const activity = await invoke(routes.get(GUI_ACTIVITY_PATH), 'GET')
+  assert.deepEqual(activity.body.activity.recall.preview, [{ id: 'm1', memory: 'Likes tea' }])
+  const rejected = await invoke(routes.get(GUI_MEMORIES_PATH), 'POST')
+  assert.equal(rejected.status, 405)
+  assert.equal(rejected.headers.allow, 'GET')
 })

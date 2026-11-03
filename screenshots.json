@@ -35,6 +35,14 @@
     {
       "path": "assets/screenshots/09-maintenance.png",
       "alt": "Memory maintenance with profile budget, store limits, weekly hygiene and manual run"
+    },
+    {
+      "path": "assets/screenshots/10-memory-library.png",
+      "alt": "Searchable memory library showing every memory stored for the current user"
+    },
+    {
+      "path": "assets/screenshots/11-recall-preview.png",
+      "alt": "Last recall preview with the recalled memory texts, IDs and latency"
     }
   ]
 }

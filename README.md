@@ -20,7 +20,7 @@
 - **记忆预算与周巡检**：召回记忆和画像各有 token 预算；默认每 7 天做一次记忆卫生巡检，去重并按价值清理超预算的记忆，也可以在设置页手动触发。
 - **显式工具**：`mem0_search`、`mem0_add`、`mem0_get`、`mem0_update`、`mem0_delete`、`mem0_status`。
 - **后端可切换**：Platform、自托管 server、本地 OSS sidecar 共用同一套工具与自动记忆逻辑。
-- **可验证的记忆活动**：设置页显示自动保存 / 自动召回的最后状态，并列出最近写入的记忆（文本、ID、时间），可以直接确认是否真的写入了后端。
+- **可验证的记忆活动**：设置页显示自动保存 / 自动召回的最后状态，列出最近写入的记忆（文本、ID、时间），并可打开「记忆库」搜索当前用户的全部记忆；「上次召回的记忆」显示最近一次召回实际命中的文本。
 - **前台状态图标**：对话输入框下方有一个由大小不一的圆点组成的镂空地球仪；自动保存/召回时沿倾斜方向滚动，成功后变成浅蓝色并继续滚动，失败显示红色。滚动时球体轮廓保持圆形，不会压扁。浅色主题下是黑点，深色主题自动用浅色点保证可见。
 - **中英双语**：界面跟随 DSH 的语言设置，内置中文和英文文案。
 - **安全边界**：sidecar 只监听 `127.0.0.1` 的随机端口并使用随机 token；写入/召回前做常见密钥脱敏；`mem0_status` 不输出 API key。
@@ -42,6 +42,12 @@
 页面里的「测试连接」会调用 `mem0_status` 同源的只读健康检查，显示当前后端、集合、Python/Mem0/Qdrant/Embedder 状态，不会显示 API Key。
 
 「记忆活动」会记录最近一次自动保存和自动召回的结果；「最近写入的记忆」直接读取后端，显示真实记忆文本、ID 和时间。这样不需要猜自动保存有没有生效：
+
+「查看全部记忆」会打开「记忆库」，可按记忆内容或 ID 搜索当前用户存储的全部记忆；「上次召回的记忆」显示最近一次自动召回实际命中的文本、ID、条数和延迟：
+
+![记忆库](assets/screenshots/10-memory-library.png)
+
+![上次召回的记忆](assets/screenshots/11-recall-preview.png)
 
 「记忆维护」区域可以调整画像预算、召回预算、存储上限和巡检间隔，并查看上次/下次巡检时间和当前画像规模；「立即巡检」会立刻重建画像并清理重复项与超预算记忆：
 
@@ -257,8 +263,8 @@ node scripts/smoke-sidecar.mjs
 ## 上架相关
 
 - 包名：`dsh-mem0`，`private: false`，已带 `dsh.bundle` 与 `dsh-plugin` 关键词。
-- 市场收录需要公开 GitHub 仓库、`dsh-plugin` topic、仓库创建满 1 天且提交数 ≥ 10，并在 `awesome-dsh-plugin` 提交一个 `data/plugins/<owner>__<repo>.yml`，分类选 `memory`。
-- 仓库目前没有绑定具体 GitHub 地址；发布前在 `package.json` 补 `repository` / `homepage`。仓库已包含 `screenshots.json` 和 `assets/screenshots/` 下的八张界面图；提交 awesome 条目时把 raw URL 加到 `awesome-dsh-plugin` 的 `data/screenshots.json`，不提交时市场会从 README 自动抽取。
+- 市场收录需要公开 GitHub 仓库、`dsh-plugin` topic、仓库创建满 1 天，并在 `awesome-dsh-plugin` 提交一个 `data/plugins/<owner>__<repo>.yml`，分类选 `memory`。
+- 仓库已绑定 `repository` / `homepage`：`https://github.com/light-cheng/DSH-Mem0`。仓库包含 `screenshots.json` 和 `assets/screenshots/` 下的 11 张界面图；提交 awesome 条目时把 raw URL 加到 `awesome-dsh-plugin` 的 `data/screenshots.json`，不提交时市场会从 README 自动抽取。
 - 插件自带可视化配置页（`dsh.client` + `plugins.bundle.config`），上架不要求 GUI，但本插件已提供，便于用户安装后直接配置三种后端并测试连接。
 - OSS 模式依赖外部 Python/Qdrant/embedding 服务，README 已明确声明，不应描述成“零依赖”插件。
 

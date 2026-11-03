@@ -210,6 +210,7 @@ test('activity records automatic recall results', async () => {
   assert.equal(activity.recall.count, 1)
   assert.equal(activity.recall.query, 'What do I drink?')
   assert.equal(typeof activity.recall.latencyMs, 'number')
+  assert.deepEqual(activity.recall.preview, [{ id: 'm1', memory: 'Likes tea' }])
 })
 
 test('activity records automatic capture completion', async () => {
