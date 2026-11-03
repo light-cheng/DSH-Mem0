@@ -1,0 +1,40 @@
+{
+  "screenshots": [
+    {
+      "path": "assets/screenshots/01-plugin-page.png",
+      "alt": "Mem0 Memory in the DSH plugin manager"
+    },
+    {
+      "path": "assets/screenshots/02-settings-auto.png",
+      "alt": "Mem0 connection settings with automatic backend detection and live status"
+    },
+    {
+      "path": "assets/screenshots/03-settings-platform.png",
+      "alt": "Mem0 Platform backend configuration"
+    },
+    {
+      "path": "assets/screenshots/04-settings-oss.png",
+      "alt": "Local Mem0 OSS backend configuration"
+    },
+    {
+      "path": "assets/screenshots/05-test-success.png",
+      "alt": "Successful connection test with the green Connected state"
+    },
+    {
+      "path": "assets/screenshots/06-activity.png",
+      "alt": "Memory activity and recent memories written to the backend"
+    },
+    {
+      "path": "assets/screenshots/07-settings-auto-en.png",
+      "alt": "English UI following the DSH language setting"
+    },
+    {
+      "path": "assets/screenshots/08-foreground-status.png",
+      "alt": "Foreground Mem0 status in the chat composer dock"
+    },
+    {
+      "path": "assets/screenshots/09-maintenance.png",
+      "alt": "Memory maintenance with profile budget, store limits, weekly hygiene and manual run"
+    }
+  ]
+}

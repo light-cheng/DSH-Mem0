@@ -1,0 +1,8 @@
+node_modules/
+.cache/
+.pnpm-home/
+.npm-cache/
+.pycache/
+__pycache__/
+*.pyc
+.DS_Store

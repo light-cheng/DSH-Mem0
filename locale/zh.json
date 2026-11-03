@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Mem0 长期记忆",
+    "description": "为 DSH 提供 Mem0 长期记忆：支持 Mem0 Platform、自托管 server 或本地 OSS，包含自动召回、自动保存和记忆工具。"
+  }
+}

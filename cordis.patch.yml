@@ -1,0 +1,13 @@
+# DSH Mem0 bundle patch.
+#
+# The plugin supports three backends through its Config:
+#   platform — Mem0 Platform API key (managed cloud / on-prem)
+#   server   — a self-hosted Mem0 REST server
+#   oss      — a local Mem0 OSS Python sidecar
+#
+# Defaults use `backend: auto`: platform if an API key is configured, otherwise
+# OSS when a local `~/.dsh/mem0/oss.json` (or legacy `~/.hermes/mem0.json`)
+# exists, otherwise platform. Configure the row in the profile patch layer.
+- insert:
+    - id: dsh-mem0
+      name: 'dsh-mem0'
