@@ -110,6 +110,10 @@ window.__ModuleLoader__.load({
       hygieneOk: 'Hygiene completed',
       hygieneFailed: 'Hygiene failed',
       hygieneReport: 'Scanned {scanned}, duplicates {duplicates}, pruned {pruned}, deleted {deleted}, failed {failed}.',
+      hygieneLastReport: 'Last hygiene report',
+      hygieneReasonSchedule: 'Scheduled',
+      hygieneReasonStartup: 'Startup',
+      hygieneReasonManual: 'Manual',
       advanced: 'Advanced options',
       captureMaxChars: 'Capture length limit',
       captureMaxCharsHint: 'Characters per message when capturing, 50–4000.',
@@ -297,6 +301,10 @@ window.__ModuleLoader__.load({
       hygieneOk: '巡检完成',
       hygieneFailed: '巡检失败',
       hygieneReport: '扫描 {scanned}，重复 {duplicates}，预算清理 {pruned}，删除 {deleted}，失败 {failed}。',
+      hygieneLastReport: '上次巡检报告',
+      hygieneReasonSchedule: '定时',
+      hygieneReasonStartup: '启动检查',
+      hygieneReasonManual: '手动',
       advanced: '高级选项',
       captureMaxChars: '单条保存长度上限',
       captureMaxCharsHint: '自动保存时每条消息截断的字符数，50–4000。',
@@ -706,6 +714,22 @@ window.__ModuleLoader__.load({
 
     function template(text, values) {
       return String(text).replace(/\{(\w+)\}/g, (_, key) => String(values?.[key] ?? ''))
+    }
+
+    function formatHygieneReport(t, report) {
+      const value = report ?? {}
+      return t('hygieneReport')
+        .replace('{scanned}', String(value.scanned ?? 0))
+        .replace('{duplicates}', String(value.duplicates ?? 0))
+        .replace('{pruned}', String(value.pruned ?? 0))
+        .replace('{deleted}', String(value.deleted ?? 0))
+        .replace('{failed}', String(value.failed ?? 0))
+    }
+
+    function hygieneReason(t, reason) {
+      if (reason === 'manual') return t('hygieneReasonManual')
+      if (reason === 'startup') return t('hygieneReasonStartup')
+      return t('hygieneReasonSchedule')
     }
 
     function statusLabel(t, backend) {
@@ -1188,14 +1212,7 @@ window.__ModuleLoader__.load({
           if (response?.ok) {
             setHygieneState('ok')
             const report = response.report ?? {}
-            setHygieneMessage(
-              t('hygieneReport')
-                .replace('{scanned}', String(report.scanned ?? 0))
-                .replace('{duplicates}', String(report.duplicates ?? 0))
-                .replace('{pruned}', String(report.pruned ?? 0))
-                .replace('{deleted}', String(report.deleted ?? 0))
-                .replace('{failed}', String(report.failed ?? 0)),
-            )
+            setHygieneMessage(formatHygieneReport(t, report))
           } else {
             setHygieneState('error')
             setHygieneMessage(response?.error || t('hygieneFailed'))
@@ -1276,6 +1293,7 @@ window.__ModuleLoader__.load({
       const capture = data?.activity?.capture ?? null
       const recall = data?.activity?.recall ?? null
       const maintenance = data?.maintenance ?? null
+      const lastReport = maintenance?.lastReport ?? null
       const recentMemories = Array.isArray(data?.recentMemories) ? data.recentMemories : []
       const profileText = typeof data?.profileText === 'string' ? data.profileText.trim() : ''
       const profileMeta = []
@@ -1985,6 +2003,15 @@ window.__ModuleLoader__.load({
           ),
           maintenanceMeta.length > 0
             ? h('p', { className: 'mem0-activity-meta' }, maintenanceMeta.join(' · '))
+            : null,
+          lastReport
+            ? h(
+                'p',
+                { className: 'mem0-activity-meta' },
+                `${t('hygieneLastReport')} · ${hygieneReason(t, lastReport.reason)}${
+                  lastReport.finishedAt ? ` · ${activityTime(lastReport.finishedAt)}` : ''
+                } · ${formatHygieneReport(t, lastReport)}`,
+              )
             : null,
           maintenance?.lastError
             ? h('p', { className: 'mem0-error' }, `${t('hygieneFailed')}: ${maintenance.lastError}`)

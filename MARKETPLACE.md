@@ -88,7 +88,7 @@ marketplace screenshots; the market reads that file from this repository.
 
 ## Current verification
 
-- Node unit tests: 58 passing.
+- Node unit tests: 59 passing.
 - Python unit tests: 4 passing.
 - Real local OSS smoke test: passed (add/search/get/update/delete).
 - DSH `mem0_status` on the installed universal plugin: `backend: oss`,

@@ -57,7 +57,7 @@ The **Memory summary** card shows the editable, structured summary that is injec
 
 ![Editable memory summary](assets/screenshots/en/12-memory-summary.png)
 
-The **Memory maintenance** section lets you adjust the memory summary budget, recall budget, storage limits and hygiene interval, and shows the last/next hygiene time and current memory size. **Run hygiene now** removes duplicates and over-budget memories; a manually edited memory summary is preserved.
+The **Memory maintenance** section lets you adjust the memory summary budget, recall budget, storage limits and hygiene interval, and shows the last/next hygiene time, the latest hygiene report (scanned, duplicates, pruned, deleted, failed, run time and trigger) and current memory size. **Run hygiene now** removes duplicates and over-budget memories; a manually edited memory summary is preserved.
 
 ![Memory maintenance](assets/screenshots/en/09-maintenance.png)
 
@@ -85,7 +85,7 @@ The **Memory maintenance** section separates several budgets that are easy to co
 - **Recall memory budget**: upper bound for the `<mem0-relevant-memories>` block, 2200 tokens by default.
 - **Storage limits**: maximum number of memories (default 500) and estimated tokens (default 20000) retained after hygiene.
 
-Hygiene runs every 7 days by default and can be set to 1–90 days. It runs once at plugin startup if due, then checks hourly. It deletes only duplicates and low-value over-budget memories; it never clears the whole store. The profile and hygiene history are stored in the current DSH profile's `dsh-mem0/maintenance.json`, not written back to Mem0. A manual **Run hygiene now** returns the scanned, duplicate, pruned, deleted and failed counts.
+Hygiene runs every 7 days by default and can be set to 1–90 days. It runs once at plugin startup if due, then checks hourly. It deletes only duplicates and low-value over-budget memories; it never clears the whole store. The profile and hygiene history are stored in the current DSH profile's `dsh-mem0/maintenance.json`, not written back to Mem0. The latest report stays visible in the Memory maintenance card, including the scanned, duplicate, pruned, deleted and failed counts, run time and trigger; a manual **Run hygiene now** also returns the same counts.
 
 The generated memory summary uses local deterministic logic without extra model calls. Facts are grouped into sections by topic. You can edit it at any time; manual edits are stored in `maintenance.json` and are not overwritten by hygiene. Use **Rebuild from memories** to return to the generated version.
 

@@ -18,9 +18,10 @@ Highlights:
 - Searchable **Memory library** and **Last recalled memories** preview in the settings page.
 - Rolling dot-matrix status globe: idle is static, active/success roll along a tilted axis, failure is red; the silhouette stays circular and respects reduced motion.
 - English and Chinese UI following DSH's language setting.
+- The Memory maintenance card shows the latest hygiene report, including scanned, duplicate, pruned, deleted and failed counts, run time and trigger.
 - Local-only `link:` installs show the checkout path as DSH install metadata; npm packages contain no local paths.
 
-Verification: 58 Node tests and 4 Python tests pass; `npm run check` and `npm pack` pass.
+Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pack` pass.
 
 ## 简体中文
 
@@ -38,6 +39,7 @@ DSH-Mem0 是 DeepSeek Harness 的通用长期记忆插件，在同一套配置�
 - 设置页提供可搜索的「记忆库」和「上次召回的记忆」预览。
 - 点阵地球仪前台状态：待命静止，记录/成功时沿倾斜方向滚动，失败变红；滚动时轮廓保持圆形，并尊重「减少动态效果」。
 - 界面跟随 DSH 语言设置，内置中英文。
+- 「记忆维护」卡片会显示最近一次巡检报告，包括扫描、重复、预算清理、删除和失败数量，以及运行时间和触发方式。
 - 本地 `link:` 安装会在 DSH 插件详情中显示本机路径，这是安装元数据；npm 发布包不包含本机路径。
 
-验证：58 个 Node 测试和 4 个 Python 测试通过；`npm run check` 与 `npm pack` 通过。
+验证：59 个 Node 测试和 4 个 Python 测试通过；`npm run check` 与 `npm pack` 通过。

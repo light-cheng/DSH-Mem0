@@ -171,6 +171,40 @@ test('status route exposes the compact profile for the overview card', async () 
   assert.equal(result.body.maintenance.profile.items, 2)
 })
 
+test('status route passes the last hygiene report through to the UI', async () => {
+  const report = {
+    reason: 'startup',
+    finishedAt: '2026-11-02T00:05:39.822Z',
+    scanned: 14,
+    duplicates: 0,
+    pruned: 0,
+    deleted: 0,
+    failed: 0,
+  }
+  const routes = harness({
+    config,
+    maintenance: {
+      profileBlock() {
+        return ''
+      },
+      status() {
+        return { lastRunAt: report.finishedAt, lastReport: report }
+      },
+    },
+    client: {
+      async health() {
+        return { ok: true }
+      },
+      async list() {
+        return { results: [] }
+      },
+    },
+  })
+  const result = await invoke(routes.get(GUI_STATUS_PATH), 'GET')
+  assert.equal(result.status, 200)
+  assert.deepEqual(result.body.maintenance.lastReport, report)
+})
+
 test('status route turns backend failures into a safe error payload', async () => {
   const routes = harness({
     config,
