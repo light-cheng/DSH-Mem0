@@ -269,3 +269,59 @@ test('capture filter skips low-value turns before enqueueing', async () => {
   assert.equal(activity.capture.status, 'skipped')
   assert.equal(activity.capture.reason, 'low-value')
 })
+
+test('recall state resets each turn when only autoRecall is enabled', async () => {
+  const client = fakeClient()
+  const engine = lifecycle(client, { autoCapture: false })
+  const session = fakeSession({ messages: [userMessage('What do I drink?')] })
+  const context = { agent: { session }, signal: undefined }
+  for (let turn = 1; turn <= 3; turn += 1) {
+    engine.onSessionEvent(session, { type: 'turn/start', data: { turn } })
+    const result = await engine.onSystemPromptAssemble(assembly(), context, async () => assembly())
+    assert.equal(result.contexts.length, 1, `turn ${turn} should still recall`)
+    assert.match(result.contexts[0].text, /Likes tea/)
+    engine.onSessionEvent(session, {
+      type: 'user/message',
+      data: { ...userMessage('I prefer green tea over coffee every single morning, please remember it') },
+    })
+    engine.onSessionEvent(session, {
+      type: 'assistant/message',
+      data: { message: { role: 'assistant', content: [{ type: 'text', text: 'Noted.' }] } },
+    })
+    engine.onSessionEvent(session, { type: 'turn/end', data: { turn, reason: { kind: 'completed' } } })
+  }
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(client.calls.filter((call) => call[0] === 'search').length, 3)
+  assert.equal(client.calls.filter((call) => call[0] === 'add').length, 0)
+})
+
+test('long turns are still captured with the user message and final reply only', async () => {
+  const client = fakeClient()
+  const engine = lifecycle(client)
+  const session = fakeSession()
+  engine.onSessionEvent(session, { type: 'turn/start', data: { turn: 1 } })
+  engine.onSessionEvent(session, {
+    type: 'user/message',
+    data: { ...userMessage('Refactor the build so it always uses pnpm; I decided we are dropping npm for this repo') },
+  })
+  for (let step = 0; step < 30; step += 1) {
+    engine.onSessionEvent(session, {
+      type: 'assistant/message',
+      data: { message: { role: 'assistant', content: [{ type: 'text', text: `Running tool step ${step}` }] } },
+    })
+  }
+  engine.onSessionEvent(session, {
+    type: 'assistant/message',
+    data: { message: { role: 'assistant', content: [{ type: 'text', text: 'Done: the build now uses pnpm.' }] } },
+  })
+  engine.onSessionEvent(session, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  const addCall = client.calls.find((call) => call[0] === 'add')
+  assert.ok(addCall, 'long turn should be captured')
+  assert.deepEqual(
+    addCall[1].map((message) => message.role),
+    ['user', 'assistant'],
+  )
+  assert.match(addCall[1][0].content, /pnpm/)
+  assert.equal(addCall[1][1].content, 'Done: the build now uses pnpm.')
+})
