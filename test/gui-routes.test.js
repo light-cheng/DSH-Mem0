@@ -143,6 +143,44 @@ test('status route localizes the profile and recent memories', async () => {
   assert.equal(result.body.recentMemories[0].memory, '[zh] Likes tea')
 })
 
+test('status route skips translation for the fast initial render', async () => {
+  let calls = 0
+  const routes = harness({
+    config,
+    localizer: {
+      async translate(texts) {
+        calls += 1
+        return texts.map((text) => `[zh] ${text}`)
+      },
+    },
+    maintenance: {
+      profileBlock() {
+        return '- Likes tea'
+      },
+      status() {
+        return { profile: { enabled: true, items: 1, tokens: 8 } }
+      },
+    },
+    activity: {
+      recall: { status: 'ok', count: 1, preview: [{ id: 'm1', memory: 'Likes tea' }] },
+    },
+    client: {
+      async health() {
+        return { ok: true }
+      },
+      async list() {
+        return { results: [{ id: 'm1', memory: 'Likes tea' }] }
+      },
+    },
+  })
+  const result = await invoke(routes.get(GUI_STATUS_PATH), 'GET', '/?lang=zh&translate=0')
+  assert.equal(result.status, 200)
+  assert.equal(calls, 0)
+  assert.equal(result.body.profileText, '- Likes tea')
+  assert.equal(result.body.activity.recall.preview[0].memory, 'Likes tea')
+  assert.equal(result.body.recentMemories[0].memory, 'Likes tea')
+})
+
 test('status route exposes the compact profile for the overview card', async () => {
   const routes = harness({
     config,
@@ -245,6 +283,27 @@ test('activity route returns the in-process activity without backend I/O', async
   assert.equal(result.body.backend, 'oss')
 })
 
+
+test('activity route can skip translation for the dock poller', async () => {
+  let calls = 0
+  const routes = harness({
+    config,
+    localizer: {
+      async translate(texts) {
+        calls += 1
+        return texts.map((text) => `[zh] ${text}`)
+      },
+    },
+    activity: {
+      recall: { status: 'ok', count: 1, preview: [{ id: 'm1', memory: 'Likes tea' }] },
+    },
+    client: {},
+  })
+  const result = await invoke(routes.get(GUI_ACTIVITY_PATH), 'GET', '/?lang=zh&translate=0')
+  assert.equal(result.status, 200)
+  assert.equal(calls, 0)
+  assert.equal(result.body.activity.recall.preview[0].memory, 'Likes tea')
+})
 
 test('hygiene route runs maintenance and returns its status', async () => {
   const calls = []

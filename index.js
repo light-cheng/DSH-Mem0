@@ -58,7 +58,15 @@ export function apply(ctx, rawConfig) {
   const config = resolveConfig(rawConfig)
   const logger = ctx.logger
   const activity = { recall: null, capture: null, maintenance: null }
-  const localizer = new MemoryLocalizer({ logger })
+  // DSH's file policy lets the host write inside the active profile, while
+  // the Mem0 history directory can live outside it. Keep derived state next
+  // to the profile so hygiene history survives restarts without widening
+  // the plugin's file access.
+  const profileDir = ctx.get?.('profileContext')?.dir
+  const localizer = new MemoryLocalizer({
+    logger,
+    cachePath: profileDir ? path.join(profileDir, 'dsh-mem0', 'translation-cache.json') : undefined,
+  })
   const runtime = {
     config,
     client: undefined,
@@ -86,11 +94,6 @@ export function apply(ctx, rawConfig) {
 
   const client = createClient(config, logger)
   const breaker = new CircuitBreaker()
-  // DSH's file policy lets the host write inside the active profile, while
-  // the Mem0 history directory can live outside it. Keep derived state next
-  // to the profile so hygiene history survives restarts without widening
-  // the plugin's file access.
-  const profileDir = ctx.get?.('profileContext')?.dir
   const maintenanceState = new MaintenanceState(
     profileDir
       ? path.join(profileDir, 'dsh-mem0', 'maintenance.json')

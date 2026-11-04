@@ -5,7 +5,7 @@ This file is the remaining checklist for publishing the universal build.
 ## Package
 
 - npm name: `dsh-mem0`
-- version: `0.2.2`
+- version: `0.2.3`
 - `private: false`
 - `dsh.bundle.patch` is present in `package.json`.
 - `dsh-plugin` keyword is present.
@@ -56,14 +56,14 @@ description:
   en: "Mem0-backed long-term memory for DeepSeek Harness with managed Platform, self-hosted server and local OSS backends; visual settings, automatic recall and capture, editable memory summary, token budgets and weekly memory hygiene."
   zh: "为 DeepSeek Harness 提供基于 Mem0 的长期记忆，支持 Platform、自建 Server 和本地 OSS 后端，带可视化设置、自动召回与保存、可编辑记忆摘要、Token 预算和每周记忆巡检。"
 icon: https://raw.githubusercontent.com/light-cheng/DSH-Mem0/main/assets/icon.png
-tarball: https://github.com/light-cheng/DSH-Mem0/releases/download/v0.2.2/dsh-mem0-0.2.2.tgz
+tarball: https://github.com/light-cheng/DSH-Mem0/releases/download/v0.2.3/dsh-mem0-0.2.3.tgz
 ```
 
 `category: memory` is the intended category. `icon` is optional; if omitted,
 the storefront uses the owner avatar. The catalog prefers a raster PNG/JPEG/WebP
 icon; this repository's `assets/icon.png` is the 512×512 raster icon, and the
 package also uses it for the DSH Plugin Manager tile. The optional `tarball`
-points at the prebuilt v0.2.2 GitHub release asset.
+points at the prebuilt v0.2.3 GitHub release asset.
 
 ## Market behavior
 

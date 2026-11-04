@@ -4,6 +4,16 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### v0.2.3 — faster settings page and complete translation
+
+- The settings page now renders from a fast, untranslated status snapshot first; profile and memory translation refreshes in the background instead of blocking the first paint. A cold page open no longer waits for several sequential model calls.
+- Memory-summary lines that mix English with embedded Chinese terms are now translated. Previously any Chinese character in a line suppressed translation, which left those lines in English forever.
+- Translation batches run concurrently, and the translation cache is persisted under `<profile>/dsh-mem0/translation-cache.json`, so restarts and repeated page opens stay fast.
+- The backend selector now shows a top-of-page **Save** button and an **unsaved changes** badge while a backend choice is pending. Selecting Local OSS is saved instead of silently reverting to Auto after re-entering the page.
+- The activity dock no longer triggers translation work on every poll.
+
+Verification: 64 Node tests and 4 Python tests pass; `npm run check` and `npm pack` pass.
+
 ### v0.2.2 — detailed hygiene report
 
 - The Memory maintenance card now expands into a detailed hygiene report: start/end time, duration, memory and token counts before and after, summary item/token counts, and itemized duplicate, budget-pruned, deleted and failed entries.
@@ -32,6 +42,16 @@ Highlights:
 Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pack` pass.
 
 ## 简体中文
+
+### v0.2.3 — 更快的设置页与完整翻译
+
+- 设置页现在先用未翻译的快速状态快照渲染，画像和记忆翻译在后台刷新，不再阻塞首屏显示；冷启动打开页面不再需要等待多次串行模型调用。
+- 记忆摘要中英文混排、包含少量中文词的句子现在也会翻译。此前只要句子里出现任何中文字符就会跳过翻译，导致这些句子一直保持英文。
+- 翻译批次并发执行，翻译缓存持久化到 `<profile>/dsh-mem0/translation-cache.json`，重启和重复打开页面都能保持快速。
+- 后端选择器在有未保存的后端选择时，会在页面顶部显示**保存设置**按钮和**有未保存的修改**提示；选择「本地 OSS」后可以真正保存，不再在重新进入页面后悄悄变回「自动检测」。
+- 记忆活动浮标轮询不再触发翻译工作。
+
+验证：64 个 Node 测试和 4 个 Python 测试通过；`npm run check` 与 `npm pack` 通过。
 
 ### v0.2.2 — 详细巡检报告
 
