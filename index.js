@@ -153,7 +153,9 @@ export function apply(ctx, rawConfig) {
       lifecycle.onSystemPromptAssemble(assembly, context, next),
     )
   }
-  if (config.autoCapture) {
+  // Recall needs turn/start to reset its per-turn dedupe state even when
+  // capture is off, so subscribe when either feature is enabled.
+  if (config.autoRecall || config.autoCapture) {
     ctx.on('session/event', (session, event) => lifecycle.onSessionEvent(session, event))
   }
 
