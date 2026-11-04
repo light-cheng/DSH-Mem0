@@ -427,6 +427,7 @@ window.__ModuleLoader__.load({
     const CSS = `
       .mem0-page{display:flex;flex-direction:column;gap:14px;max-width:820px;padding:2px 0 18px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5}
       .mem0-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+      .mem0-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
       .mem0-title{font-size:16px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
       .mem0-sub{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px}
       .mem0-card{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-1);padding:14px 16px}
@@ -444,6 +445,7 @@ window.__ModuleLoader__.load({
       .mem0-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:999px;padding:2px 8px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5;white-space:nowrap}
       .mem0-chip b{font-weight:600;color:var(--dsw-alias-label-primary)}
       .mem0-chip-ok{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary);background:var(--dsw-alias-state-success-tertiary)}
+      .mem0-chip-warn{color:var(--dsw-alias-state-warning-primary);border-color:var(--dsw-alias-state-warning-primary)}
       .mem0-error{color:var(--dsw-alias-label-error);font-size:12px;margin:8px 0 0;white-space:pre-wrap}
       .mem0-section{display:flex;flex-direction:column;gap:10px}
       .mem0-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
@@ -917,7 +919,7 @@ window.__ModuleLoader__.load({
         let live = true
         const load = async () => {
           try {
-            const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(t)}`)
+            const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(t)}&translate=0`)
             if (live) {
               setData(next)
               setFailed(false)
@@ -1056,20 +1058,29 @@ window.__ModuleLoader__.load({
         return mirror.subscribe(readSecrets)
       }, [mirror])
 
-      const refreshStatus = useCallback(async () => {
+      const refreshStatus = useCallback(async ({ translate = true } = {}) => {
         setStatus((current) => ({ ...current, phase: current.data ? current.phase : 'loading' }))
         try {
-          const data = await fetchJson(`${STATUS_PATH}?lang=${pageLanguage(t)}`)
+          const data = await fetchJson(
+            `${STATUS_PATH}?lang=${pageLanguage(t)}&translate=${translate ? '1' : '0'}`,
+          )
           setStatus({ phase: 'ready', data, message: '' })
           return data
         } catch (error) {
-          setStatus({ phase: 'error', data: null, message: error.message })
+          // Keep usable status data when a background translation refresh fails.
+          setStatus((current) =>
+            current.data ? current : { phase: 'error', data: null, message: error.message },
+          )
           return null
         }
       }, [])
 
       useEffect(() => {
-        void refreshStatus()
+        // Render the page from the fast, untranslated status first. Profile
+        // translation can take several model calls; it must not hold the page.
+        void refreshStatus({ translate: false }).then(() => {
+          void refreshStatus({ translate: true })
+        })
       }, [refreshStatus])
 
       useEffect(() => {
@@ -1517,14 +1528,30 @@ window.__ModuleLoader__.load({
             h('p', { className: 'mem0-sub' }, t('subtitle')),
           ),
           h(
-            'button',
-            {
-              type: 'button',
-              className: 'mem0-secondary',
-              onClick: () => void refreshStatus(),
-              disabled: status.phase === 'loading',
-            },
-            t('checkAgain'),
+            'div',
+            { className: 'mem0-head-actions' },
+            dirty
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'mem0-primary',
+                    onClick: () => void save(),
+                    disabled: saveState === 'saving',
+                  },
+                  saveState === 'saving' ? t('saving') : t('save'),
+                )
+              : null,
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'mem0-secondary',
+                onClick: () => void refreshStatus(),
+                disabled: status.phase === 'loading',
+              },
+              t('checkAgain'),
+            ),
           ),
         ),
         h(
@@ -1878,7 +1905,12 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'mem0-section' },
-          h('div', { className: 'mem0-section-head' }, h('h3', { className: 'mem0-section-title' }, t('backendSection'))),
+          h(
+            'div',
+            { className: 'mem0-section-head' },
+            h('h3', { className: 'mem0-section-title' }, t('backendSection')),
+            dirty ? h('span', { className: 'mem0-chip mem0-chip-warn' }, t('unsaved')) : null,
+          ),
           h(
             'div',
             { className: 'mem0-segments' },
