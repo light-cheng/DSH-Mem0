@@ -81,7 +81,7 @@ window.__ModuleLoader__.load({
       includeSubagents: 'Include subagents',
       includeSubagentsHint: 'Allow automatic memory for delegated agents too.',
       maintenanceTitle: 'Memory maintenance',
-      maintenanceHint: 'A compact profile is rebuilt from stored facts, and a weekly hygiene pass removes duplicates and keeps the store within budget. No extra model calls are made.',
+      maintenanceHint: 'A compact profile is rebuilt from stored facts, and a weekly hygiene pass removes duplicates and keeps the plugin’s own memories within budget (memories from other apps are never deleted). No extra model calls are made.',
       captureFilter: 'Capture filter',
       captureFilterHint: 'Heuristic skips greetings, short acknowledgements and command-only turns.',
       captureFilterHeuristic: 'Heuristic (recommended)',
@@ -97,7 +97,7 @@ window.__ModuleLoader__.load({
       storeMaxTokens: 'Maximum stored tokens',
       storeMaxTokensHint: 'Hygiene prunes the lowest-value facts above this estimate, 500–200000.',
       hygieneEnabled: 'Weekly memory hygiene',
-      hygieneEnabledHint: 'Runs at startup when due and hourly checks afterwards; also available manually.',
+      hygieneEnabledHint: 'Runs at startup when due and hourly checks afterwards. Automatic passes only preview until you confirm a manual run.',
       hygieneIntervalDays: 'Hygiene interval (days)',
       hygieneIntervalDaysHint: 'Default 7 days, 1–90.',
       hygieneLastRun: 'Last run',
@@ -126,6 +126,13 @@ window.__ModuleLoader__.load({
       hygieneFailedDetails: 'Failed details',
       hygieneNoDetails: 'None',
       hygieneLegacyDetails: 'This report was created by an older version; only summary counts are available.',
+      hygienePreviewing: 'Checking…',
+      hygieneConfirm: 'Hygiene will permanently delete {planned} memories written by this plugin (memories from other apps are never deleted). This cannot be undone. Continue?',
+      hygieneNothingToDelete: 'Nothing to delete.',
+      hygieneCancelled: 'Cancelled, nothing deleted.',
+      hygienePreviewTag: 'Preview, nothing deleted',
+      hygienePlannedDetails: 'Would delete',
+      hygieneForeign: '{foreign} memories from other apps were left untouched.',
       advanced: 'Advanced options',
       captureMaxChars: 'Capture length limit',
       captureMaxCharsHint: 'Characters per message when capturing, 50–4000.',
@@ -284,7 +291,7 @@ window.__ModuleLoader__.load({
       includeSubagents: '包含子代理',
       includeSubagentsHint: '允许被委派的子代理也使用自动记忆。',
       maintenanceTitle: '记忆维护',
-      maintenanceHint: '从已存事实重建精简画像，并按周清理重复项、把存储控制在预算内。不会额外调用模型。',
+      maintenanceHint: '从已存事实重建精简画像，并按周清理重复项、把本插件写入的记忆控制在预算内（其他应用的记忆不会被删除）。不会额外调用模型。',
       captureFilter: '保存过滤',
       captureFilterHint: '启发式会跳过问候、简短确认和纯命令回合。',
       captureFilterHeuristic: '启发式（推荐）',
@@ -300,7 +307,7 @@ window.__ModuleLoader__.load({
       storeMaxTokens: '最大存储 tokens',
       storeMaxTokensHint: '超过估算上限后按价值清理最低的记忆，500–200000。',
       hygieneEnabled: '每周记忆卫生巡检',
-      hygieneEnabledHint: '到期时在启动后运行，之后每小时检查；也可以手动触发。',
+      hygieneEnabledHint: '到期时在启动后运行，之后每小时检查。确认过一次手动巡检之前，自动巡检只出预览、不删除。',
       hygieneIntervalDays: '巡检间隔（天）',
       hygieneIntervalDaysHint: '默认 7 天，范围 1–90。',
       hygieneLastRun: '上次运行',
@@ -329,6 +336,13 @@ window.__ModuleLoader__.load({
       hygieneFailedDetails: '失败明细',
       hygieneNoDetails: '无',
       hygieneLegacyDetails: '该报告由旧版本生成，只有汇总数量。',
+      hygienePreviewing: '正在检查…',
+      hygieneConfirm: '巡检将永久删除 {planned} 条本插件写入的记忆（其他应用写入的记忆不会被删除），无法恢复。继续吗？',
+      hygieneNothingToDelete: '没有需要删除的记忆。',
+      hygieneCancelled: '已取消，未删除任何记忆。',
+      hygienePreviewTag: '预览，未删除',
+      hygienePlannedDetails: '将删除明细',
+      hygieneForeign: '其他应用写入的 {foreign} 条记忆未被处理。',
       advanced: '高级选项',
       captureMaxChars: '单条保存长度上限',
       captureMaxCharsHint: '自动保存时每条消息截断的字符数，50–4000。',
@@ -749,12 +763,16 @@ window.__ModuleLoader__.load({
 
     function formatHygieneReport(t, report) {
       const value = report ?? {}
-      return t('hygieneReport')
+      const base = t('hygieneReport')
         .replace('{scanned}', String(value.scanned ?? 0))
         .replace('{duplicates}', String(value.duplicates ?? 0))
         .replace('{pruned}', String(value.pruned ?? 0))
         .replace('{deleted}', String(value.deleted ?? 0))
         .replace('{failed}', String(value.failed ?? 0))
+      const parts = [base]
+      if (value.foreign > 0) parts.push(template(t('hygieneForeign'), value))
+      if (value.dryRun) parts.unshift(`[${t('hygienePreviewTag')}]`)
+      return parts.join(' ')
     }
 
     function hygieneReason(t, reason) {
@@ -1255,24 +1273,46 @@ window.__ModuleLoader__.load({
         setProfileMessage('')
       }
 
+      const applyHygieneResponse = (response) => {
+        if (response?.maintenance) {
+          setStatus((current) =>
+            current.data ? { ...current, data: { ...current.data, maintenance: response.maintenance } } : current,
+          )
+        }
+        if (!response?.ok) throw new Error(response?.error || t('hygieneFailed'))
+        return response.report ?? {}
+      }
+
+      // Preview first (dryRun), then delete only after the user confirms.
       const runHygiene = async () => {
-        setHygieneState('running')
+        setHygieneState('previewing')
         setHygieneMessage('')
         try {
-          const response = await fetchJson(HYGIENE_PATH, { method: 'POST' })
-          if (response?.maintenance) {
-            setStatus((current) =>
-              current.data ? { ...current, data: { ...current.data, maintenance: response.maintenance } } : current,
-            )
+          const preview = applyHygieneResponse(
+            await fetchJson(HYGIENE_PATH, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ dryRun: true }),
+            }),
+          )
+          const planned = Number(preview.planned ?? 0)
+          if (planned > 0 && !window.confirm(template(t('hygieneConfirm'), { planned }))) {
+            setHygieneState('cancelled')
+            setHygieneMessage(t('hygieneCancelled'))
+            return
           }
-          if (response?.ok) {
-            setHygieneState('ok')
-            const report = response.report ?? {}
-            setHygieneMessage(formatHygieneReport(t, report))
-          } else {
-            setHygieneState('error')
-            setHygieneMessage(response?.error || t('hygieneFailed'))
-          }
+          setHygieneState('running')
+          const report = applyHygieneResponse(
+            await fetchJson(HYGIENE_PATH, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ dryRun: false }),
+            }),
+          )
+          setHygieneState('ok')
+          setHygieneMessage(
+            planned > 0 ? formatHygieneReport(t, report) : `${t('hygieneNothingToDelete')} ${formatHygieneReport(t, report)}`,
+          )
           await refreshStatus()
         } catch (error) {
           setHygieneState('error')
@@ -2017,9 +2057,13 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'mem0-secondary',
                 onClick: () => void runHygiene(),
-                disabled: hygieneState === 'running' || !data,
+                disabled: hygieneState === 'running' || hygieneState === 'previewing' || !data,
               },
-              hygieneState === 'running' ? t('hygieneRunning') : t('hygieneRun'),
+              hygieneState === 'running'
+                ? t('hygieneRunning')
+                : hygieneState === 'previewing'
+                  ? t('hygienePreviewing')
+                  : t('hygieneRun'),
             ),
           ),
           h('p', { className: 'mem0-section-hint' }, t('maintenanceHint')),
@@ -2108,6 +2152,9 @@ window.__ModuleLoader__.load({
                   ? h(
                       'div',
                       { className: 'mem0-report-details-list' },
+                      lastReport.dryRun
+                        ? reportDetail(t, `${t('hygienePlannedDetails')} (${lastReport.planned ?? 0})`, lastReport.plannedDetails, (item) => item.preview || item.id)
+                        : null,
                       reportDetail(t, t('hygieneDuplicateDetails'), lastReport.duplicateDetails, (item) => item.preview || item.id),
                       reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => item.preview || item.id),
                       reportDetail(t, t('hygieneDeletedDetails'), lastReport.deletedDetails, (item) => item.preview || item.id),
@@ -2125,7 +2172,9 @@ window.__ModuleLoader__.load({
                 { className: hygieneState === 'error' ? 'mem0-error' : 'mem0-hint' },
                 hygieneState === 'error'
                   ? `${t('hygieneFailed')}: ${hygieneMessage}`
-                  : `${t('hygieneOk')}: ${hygieneMessage}`,
+                  : hygieneState === 'cancelled'
+                    ? hygieneMessage
+                    : `${t('hygieneOk')}: ${hygieneMessage}`,
               )
             : null,
         ),

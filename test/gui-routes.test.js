@@ -307,10 +307,14 @@ test('activity route can skip translation for the dock poller', async () => {
 
 test('hygiene route runs maintenance and returns its status', async () => {
   const calls = []
+  const dryRuns = []
   const maintenance = {
-    async run(reason) {
+    async run(reason, options = {}) {
       calls.push(reason)
-      return { scanned: 3, duplicates: 1, pruned: 0, deleted: 1, failed: 0 }
+      dryRuns.push(options.dryRun)
+      return options.dryRun
+        ? { dryRun: true, scanned: 3, duplicates: 1, pruned: 0, deleted: 0, planned: 1, failed: 0 }
+        : { scanned: 3, duplicates: 1, pruned: 0, deleted: 1, failed: 0 }
     },
     status() {
       return { enabled: true, running: false, profile: { items: 2, tokens: 20 } }
@@ -323,6 +327,14 @@ test('hygiene route runs maintenance and returns its status', async () => {
   assert.equal(result.body.report.deleted, 1)
   assert.equal(result.body.maintenance.profile.items, 2)
   assert.deepEqual(calls, ['manual'])
+  const preview = await invoke(routes.get(GUI_HYGIENE_PATH), 'POST', '/', { dryRun: true })
+  assert.equal(preview.body.ok, true)
+  assert.equal(preview.body.report.dryRun, true)
+  assert.equal(preview.body.report.planned, 1)
+  assert.equal(preview.body.report.deleted, 0)
+  const confirmed = await invoke(routes.get(GUI_HYGIENE_PATH), 'POST', '/', { dryRun: false })
+  assert.equal(confirmed.body.report.deleted, 1)
+  assert.deepEqual(dryRuns, [false, true, false])
   const rejected = await invoke(routes.get(GUI_HYGIENE_PATH), 'GET')
   assert.equal(rejected.status, 405)
   assert.equal(rejected.headers.allow, 'POST')
