@@ -18,6 +18,12 @@ window.__ModuleLoader__.load({
     const MEMORIES_PATH = 'dsh-mem0/gui/memories'
     const PROFILE_PATH = 'dsh-mem0/gui/profile'
 
+    // The settings page's UI strings live only here (en + zh, same keys;
+    // test/client.test.js checks parity). locale/*.json carry just the package
+    // title and description the host shows in its plugin list, so they do not
+    // duplicate these. The host loader runs one self-contained client.js per
+    // plugin (sibling files only arrive as async build chunks), which is why
+    // the page stays one file without a build step.
     const en = {
       title: 'Mem0 connection',
       subtitle: 'Choose where memories are stored. Changes apply immediately after saving.',
@@ -701,8 +707,18 @@ window.__ModuleLoader__.load({
       return payload
     }
 
-    function pageLanguage(t) {
-      return t?.('memoryScore') === '相关度' ? 'zh' : 'en'
+    /**
+     * Language for server-side text (activity, profile, memory translations):
+     * the host's active locale from `ctx.locale`. Chinese, and any language
+     * pack whose fallback chain is Chinese, maps to 'zh'; everything else to
+     * 'en', the only two languages the routes produce.
+     */
+    function pageLanguage(ctx) {
+      const snapshot = ctx?.locale?.getLocale?.()
+      const active = String(snapshot?.active ?? '')
+      if (/^zh\b/i.test(active)) return 'zh'
+      const definition = snapshot?.locales?.find?.((locale) => locale?.id === active)
+      return /^zh\b/i.test(String(definition?.fallback ?? '')) ? 'zh' : 'en'
     }
 
     function Field(props) {
@@ -1003,7 +1019,7 @@ window.__ModuleLoader__.load({
         let live = true
         const load = async () => {
           try {
-            const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(t)}&translate=0`)
+            const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(ctx)}&translate=0`)
             if (live) {
               setData(next)
               setFailed(false)
@@ -1146,7 +1162,7 @@ window.__ModuleLoader__.load({
         setStatus((current) => ({ ...current, phase: current.data ? current.phase : 'loading' }))
         try {
           const data = await fetchJson(
-            `${STATUS_PATH}?lang=${pageLanguage(t)}&translate=${translate ? '1' : '0'}`,
+            `${STATUS_PATH}?lang=${pageLanguage(ctx)}&translate=${translate ? '1' : '0'}`,
           )
           setStatus({ phase: 'ready', data, message: '' })
           return data
@@ -1177,7 +1193,7 @@ window.__ModuleLoader__.load({
         const q = String(query ?? '').trim()
         setMemoryState((current) => ({ phase: 'loading', data: current.data, message: '' }))
         try {
-          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(t)}`)
+          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(ctx)}`)
           setMemoryState({ phase: 'ready', data, message: '' })
         } catch (error) {
           setMemoryState({ phase: 'error', data: null, message: error.message })
@@ -2377,6 +2393,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage } }
   },
 })
