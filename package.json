@@ -1,6 +1,6 @@
 {
   "name": "dsh-mem0",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": false,
   "description": "Mem0 long-term memory for DeepSeek Harness: managed Platform, self-hosted server or local OSS, with a visual settings page, automatic recall/capture, editable memory summary, token budgets and weekly memory hygiene.",
   "icon": "assets/icon.png",
