@@ -28,6 +28,16 @@ window.__ModuleLoader__.load({
       statusUnknown: 'Status unavailable',
       statusBackend: 'Backend',
       statusEndpoint: 'Endpoint',
+      statusBackendChoice: 'Why this backend',
+      backendChoiceAutoEnv: 'Auto: {env} is set in the environment, so memories are sent to the Mem0 Platform ({endpoint}). Pick a backend below to override.',
+      backendChoiceAutoKey: 'Auto: an API key is configured, so memories are sent to the Mem0 Platform ({endpoint}).',
+      backendChoiceAutoUrl: 'Auto: a custom server address is configured ({endpoint}).',
+      backendChoiceAutoOss: 'Auto: a local Mem0 OSS config was found; memories stay on this machine.',
+      backendChoiceAutoDefault: 'Auto: nothing else is configured, so the Mem0 Platform ({endpoint}) is used. It needs an API key.',
+      translateMemories: 'Translate memories on this page',
+      translateMemoriesHint: 'Off by default. When on, memory text shown here is sent to DSH’s current default model (which may be a cloud model) for translation, and translations are cached in the profile folder.',
+      hygieneItemDuplicate: 'duplicate',
+      hygieneItemBudget: 'over budget',
       statusCollection: 'Collection',
       statusUser: 'User',
       statusAgent: 'Agent',
@@ -238,6 +248,16 @@ window.__ModuleLoader__.load({
       statusUnknown: '状态未知',
       statusBackend: '后端',
       statusEndpoint: '地址',
+      statusBackendChoice: '后端选择依据',
+      backendChoiceAutoEnv: '自动：环境变量 {env} 已设置，因此记忆会发送到 Mem0 Platform（{endpoint}）。可在下方明确选择后端来改变。',
+      backendChoiceAutoKey: '自动：已配置 API Key，因此记忆会发送到 Mem0 Platform（{endpoint}）。',
+      backendChoiceAutoUrl: '自动：已配置自定义服务器地址（{endpoint}）。',
+      backendChoiceAutoOss: '自动：找到了本地 Mem0 OSS 配置，记忆留在本机。',
+      backendChoiceAutoDefault: '自动：没有其他配置，因此使用 Mem0 Platform（{endpoint}），需要 API Key。',
+      translateMemories: '在本页翻译记忆',
+      translateMemoriesHint: '默认关闭。开启后，本页显示的记忆原文会发送给 DSH 当前默认模型（可能是云端模型）进行翻译，译文缓存在 profile 目录中。',
+      hygieneItemDuplicate: '重复',
+      hygieneItemBudget: '超出预算',
       statusCollection: '集合',
       statusUser: '用户',
       statusAgent: 'Agent',
@@ -588,6 +608,7 @@ window.__ModuleLoader__.load({
       'storeMaxTokens',
       'hygieneEnabled',
       'hygieneIntervalDays',
+      'translateMemories',
       'enabled',
     ]
 
@@ -618,6 +639,7 @@ window.__ModuleLoader__.load({
         storeMaxTokens: Number(value?.storeMaxTokens ?? 20000),
         hygieneEnabled: value?.hygieneEnabled !== false,
         hygieneIntervalDays: Number(value?.hygieneIntervalDays ?? 7),
+        translateMemories: value?.translateMemories === true,
         enabled: value?.enabled !== false,
       }
     }
@@ -779,6 +801,36 @@ window.__ModuleLoader__.load({
       if (reason === 'manual') return t('hygieneReasonManual')
       if (reason === 'startup') return t('hygieneReasonStartup')
       return t('hygieneReasonSchedule')
+    }
+
+    // Stored reports keep only ids and reasons, never memory text.
+    function reportItem(t, item) {
+      if (item?.preview) return item.preview
+      const reason =
+        item?.reason === 'duplicate'
+          ? t('hygieneItemDuplicate')
+          : item?.reason === 'budget'
+            ? t('hygieneItemBudget')
+            : ''
+      return reason ? `${item?.id ?? '—'} · ${reason}` : String(item?.id ?? '—')
+    }
+
+    function backendChoiceText(t, data) {
+      const values = { env: data?.apiKeyEnv || 'MEM0_API_KEY', endpoint: data?.endpoint ?? '—' }
+      switch (data?.backendSource) {
+        case 'auto-api-key-env':
+          return template(t('backendChoiceAutoEnv'), values)
+        case 'auto-api-key':
+          return template(t('backendChoiceAutoKey'), values)
+        case 'auto-base-url':
+          return template(t('backendChoiceAutoUrl'), values)
+        case 'auto-oss-config':
+          return t('backendChoiceAutoOss')
+        case 'auto-default':
+          return template(t('backendChoiceAutoDefault'), values)
+        default:
+          return ''
+      }
     }
 
     function reportDetail(t, label, items, formatter) {
@@ -1363,6 +1415,8 @@ window.__ModuleLoader__.load({
           { key: 'collection', label: t('statusCollection'), value: data.collection ?? '—' },
           { key: 'endpoint', label: t('statusEndpoint'), value: data.endpoint ?? '—' },
         )
+        const choice = backendChoiceText(t, data)
+        if (choice) statusItems.push({ key: 'backendChoice', label: t('statusBackendChoice'), value: choice })
         if (data.pythonVersion) statusItems.push({ key: 'python', label: t('statusPython'), value: data.pythonVersion })
         if (data.mem0Version) statusItems.push({ key: 'mem0', label: t('statusMem0'), value: data.mem0Version })
         if (data.qdrant) {
@@ -2026,6 +2080,12 @@ window.__ModuleLoader__.load({
               checked: draft.includeSubagents,
               onChange: (value) => setField('includeSubagents', value),
             }),
+            h(ToggleRow, {
+              label: t('translateMemories'),
+              hint: t('translateMemoriesHint'),
+              checked: draft.translateMemories,
+              onChange: (value) => setField('translateMemories', value),
+            }),
             h(SelectField, {
               label: t('captureFilter'),
               hint: t('captureFilterHint'),
@@ -2153,11 +2213,11 @@ window.__ModuleLoader__.load({
                       'div',
                       { className: 'mem0-report-details-list' },
                       lastReport.dryRun
-                        ? reportDetail(t, `${t('hygienePlannedDetails')} (${lastReport.planned ?? 0})`, lastReport.plannedDetails, (item) => item.preview || item.id)
+                        ? reportDetail(t, `${t('hygienePlannedDetails')} (${lastReport.planned ?? 0})`, lastReport.plannedDetails, (item) => reportItem(t, item))
                         : null,
-                      reportDetail(t, t('hygieneDuplicateDetails'), lastReport.duplicateDetails, (item) => item.preview || item.id),
-                      reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => item.preview || item.id),
-                      reportDetail(t, t('hygieneDeletedDetails'), lastReport.deletedDetails, (item) => item.preview || item.id),
+                      reportDetail(t, t('hygieneDuplicateDetails'), lastReport.duplicateDetails, (item) => reportItem(t, item)),
+                      reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => reportItem(t, item)),
+                      reportDetail(t, t('hygieneDeletedDetails'), lastReport.deletedDetails, (item) => reportItem(t, item)),
                       reportDetail(t, t('hygieneFailedDetails'), lastReport.failedDetails, (item) => `${item.id}: ${item.error}`),
                     )
                   : h('p', { className: 'mem0-hint' }, t('hygieneLegacyDetails')),

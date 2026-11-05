@@ -24,7 +24,7 @@ Three backends are supported:
 - **Switchable backends**: Platform, self-hosted server and local OSS sidecar share the same tools and automatic memory logic.
 - **Verifiable memory activity**: the settings page shows the last automatic capture / recall status and the most recently written memories (text, ID, time); it can open a **Memory library** to search every memory stored for the current user. **Last recalled memories** shows the texts that the most recent recall actually matched.
 - **Foreground status icon**: below the chat composer there is a hollow globe made of dots of different sizes. It rolls along a tilted direction while automatic capture/recall is active, turns light blue and keeps rolling on success, and turns red on failure. The silhouette stays circular while rolling and never squashes. It uses dark dots in light themes and light dots in dark themes.
-- **Bilingual UI and memory text**: labels follow DSH's language setting. Stored memory text is translated into the page language with the current DSH model, cached, and falls back to the original text when no model is available.
+- **Bilingual UI and memory text**: labels follow DSH's language setting. With `translateMemories` on (off by default), stored memory text is translated into the page language with the current DSH model, cached, and falls back to the original text when no model is available.
 - **Security boundaries**: the sidecar listens only on a random `127.0.0.1` port with a random token; common secrets are redacted before capture/recall; `mem0_status` never returns the API key.
 
 ## UI
@@ -75,7 +75,7 @@ When **Test connection** succeeds, the status card shows a green **Connected** c
 
 ![Successful connection test](assets/screenshots/en/05-test-success.png)
 
-The UI follows DSH's language setting. The visible memory text, memory summary and recall preview are translated into the page language with the current DSH model; the original text is kept when translation is unavailable. A Chinese screenshot is available in the [Chinese README](README.zh-CN.md).
+The UI follows DSH's language setting. When `translateMemories` is on (off by default, see [Privacy and data](#privacy-and-data)), the visible memory text, memory summary and recall preview are translated into the page language with the current DSH model; otherwise, or when translation is unavailable, the original text is shown. A Chinese screenshot is available in the [Chinese README](README.zh-CN.md).
 
 ## Memory maintenance
 
@@ -163,6 +163,8 @@ config:
   apiKeyEnv: MEM0_API_KEY
 ```
 
+> **Note on `backend: auto`:** if `MEM0_API_KEY` (or the variable named by `apiKeyEnv`) is set in DSH's environment, `auto` picks the cloud Platform even when a local OSS config exists. `mem0_status` and the settings page show why the backend was chosen ("backend choice"). Set `backend` explicitly if you want a specific one.
+
 #### Self-hosted Mem0 server
 
 ```yaml
@@ -229,6 +231,7 @@ The sidecar reads `oss.llm`, `oss.embedder` and `oss.vector_store` from `mem0Con
 | `storeMaxTokens` | `20000` | Estimated token limit for retained memories after hygiene |
 | `hygieneEnabled` | `true` | Enable memory hygiene |
 | `hygieneIntervalDays` | `7` | Hygiene interval in days, 1–90 |
+| `translateMemories` | `false` | Translate memory text on the settings page with the DSH default model (sends memory text to that model) |
 | `timeoutMs` | `30000` | Per-request timeout for REST backends |
 | `enabled` | `true` | Master switch |
 
@@ -265,9 +268,28 @@ node scripts/smoke-sidecar.mjs
 
 ## Privacy and data
 
+**What leaves this machine**
+
+| Backend / feature | Sent | To |
+|---|---|---|
+| Platform | Captured conversation text (user and assistant messages, redacted and truncated), recall queries, `userId`/`agentId`, metadata `source`, `channel`, `session_id` | `https://api.mem0.ai` (or your `baseUrl`) |
+| Server | The same | Your self-hosted Mem0 server |
+| OSS | The same, via a loopback-only sidecar | The LLM, embedder and vector store in your `oss.json`; if those are cloud APIs (e.g. OpenAI), the text goes there |
+| Memory translation (`translateMemories`, off by default) | Memory text shown on the settings page, up to the full list when the memory browser opens | DSH's current default model, which may be a cloud model |
+
+The working directory is not sent. With `backend: auto`, an inherited `MEM0_API_KEY` alone selects the Platform; check "backend choice" in `mem0_status` or the settings page.
+
+**What is stored locally**
+
+- `<DSH profile>/dsh-mem0/maintenance.json` (mode 0600): the memory summary text and hygiene reports. Reports keep only memory ids, counts and reasons, not the text of deleted memories.
+- `<DSH profile>/dsh-mem0/translation-cache.json` (mode 0600, only when translation is on): memory text and its translation in plain form. Entries are dropped when a memory is deleted through `mem0_delete` or hygiene; memories deleted elsewhere stay until the cache evicts them (2,000 entries max). Delete the file to clear it.
+- OSS mode: `historyDbPath` (`~/.dsh/mem0/history.db`) and the Qdrant data of your OSS setup.
+
+**Other notes**
+
 - In Platform/server mode, memories are stored by the corresponding service; read that service's privacy and retention policy.
 - In OSS mode, memories are stored in the Qdrant/embedder/LLM services you configure.
-- `autoCapture` is enabled by default; set it to `false` if you do not want automatic saving. The default `captureFilter: heuristic` only skips clearly low-value turns; common secrets are still redacted before writing, but regular expressions are not a substitute for full secret management.
+- `autoCapture` is enabled by default; set it to `false` if you do not want automatic saving. The default `captureFilter: heuristic` only skips clearly low-value turns; common secrets (API keys such as `sk-`, `tvly-`, `AIza…`, JWTs, `Bearer` tokens, passwords in URLs, `password=` / `密码：` phrasing, private keys) are still redacted before writing, but regular expressions are not a substitute for full secret management.
 - Weekly hygiene deletes duplicates and over-budget memories written by this plugin, and only after you have confirmed one manual run. Deletion is real and there is no recycle bin; if you want full manual control, set `hygieneEnabled: false`. The profile is still built when missing, but memories are not automatically deleted.
 - The sidecar listens only on loopback, with a random port and random token; `mem0_status` never returns the API key.
 

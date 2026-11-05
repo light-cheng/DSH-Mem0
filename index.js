@@ -65,6 +65,8 @@ export function apply(ctx, rawConfig) {
   const profileDir = ctx.get?.('profileContext')?.dir
   const localizer = new MemoryLocalizer({
     logger,
+    // Translation sends memory text to the DSH default model; opt-in only.
+    enabled: config.translateMemories,
     cachePath: profileDir ? path.join(profileDir, 'dsh-mem0', 'translation-cache.json') : undefined,
   })
   const runtime = {
@@ -106,6 +108,7 @@ export function apply(ctx, rawConfig) {
     state: maintenanceState,
     logger,
     activity,
+    localizer,
   })
   const lifecycle = new MemoryLifecycle({ client, config, logger, breaker, activity, maintenance })
   runtime.client = client
@@ -140,7 +143,7 @@ export function apply(ctx, rawConfig) {
     )
   }
 
-  const tools = createMem0Tools(client, config, { maintenance })
+  const tools = createMem0Tools(client, config, { maintenance, localizer })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
     return () => {

@@ -403,3 +403,68 @@ test('manual long-term memory persists across hygiene and can be rebuilt', async
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('stored hygiene reports keep ids and reasons but no memory text', async () => {
+  const { dir, state } = tempState('dsh-mem0-report-privacy-')
+  try {
+    const client = fakeClient([
+      memory('a', 'Likes tea'),
+      memory('b', 'Likes tea.'),
+      memory('c', 'Private fact about the user health'),
+      memory('d', 'Another fact'),
+    ])
+    const forgotten = []
+    const localizer = { async forget(texts) { forgotten.push(...texts) } }
+    const activity = {}
+    const maintenance = new MemoryMaintenance({
+      client,
+      config: config(),
+      state,
+      activity,
+      localizer,
+      logger: { warn() {}, debug() {} },
+    })
+    const preview = await maintenance.run('manual', { dryRun: true })
+    // The live confirmation response may carry a short preview...
+    assert.ok(preview.plannedDetails.every((item) => item.preview.length <= 60))
+    // ...but the in-memory activity copy does not.
+    assert.ok(activity.maintenance.plannedDetails.every((item) => !('preview' in item)))
+
+    const report = await maintenance.run('manual')
+    assert.equal(report.deleted, 2)
+    for (const key of ['duplicateDetails', 'prunedDetails', 'deletedDetails']) {
+      for (const item of report[key]) {
+        assert.deepEqual(Object.keys(item).sort(), ['id', 'reason'])
+        assert.ok(['duplicate', 'budget'].includes(item.reason))
+      }
+    }
+    const raw = fs.readFileSync(path.join(dir, 'maintenance.json'), 'utf8')
+    assert.equal(raw.includes('Private fact'), false)
+    assert.equal(raw.includes('Likes tea.'), false)
+    assert.equal(maintenance.status().lastReport.deletedDetails.length, 2)
+    // Translation cache entries of deleted memories are dropped.
+    assert.equal(forgotten.length, 2)
+    assert.ok(forgotten.includes('Likes tea.'))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('status strips previews from reports written by older versions', () => {
+  const { dir, state } = tempState('dsh-mem0-legacy-report-')
+  try {
+    state.write({
+      version: 1,
+      userId: 'dsh-user',
+      profile: null,
+      hygiene: {
+        lastRunAt: '2026-11-01T00:00:00Z',
+        lastReport: { deleted: 1, deletedDetails: [{ id: 'x', preview: 'old secret text' }] },
+      },
+    })
+    const maintenance = new MemoryMaintenance({ client: fakeClient([]), config: config(), state })
+    assert.deepEqual(maintenance.status().lastReport.deletedDetails, [{ id: 'x' }])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})

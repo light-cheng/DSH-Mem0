@@ -180,6 +180,7 @@ test('auto capture stores only completed turns with genuine user and assistant t
   assert.equal(addCall[2].infer, true)
   assert.equal(addCall[2].userId, 'dsh-user')
   assert.equal(addCall[2].metadata.session_id, 'session-1')
+  assert.equal('cwd' in addCall[2].metadata, false)
 })
 
 test('auto capture ignores aborted turns and injected context', async () => {
