@@ -69,5 +69,23 @@ class JsonHelpersTests(unittest.TestCase):
         self.assertEqual(sidecar._normalise_results(None), [])
 
 
+class TokenTests(unittest.TestCase):
+    def test_reads_token_from_first_stdin_line(self):
+        import io
+
+        self.assertEqual(sidecar.read_token(io.StringIO("abc-123\nignored\n")), "abc-123")
+
+    def test_rejects_missing_token(self):
+        import io
+
+        with self.assertRaisesRegex(ValueError, "token"):
+            sidecar.read_token(io.StringIO(""))
+
+    def test_token_is_not_a_command_line_option(self):
+        with self.assertRaises(SystemExit):
+            sidecar.main(["--config", "x", "--collection", "c", "--user-id", "u", "--agent-id", "a",
+                          "--history-db", "h", "--token", "secret"])
+
+
 if __name__ == "__main__":
     unittest.main()

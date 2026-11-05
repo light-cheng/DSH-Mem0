@@ -439,3 +439,57 @@ test('long turns are still captured with the user message and final reply only',
   assert.match(addCall[1][0].content, /pnpm/)
   assert.equal(addCall[1][1].content, 'Done: the build now uses pnpm.')
 })
+
+test('auto recall never waits for sidecar startup and uses recallTimeoutMs (I4, G2)', async () => {
+  const client = fakeClient()
+  const engine = lifecycle(client, { recallTimeoutMs: 1_234 })
+  const session = fakeSession({ messages: [userMessage('What do I drink?')] })
+  await engine.onSystemPromptAssemble(assembly(), { agent: { session } }, async () => assembly())
+  const [, , , options] = client.calls.find((call) => call[0] === 'search')
+  assert.equal(options.waitForStart, false)
+  assert.equal(options.timeoutMs, 1_234)
+})
+
+test('a starting sidecar skips recall without counting as a breaker failure (I4)', async () => {
+  let failures = 0
+  const activity = { recall: null, capture: null }
+  const engine = new MemoryLifecycle({
+    client: fakeClient({
+      async search() {
+        throw Object.assign(new Error('sidecar is starting'), { code: 'STARTING' })
+      },
+    }),
+    config: config(),
+    logger: { debug() {}, warn() {} },
+    breaker: { isOpen: () => false, recordSuccess() {}, recordFailure() { failures += 1 } },
+    activity,
+  })
+  const session = fakeSession({ messages: [userMessage('What do I drink?')] })
+  const result = await engine.onSystemPromptAssemble(assembly(), { agent: { session } }, async () => assembly())
+  assert.deepEqual(result.contexts, [])
+  assert.equal(failures, 0)
+  assert.equal(activity.recall.status, 'starting')
+})
+
+test('memoryBudgetTokens, not a fixed character cap, limits the recall block (G1)', async () => {
+  const memories = Array.from({ length: 20 }, (_, index) => ({
+    id: `m${index}`,
+    memory: `Project note ${index}: ${'the deployment pipeline uses blue green releases '.repeat(5)}`,
+  }))
+  const client = fakeClient({
+    async search() {
+      return { results: memories }
+    },
+  })
+  const big = lifecycle(client, { memoryBudgetTokens: 4_000, recallTopK: 20 })
+  const session = fakeSession({ messages: [userMessage('How do we deploy?')] })
+  const result = await big.onSystemPromptAssemble(assembly(), { agent: { session } }, async () => assembly())
+  const text = result.contexts[0].text
+  assert.ok(text.length > 3_000, `block is ${text.length} chars`)
+  assert.ok(estimateTokens(text) <= 4_000)
+
+  const small = lifecycle(client, { memoryBudgetTokens: 300, recallTopK: 20 })
+  const other = fakeSession({ messages: [userMessage('How do we deploy?')] })
+  const smallResult = await small.onSystemPromptAssemble(assembly(), { agent: { session: other } }, async () => assembly())
+  assert.ok(estimateTokens(smallResult.contexts[0].text) <= 300)
+})

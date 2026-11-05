@@ -2,7 +2,8 @@
 """Local Mem0 OSS sidecar for the DSH Mem0 plugin.
 
 The sidecar is deliberately narrow: it speaks simple JSON over loopback and is
-started by Node with a random port and a random bearer token. It reuses a local
+started by Node with a random port and a random bearer token. The token is
+read from the first line of stdin so it never appears on the command line. It reuses a local
 Mem0 OSS provider configuration (LLM, embedder, Qdrant endpoint) but writes a
 DSH-only Qdrant collection so other Mem0 clients can keep their own collections
 separate.
@@ -398,6 +399,14 @@ class DshMem0Server(ThreadingHTTPServer):
         self.token = token
 
 
+def read_token(stream: Any) -> str:
+    """Read the per-process bearer token Node writes to stdin."""
+    token = (stream.readline() or "").strip()
+    if not token:
+        raise ValueError("no sidecar token on stdin")
+    return token
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="DSH Mem0 OSS sidecar")
     parser.add_argument("--config", required=True)
@@ -405,16 +414,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--user-id", required=True)
     parser.add_argument("--agent-id", required=True)
     parser.add_argument("--history-db", required=True)
-    parser.add_argument("--token", required=True)
+    parser.add_argument(
+        "--token-stdin",
+        action="store_true",
+        help="read the bearer token from the first line of stdin (the only supported way)",
+    )
     parser.add_argument("--port", type=int, default=0)
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     try:
+        token = read_token(sys.stdin)
         config = build_memory_config(args.config, args.collection, args.history_db)
         service = Mem0Service(config, args.collection, args.user_id, args.agent_id)
-        server = DshMem0Server(("127.0.0.1", args.port), SidecarHandler, service, args.token)
+        server = DshMem0Server(("127.0.0.1", args.port), SidecarHandler, service, token)
 
         def stop(_signum, _frame):
             threading.Thread(target=server.shutdown, daemon=True).start()

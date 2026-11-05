@@ -81,3 +81,175 @@ test('circuit breaker opens after the threshold and closes after cooldown', () =
   assert.equal(breaker.isOpen(), false)
   assert.equal(breaker.failures, 0)
 })
+
+// ---- Startup behaviour with a fake sidecar process (I4, G3) ----
+
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { buildSidecarEnv } from '../lib/sidecar-client.js'
+
+const FAKE_SIDECAR = fileURLToPath(new URL('./fixtures/fake-sidecar.mjs', import.meta.url))
+
+function fakeSidecar(t, { mode = 'ready', delayMs = 0, env = {}, extraEnv = [], ...options } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-fake-sidecar-'))
+  const record = path.join(dir, 'spawns.jsonl')
+  const configPath = path.join(dir, 'oss.json')
+  fs.writeFileSync(configPath, '{}')
+  const client = new Mem0SidecarClient({
+    pythonPath: process.execPath,
+    sidecarPath: FAKE_SIDECAR,
+    mem0ConfigPath: configPath,
+    historyDbPath: path.join(dir, 'history.db'),
+    collectionName: 'dsh_mem0_test',
+    userId: 'dsh-test-user',
+    agentId: 'dsh-test',
+    env: {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      FAKE_SIDECAR_MODE: mode,
+      FAKE_SIDECAR_DELAY_MS: String(delayMs),
+      FAKE_SIDECAR_RECORD: record,
+      ...env,
+    },
+    extraEnv: ['FAKE_SIDECAR_MODE', 'FAKE_SIDECAR_DELAY_MS', 'FAKE_SIDECAR_RECORD', ...extraEnv],
+    stopGraceMs: 500,
+    ...options,
+  })
+  t.after(async () => {
+    await client.dispose()
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+  const spawns = () =>
+    fs.existsSync(record)
+      ? fs.readFileSync(record, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line))
+      : []
+  return { client, spawns }
+}
+
+async function waitFor(predicate, timeoutMs = 5_000) {
+  const started = Date.now()
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) throw new Error('timed out waiting')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+}
+
+test('recall-style requests skip at once while a slow sidecar starts in the background', async (t) => {
+  const { client, spawns } = fakeSidecar(t, { delayMs: 1_500 })
+  const started = Date.now()
+  await assert.rejects(
+    () => client.search('tea', { user_id: 'dsh-test-user' }, { waitForStart: false, timeoutMs: 3_000 }),
+    (error) => error.code === 'STARTING',
+  )
+  assert.ok(Date.now() - started < 500, 'did not wait for startup')
+  // A second recall during the same startup also skips and does not respawn.
+  await assert.rejects(
+    () => client.search('tea', {}, { waitForStart: false }),
+    (error) => error.code === 'STARTING',
+  )
+  await waitFor(() => client.running)
+  assert.equal(client.port, 9)
+  assert.equal(spawns().length, 1)
+})
+
+test('concurrent callers share one sidecar startup', async (t) => {
+  const { client, spawns } = fakeSidecar(t, { delayMs: 300 })
+  await Promise.all([client.ensureStarted(), client.ensureStarted(), client.ensureStarted()])
+  assert.equal(client.running, true)
+  assert.equal(spawns().length, 1)
+})
+
+test('a waiting caller stops waiting when its signal aborts; startup continues', async (t) => {
+  const { client, spawns } = fakeSidecar(t, { delayMs: 800 })
+  const started = Date.now()
+  await assert.rejects(
+    () => client.list({ user_id: 'dsh-test-user' }, { signal: AbortSignal.timeout(100) }),
+    (error) => error.code === 'ABORTED',
+  )
+  assert.ok(Date.now() - started < 600, 'abort ended the wait early')
+  await waitFor(() => client.running)
+  assert.equal(spawns().length, 1)
+})
+
+test('after a crash on startup, recall fails fast without respawning until the backoff ends', async (t) => {
+  let now = 1_000_000
+  const { client, spawns } = fakeSidecar(t, { mode: 'crash', restartBackoffMs: 30_000, now: () => now })
+  await assert.rejects(
+    () => client.search('tea', {}, { waitForStart: false }),
+    (error) => error.code === 'STARTING',
+  )
+  await waitFor(() => client.lastStartFailureAt > 0 && !client.startPromise)
+  const started = Date.now()
+  await assert.rejects(
+    () => client.search('tea', {}, { waitForStart: false }),
+    (error) => error.code === 'START_FAILED',
+  )
+  assert.ok(Date.now() - started < 100)
+  assert.equal(spawns().length, 1)
+  // Callers that may wait still get a fresh attempt and its real error.
+  await assert.rejects(() => client.ensureStarted(), /exited before ready/)
+  assert.equal(spawns().length, 2)
+  now += 31_000
+  await assert.rejects(
+    () => client.search('tea', {}, { waitForStart: false }),
+    (error) => error.code === 'STARTING',
+  )
+  await waitFor(() => spawns().length === 3)
+})
+
+test('a sidecar that never reports ready is bounded by the startup timeout', async (t) => {
+  const { client } = fakeSidecar(t, { mode: 'silent', startupTimeoutMs: 300 })
+  const started = Date.now()
+  await assert.rejects(() => client.ensureStarted(), (error) => error.code === 'STARTUP_TIMEOUT')
+  assert.ok(Date.now() - started < 2_000)
+})
+
+test('the token goes over stdin and the child gets an allowlisted environment', async (t) => {
+  const { client, spawns } = fakeSidecar(t, {
+    env: {
+      OPENAI_API_KEY: 'sk-provider',
+      OPENROUTER_API_KEY: 'sk-openrouter',
+      MEM0_API_KEY: 'm0-platform',
+      GITHUB_TOKEN: 'ghp-unrelated',
+      MY_GATEWAY_KEY: 'configured',
+      VIRTUAL_ENV: '/venv',
+    },
+    extraEnv: ['MY_GATEWAY_KEY'],
+  })
+  await client.ensureStarted()
+  const [spawn] = spawns()
+  assert.equal(spawn.token, client.token)
+  assert.ok(!spawn.argv.includes(client.token), 'token is not on the command line')
+  assert.ok(spawn.argv.includes('--token-stdin'))
+  assert.ok(!spawn.argv.includes('--token'))
+  assert.equal(spawn.env.OPENAI_API_KEY, 'sk-provider')
+  assert.equal(spawn.env.MY_GATEWAY_KEY, 'configured')
+  assert.equal(spawn.env.VIRTUAL_ENV, '/venv')
+  assert.equal(spawn.env.MEM0_TELEMETRY, 'false')
+  assert.equal(spawn.env.GITHUB_TOKEN, undefined)
+  assert.equal(spawn.env.MEM0_API_KEY, undefined)
+  assert.equal(spawn.env.OPENROUTER_API_KEY, undefined)
+})
+
+test('buildSidecarEnv keeps basics, Python and provider variables only', () => {
+  const env = buildSidecarEnv(
+    {
+      PATH: '/bin',
+      HOME: '/home/u',
+      LC_ALL: 'C',
+      PYTHONPATH: '/p',
+      HF_HOME: '/hf',
+      OLLAMA_HOST: 'http://127.0.0.1:11434',
+      AWS_REGION: 'us-east-1',
+      SSH_AUTH_SOCK: '/tmp/ssh',
+      NPM_TOKEN: 'npm',
+      'BAD-NAME': 'x',
+    },
+    ['NPM_TOKEN', 'not valid'],
+  )
+  assert.deepEqual(Object.keys(env).sort(), [
+    'AWS_REGION', 'HF_HOME', 'HOME', 'LC_ALL', 'MEM0_TELEMETRY', 'NPM_TOKEN', 'OLLAMA_HOST', 'PATH', 'PYTHONPATH', 'PYTHONUNBUFFERED',
+  ])
+})

@@ -191,6 +191,8 @@ config:
   mem0ConfigPath: "~/.dsh/mem0/oss.json"
   collectionName: "dsh_mem0"
   userId: "your-user-id"
+  # 可选：允许 sidecar 额外看到的环境变量（见下文）
+  # sidecarEnv: ["MY_GATEWAY_API_KEY"]
 ```
 
 Python 环境需要：
@@ -203,6 +205,10 @@ python3 -m venv ~/.dsh/mem0/venv
 当前版本**不会在插件加载时静默安装** Python 或 Qdrant，也不会修改系统 Python。设置页会显示连接错误；建议优先使用 Platform，或按上面的命令手动准备本地环境。后续更合适的做法是在设置页做「环境检测 + 用户点击后一键创建 venv」的引导安装，而不是安装插件时自动执行。
 
 sidecar 会读取 `mem0ConfigPath` 中的 `oss.llm`、`oss.embedder`、`oss.vector_store`，并把集合名覆盖为 `collectionName`；其他 Mem0 客户端可以继续使用自己的集合。
+
+sidecar 不继承 DSH 的全部环境变量，只拿到：`PATH`、`HOME`、语言区域、代理和 CA 证书相关变量，Python/virtualenv/Conda 变量，模型缓存变量（`HF_*`、`TRANSFORMERS_*`、`TORCH_*` 等），以及 `oss.json` 没写 `api_key` 时 Mem0 OSS 会去读的各家服务商前缀（`OPENAI_*`、`AZURE_*`、`ANTHROPIC_*`、`GOOGLE_*`、`GEMINI_*`、`AWS_*`、`OLLAMA_*`、`DEEPSEEK_*`、`GROQ_*`、`TOGETHER_*`、`MISTRAL_*`、`LITELLM_*`、`QDRANT_*` 等）。`MEM0_API_KEY` 和 `OPENROUTER_API_KEY` 不会传过去。如果你的服务商读取别的变量名，把它写进 `sidecarEnv`。每个进程的 token 通过 sidecar 的 stdin 传入，不出现在命令行参数里。
+
+sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回会直接跳过这一轮、不等待，sidecar 在后台继续启动；工具调用和自动保存会等它启动完成（启动最多 15 秒）。
 
 ### 全部配置项
 
@@ -226,7 +232,7 @@ sidecar 会读取 `mem0ConfigPath` 中的 `oss.llm`、`oss.embedder`、`oss.vect
 | `captureMaxChars` | `450` | 自动保存时每条消息截断上限 |
 | `captureFilter` | `heuristic` | `heuristic` 跳过低价值回合；`off` 保存每个完成回合 |
 | `recallTopK` | `5` | 自动召回结果数 |
-| `memoryBudgetTokens` | `2200` | 召回记忆注入的 token 预算 |
+| `memoryBudgetTokens` | `2200` | 召回记忆块的 token 上限，128–20000。这就是实际上限（中文约 1 字 1 token，英文约 4 字符 1 token），没有更小的字符上限 |
 | `profileEnabled` | `true` | 是否生成并注入精简用户画像 |
 | `profileBudgetTokens` | `1375` | 画像注入的 token 预算 |
 | `storeMaxMemories` | `500` | 巡检后保留的最大记忆条数 |
@@ -234,7 +240,10 @@ sidecar 会读取 `mem0ConfigPath` 中的 `oss.llm`、`oss.embedder`、`oss.vect
 | `hygieneEnabled` | `true` | 是否启用记忆卫生巡检 |
 | `hygieneIntervalDays` | `7` | 巡检间隔天数，1–90 |
 | `translateMemories` | `false` | 用 DSH 默认模型在设置页翻译记忆（会把记忆原文发给该模型） |
-| `timeoutMs` | `30000` | REST 后端单请求超时 |
+| `timeoutMs` | `30000` | 所有后端（Platform、server、OSS）每次请求的超时：工具、列表、巡检。写入和自动召回用下面两个设置 |
+| `recallTimeoutMs` | `3000` | 自动召回的超时，100–60000；超时后本轮不带召回记忆继续 |
+| `addTimeoutMs` | `120000` | 保存记忆（自动保存和 `mem0_add`）的超时，写入时可能调用 LLM 抽取事实，1000–600000 |
+| `sidecarEnv` | `[]` | OSS：在内置白名单之外，额外传给 sidecar 的环境变量名 |
 | `enabled` | `true` | 总开关 |
 
 修改配置后重新加载插件或重启 DSH。
@@ -293,7 +302,7 @@ node scripts/smoke-sidecar.mjs
 - OSS 模式的记忆保存在你配置的 Qdrant/embedder/LLM 服务中。
 - `autoCapture` 默认开启；如果不希望自动保存，请显式设为 `false`。默认的 `captureFilter: heuristic` 只跳过明显的低价值回合；写入前仍会做常见密钥脱敏（`sk-`、`tvly-`、`AIza…` 等 API Key、JWT、`Bearer` 令牌、URL 里的密码、`password=` / `密码：` 写法、私钥），但正则表达式不能替代完整的 secret 管理。
 - 周巡检会删除本插件写入的重复项和超预算记忆，且只在你确认过一次手动巡检之后才会自动删除。删除是真实删除，不会进入回收站；如果希望完全手动控制，可设 `hygieneEnabled: false`，此时仍会在画像缺失时构建画像，但不会自动删除记忆。
-- sidecar 只监听 loopback，随机端口 + 随机 token；`mem0_status` 不返回 API key。
+- sidecar 只监听 loopback，随机端口 + 随机 token；token 通过 stdin 传给 sidecar（`ps` 看不到），sidecar 只拿到白名单内的环境变量，而不是 DSH 的全部环境；`mem0_status` 不返回 API key。
 
 ## 上架相关
 

@@ -39,6 +39,11 @@ function createClient(config, logger) {
       collectionName: config.collectionName,
       userId: config.userId,
       agentId: config.agentId,
+      // timeoutMs means the same on every backend: the per-request limit.
+      // Writes (LLM extraction) use addTimeoutMs; recall uses recallTimeoutMs.
+      requestTimeoutMs: config.timeoutMs,
+      addTimeoutMs: config.addTimeoutMs,
+      extraEnv: config.sidecarEnv,
       logger,
     })
   }
@@ -50,6 +55,7 @@ function createClient(config, logger) {
     userId: config.userId,
     agentId: config.agentId,
     timeoutMs: config.timeoutMs,
+    addTimeoutMs: config.addTimeoutMs,
     logger,
   })
 }
