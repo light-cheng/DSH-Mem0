@@ -130,8 +130,8 @@ class Mem0Service:
         # Do this before importing mem0 so its telemetry module observes it.
         os.environ["MEM0_TELEMETRY"] = "false"
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-        # OpenAILLM falls back to OpenRouter when that env var exists; the local
-        # Magpie gateway is an OpenAI-compatible endpoint, not OpenRouter.
+        # OpenAILLM switches to OpenRouter whenever this variable exists, even
+        # when the config points at another OpenAI-compatible endpoint.
         os.environ.pop("OPENROUTER_API_KEY", None)
 
         from mem0.memory.main import Memory
@@ -301,6 +301,7 @@ class SidecarHandler(BaseHTTPRequestHandler):
             raise ValueError("invalid content-length") from exc
         if length < 0 or length > MAX_BODY_BYTES:
             raise ValueError("request body is too large")
+        self._body_read = True
         if length == 0:
             return {}
         raw = self.rfile.read(length)
@@ -316,9 +317,22 @@ class SidecarHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         return parsed.path, parse_qs(parsed.query)
 
+    def _send_and_close(self, status: int, payload: Any) -> None:
+        # The request body was not read; on a keep-alive connection its bytes
+        # would be parsed as the next request, so end the connection instead.
+        self.close_connection = True
+        self.send_response(status)
+        data = json.dumps(_jsonable(payload), ensure_ascii=False).encode("utf-8")
+        self.send_header("content-type", "application/json; charset=utf-8")
+        self.send_header("content-length", str(len(data)))
+        self.send_header("connection", "close")
+        self.end_headers()
+        self.wfile.write(data)
+
     def _handle(self, method: str) -> None:
+        self._body_read = False
         if not self._authorised():
-            self._send(401, {"error": "unauthorized"})
+            self._send_and_close(401, {"error": "unauthorized"})
             return
         path, query = self._path()
         try:
@@ -353,12 +367,12 @@ class SidecarHandler(BaseHTTPRequestHandler):
             if path.startswith("/memories/"):
                 memory_id = path[len("/memories/") :]
                 if not memory_id or "/" in memory_id:
-                    self._send(404, {"error": "memory not found"})
+                    self._reply_error(404, {"error": "memory not found"})
                     return
                 if method == "GET":
                     memory = self.service.get(memory_id)
                     if memory is None:
-                        self._send(404, {"error": "memory not found"})
+                        self._reply_error(404, {"error": "memory not found"})
                     else:
                         self._send(200, memory)
                     return
@@ -368,13 +382,20 @@ class SidecarHandler(BaseHTTPRequestHandler):
                 if method == "DELETE":
                     self._send(200, self.service.delete(memory_id))
                     return
-            self._send(404, {"error": "not found"})
+            self._reply_error(404, {"error": "not found"})
         except ValueError as exc:
             status = 404 if "not found" in str(exc).lower() else 400
-            self._send(status, {"error": str(exc)})
+            self._reply_error(status, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001 - one request must not kill the server
             logger.error("request failed: %s", traceback.format_exc())
-            self._send(500, {"error": str(exc)})
+            self._reply_error(500, {"error": str(exc)})
+
+    def _reply_error(self, status: int, payload: Any) -> None:
+        declared = self.headers.get("content-length", "0").strip()
+        if not self._body_read and declared not in ("", "0"):
+            self._send_and_close(status, payload)
+        else:
+            self._send(status, payload)
 
     def do_GET(self) -> None:  # noqa: N802
         self._handle("GET")

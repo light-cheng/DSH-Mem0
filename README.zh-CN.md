@@ -102,6 +102,7 @@ DSH Agent
   │                          后端适配器（二选一）
   │                          ├─ Mem0RestClient（platform / server）
   │                          └─ Mem0SidecarClient（oss）
+  │                          （共用的 HTTP、超时和熔断：lib/http.js）
   │                                     │
   │                                     ▼
   │                          Mem0 Platform / 自建 server / 本地 Python Mem0
@@ -157,7 +158,15 @@ config:
   userId: "your-user-id"
 ```
 
-API Key 也可以不放配置里，改为使用环境变量：
+API Key 不必写进插件配置。推荐存到 DSH 凭据里（例如 `~/.dsh/.credentials.yaml`），这样它不会出现在 profile 配置中：
+
+```yaml
+version: 1
+refs:
+  MEM0_API_KEY: m0-your-key
+```
+
+然后按名字引用（这也是默认值）：
 
 ```yaml
 config:
@@ -165,7 +174,9 @@ config:
   apiKeyEnv: MEM0_API_KEY
 ```
 
-> **关于 `backend: auto`：** 只要 DSH 的环境变量里有 `MEM0_API_KEY`（或 `apiKeyEnv` 指定的变量），`auto` 就会选择云端 Platform，即使本地有 OSS 配置。`mem0_status` 和设置页会显示「后端选择依据」。想用特定后端请明确设置 `backend`。
+查找顺序：配置里的 `apiKey` → DSH 凭据里 `apiKeyEnv` 指定的名字（先查凭据文件，再查启动环境和 `.env` 文件）→ 同名环境变量。使用凭据时，更换 Key 后下一次请求就会生效，不用重启。`mem0_status` 会显示 Key 的来源（`key source: config`、`credentials`、`env` 或 `none`），不显示 Key 本身。
+
+> **关于 `backend: auto`：** 只要 DSH 凭据或 DSH 的环境变量里有 `MEM0_API_KEY`（或 `apiKeyEnv` 指定的名字），`auto` 就会选择云端 Platform，即使本地有 OSS 配置。`mem0_status` 和设置页会显示「后端选择依据」。想用特定后端请明确设置 `backend`。
 
 #### Self-hosted Mem0 server
 
@@ -208,6 +219,8 @@ sidecar 会读取 `mem0ConfigPath` 中的 `oss.llm`、`oss.embedder`、`oss.vect
 
 sidecar 不继承 DSH 的全部环境变量，只拿到：`PATH`、`HOME`、语言区域、代理和 CA 证书相关变量，Python/virtualenv/Conda 变量，模型缓存变量（`HF_*`、`TRANSFORMERS_*`、`TORCH_*` 等），以及 `oss.json` 没写 `api_key` 时 Mem0 OSS 会去读的各家服务商前缀（`OPENAI_*`、`AZURE_*`、`ANTHROPIC_*`、`GOOGLE_*`、`GEMINI_*`、`AWS_*`、`OLLAMA_*`、`DEEPSEEK_*`、`GROQ_*`、`TOGETHER_*`、`MISTRAL_*`、`LITELLM_*`、`QDRANT_*` 等）。`MEM0_API_KEY` 和 `OPENROUTER_API_KEY` 不会传过去。如果你的服务商读取别的变量名，把它写进 `sidecarEnv`。每个进程的 token 通过 sidecar 的 stdin 传入，不出现在命令行参数里。
 
+**旧版配置位置。** 没有设置 `mem0ConfigPath` 或 `pythonPath` 时，插件先找 `~/.dsh/mem0/`；为了兼容早于这个目录的旧环境，接着还会（只读地）检查 `~/.hermes/mem0.json` 和 `~/.hermes/hermes-agent/venv/bin/python`。新安装用不到这些路径；设置这两个配置项，或把文件移到 `~/.dsh/mem0/`，就不会再用它们。完整列表在 [lib/legacy-paths.js](lib/legacy-paths.js)。
+
 sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回会直接跳过这一轮、不等待，sidecar 在后台继续启动；工具调用和自动保存会等它启动完成（启动最多 15 秒）。
 
 ### 全部配置项
@@ -215,8 +228,8 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 | 字段 | 默认值 | 说明 |
 |---|---|---|
 | `backend` | `auto` | `auto` / `platform` / `server` / `oss` |
-| `apiKey` | 空 | Platform 或 server 的 API Key |
-| `apiKeyEnv` | `MEM0_API_KEY` | API Key 环境变量名 |
+| `apiKey` | 空 | Platform 或 server 的 API Key（建议改用 DSH 凭据，见 `apiKeyEnv`） |
+| `apiKeyEnv` | `MEM0_API_KEY` | API Key 在 DSH 凭据里的名字，或环境变量名 |
 | `baseUrl` | Platform 为 `https://api.mem0.ai`，server 为 `http://127.0.0.1:8888` | API 地址 |
 | `authType` | `apiKey`（platform 固定 token） | `apiKey` / `bearer` / `token` / `none` |
 | `pythonPath` | 自动发现 | OSS 模式 Python 解释器 |
@@ -246,7 +259,7 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 | `sidecarEnv` | `[]` | OSS：在内置白名单之外，额外传给 sidecar 的环境变量名 |
 | `enabled` | `true` | 总开关 |
 
-修改配置后重新加载插件或重启 DSH。
+在设置页或 profile 配置里保存的修改会自动生效：loader 提交新配置时（`loader/volatile-update`）插件会自己重启，不需要手动重新加载插件或重启 DSH。`backend: auto` 下，在 DSH 凭据里存入或删除 Key 也会让插件重启。
 
 ## 工具
 
@@ -254,7 +267,7 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 |---|---|
 | `mem0_search` | 语义搜索，返回 `[mem0:<id>]` 和相关度 |
 | `mem0_add` | 原样存储一条持久事实（`infer:false`） |
-| `mem0_get` | 按 id 读取，或按配置用户列出 |
+| `mem0_get` | 按 id 读取，或按配置用户列出；会校验归属 |
 | `mem0_update` | 按 id 更新文本；会校验归属 |
 | `mem0_delete` | 按 id 删除单条；不提供批量删除/reset |
 | `mem0_status` | 检查后端连接和存储状态 |
@@ -266,10 +279,10 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 
 ```bash
 pnpm install --ignore-scripts
-node --check index.js
-node --test
+npm run check   # 对所有 .js/.mjs/.cjs 文件做 node --check
+node --test     # 需要本地端口的测试在不允许监听的环境里会跳过并说明原因
 
-# OSS 模式 Python 测试（使用你的 Mem0 Python 环境）
+# Python 测试：配置构建和 HTTP 处理器（用假 service，不需要安装 mem0ai）
 PYTHONPYCACHEPREFIX="$PWD/.pycache" \
   python3 -m unittest discover -s python/tests -v
 

@@ -11,9 +11,11 @@
  * configuration comes from the profile patch.
  */
 import path from 'node:path'
-import { CircuitBreaker, Mem0SidecarClient } from './lib/sidecar-client.js'
+import { CircuitBreaker } from './lib/http.js'
+import { Mem0SidecarClient } from './lib/sidecar-client.js'
 import { Mem0RestClient } from './lib/rest-client.js'
 import { Config, resolveConfig } from './lib/config.js'
+import { apiKeyRef, lookupApiKey } from './lib/credentials.js'
 import { MemoryLifecycle, PROFILE_SECTION_NAME } from './lib/memory-lifecycle.js'
 import { MemoryLocalizer } from './lib/memory-localizer.js'
 import { MemoryMaintenance } from './lib/memory-maintenance.js'
@@ -30,7 +32,7 @@ export const MEM0_GUIDANCE =
   'Use mem0_search for targeted recall, mem0_add to store a lasting fact, mem0_get to read by id, mem0_update to correct a memory, and mem0_delete to forget one. ' +
   'Automatic capture stores completed turns in the configured Mem0 store; do not store secrets, transient chatter, or duplicates.'
 
-function createClient(config, logger) {
+function createClient(config, logger, resolveApiKey) {
   if (config.backend === 'oss') {
     return new Mem0SidecarClient({
       pythonPath: config.pythonPath,
@@ -51,6 +53,7 @@ function createClient(config, logger) {
     mode: config.backend,
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
+    ...(resolveApiKey ? { resolveApiKey } : {}),
     authType: config.authType,
     userId: config.userId,
     agentId: config.agentId,
@@ -60,9 +63,12 @@ function createClient(config, logger) {
   })
 }
 
-export function apply(ctx, rawConfig) {
-  const config = resolveConfig(rawConfig)
+export async function apply(ctx, rawConfig) {
   const logger = ctx.logger
+  // The API key may live in DSH credentials (lib/credentials.js); resolve it
+  // before the backend is chosen, since `backend: auto` depends on it.
+  const credential = await lookupApiKey(ctx, rawConfig, { logger })
+  const config = resolveConfig(rawConfig, { credential })
   const activity = { recall: null, capture: null, maintenance: null }
   // DSH's file policy lets the host write inside the active profile, while
   // the Mem0 history directory can live outside it. Keep derived state next
@@ -97,10 +103,29 @@ export function apply(ctx, rawConfig) {
     })
   })
 
+  // A key stored, rotated or removed in DSH credentials: REST requests look
+  // it up again on their own, but `backend: auto` may now pick another
+  // backend, so restart then.
+  if (config.apiKeySource !== 'config' && config.backendSource !== 'configured') {
+    const ref = apiKeyRef(rawConfig)
+    ctx.on('credentials/reference-updated', (updated) => {
+      if (String(updated) !== ref) return
+      void ctx.fiber.restart().catch((error) => {
+        logger?.warn?.(`dsh-mem0: could not apply credential change: ${error.message}`)
+      })
+    })
+  }
+
   registerGuiRoutes(ctx, () => runtime)
   if (!config.enabled) return
 
-  const client = createClient(config, logger)
+  // Without a literal apiKey, every REST request asks DSH credentials first
+  // so a rotated key applies at once; the startup value is the fallback.
+  const resolveApiKey =
+    config.apiKeySource === 'config'
+      ? undefined
+      : async () => (await lookupApiKey(ctx, rawConfig, { logger }))?.value ?? process.env[config.apiKeyEnv]
+  const client = createClient(config, logger, resolveApiKey)
   const breaker = new CircuitBreaker()
   const maintenanceState = new MaintenanceState(
     profileDir

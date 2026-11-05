@@ -102,6 +102,7 @@ DSH Agent
   │                          backend adapter (one of)
   │                          ├─ Mem0RestClient (platform / server)
   │                          └─ Mem0SidecarClient (oss)
+  │                          (shared HTTP, timeouts, circuit breaker: lib/http.js)
   │                                     │
   │                                     ▼
   │                          Mem0 Platform / self-hosted server / local Python Mem0
@@ -157,7 +158,15 @@ config:
   userId: "your-user-id"
 ```
 
-The API key can also come from an environment variable instead of the config:
+The key does not have to be in the plugin config. Recommended: store it in DSH credentials (for example `~/.dsh/.credentials.yaml`), so it never appears in the profile config:
+
+```yaml
+version: 1
+refs:
+  MEM0_API_KEY: m0-your-key
+```
+
+and refer to it by name (this is the default):
 
 ```yaml
 config:
@@ -165,7 +174,9 @@ config:
   apiKeyEnv: MEM0_API_KEY
 ```
 
-> **Note on `backend: auto`:** if `MEM0_API_KEY` (or the variable named by `apiKeyEnv`) is set in DSH's environment, `auto` picks the cloud Platform even when a local OSS config exists. `mem0_status` and the settings page show why the backend was chosen ("backend choice"). Set `backend` explicitly if you want a specific one.
+Lookup order: a literal `apiKey` in the config, then DSH credentials for the name in `apiKeyEnv` (the store first, then the launching environment and `.env` files), then the environment variable of that name. With credentials, a rotated key applies on the next request without a restart. `mem0_status` reports where the key came from (`key source: config`, `credentials`, `env` or `none`), never the key.
+
+> **Note on `backend: auto`:** if `MEM0_API_KEY` (or the name in `apiKeyEnv`) is stored in DSH credentials or set in DSH's environment, `auto` picks the cloud Platform even when a local OSS config exists. `mem0_status` and the settings page show why the backend was chosen ("backend choice"). Set `backend` explicitly if you want a specific one.
 
 #### Self-hosted Mem0 server
 
@@ -208,6 +219,8 @@ The sidecar reads `oss.llm`, `oss.embedder` and `oss.vector_store` from `mem0Con
 
 The sidecar does not inherit DSH's whole environment. It gets `PATH`, `HOME`, locale, proxy and CA-bundle variables, Python/virtualenv/Conda variables, model-cache variables (`HF_*`, `TRANSFORMERS_*`, `TORCH_*` …) and the provider prefixes Mem0 OSS falls back to when `oss.json` has no `api_key` (`OPENAI_*`, `AZURE_*`, `ANTHROPIC_*`, `GOOGLE_*`, `GEMINI_*`, `AWS_*`, `OLLAMA_*`, `DEEPSEEK_*`, `GROQ_*`, `TOGETHER_*`, `MISTRAL_*`, `LITELLM_*`, `QDRANT_*` and similar). `MEM0_API_KEY` and `OPENROUTER_API_KEY` are not passed. If your providers read a variable with another name, list it in `sidecarEnv`. The per-process token is sent on the sidecar's stdin, never as a command-line argument.
 
+**Legacy config locations.** When `mem0ConfigPath` or `pythonPath` is not set, the plugin looks in `~/.dsh/mem0/` first. For setups that predate that folder it then also checks `~/.hermes/mem0.json` and `~/.hermes/hermes-agent/venv/bin/python` (read-only). New installs never need these; set the two options, or move the files into `~/.dsh/mem0/`, to stop using them. The list lives in [lib/legacy-paths.js](lib/legacy-paths.js).
+
 When the sidecar is still starting (first use, or after it crashed), automatic recall skips that turn instead of waiting and the sidecar keeps starting in the background; tools and capture wait for it (startup is bounded at 15 s).
 
 ### All options
@@ -215,8 +228,8 @@ When the sidecar is still starting (first use, or after it crashed), automatic r
 | Field | Default | Description |
 |---|---|---|
 | `backend` | `auto` | `auto` / `platform` / `server` / `oss` |
-| `apiKey` | empty | Platform or server API key |
-| `apiKeyEnv` | `MEM0_API_KEY` | API key environment variable name |
+| `apiKey` | empty | Platform or server API key (prefer DSH credentials, see `apiKeyEnv`) |
+| `apiKeyEnv` | `MEM0_API_KEY` | Name of the API key in DSH credentials, or of the environment variable |
 | `baseUrl` | Platform: `https://api.mem0.ai`; server: `http://127.0.0.1:8888` | API endpoint |
 | `authType` | `apiKey` (Platform is fixed to token) | `apiKey` / `bearer` / `token` / `none` |
 | `pythonPath` | auto-discovered | OSS-mode Python interpreter |
@@ -246,7 +259,7 @@ When the sidecar is still starting (first use, or after it crashed), automatic r
 | `sidecarEnv` | `[]` | OSS: names of extra environment variables passed to the sidecar, on top of the built-in allowlist |
 | `enabled` | `true` | Master switch |
 
-Reload the plugin or restart DSH after changing configuration.
+Changes saved in the settings page or the profile config apply on their own: the plugin restarts itself when the loader commits new values (`loader/volatile-update`), so no manual reload or DSH restart is needed. With `backend: auto`, storing or removing the key in DSH credentials restarts it too.
 
 ## Tools
 
@@ -254,7 +267,7 @@ Reload the plugin or restart DSH after changing configuration.
 |---|---|
 | `mem0_search` | Semantic search; returns `[mem0:<id>]` and relevance |
 | `mem0_add` | Store one persistent fact verbatim (`infer:false`) |
-| `mem0_get` | Read by ID, or list for the configured user |
+| `mem0_get` | Read by ID, or list for the configured user; ownership is checked |
 | `mem0_update` | Update text by ID; ownership is checked |
 | `mem0_delete` | Delete one memory by ID; no bulk delete/reset |
 | `mem0_status` | Check backend connection and storage status |
@@ -266,10 +279,10 @@ Reload the plugin or restart DSH after changing configuration.
 
 ```bash
 pnpm install --ignore-scripts
-node --check index.js
-node --test
+npm run check   # node --check on every .js/.mjs/.cjs file
+node --test     # tests that need a local port skip with a reason where binding is not allowed
 
-# OSS-mode Python tests (using your Mem0 Python environment)
+# Python tests: config building and the HTTP handler (fake service, no mem0ai needed)
 PYTHONPYCACHEPREFIX="$PWD/.pycache" \
   python3 -m unittest discover -s python/tests -v
 

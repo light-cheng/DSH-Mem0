@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
+import { localServerTest } from './fixtures/local-listen.js'
 import { CircuitBreaker, Mem0SidecarClient } from '../lib/sidecar-client.js'
 
 async function withServer(handler, fn) {
@@ -14,7 +15,7 @@ async function withServer(handler, fn) {
   }
 }
 
-test('sidecar client sends the per-process token and parses JSON', async () => {
+localServerTest('sidecar client sends the per-process token and parses JSON', async () => {
   const client = new Mem0SidecarClient({
     pythonPath: '/usr/bin/false',
     mem0ConfigPath: '/not-used',
@@ -40,7 +41,7 @@ test('sidecar client sends the per-process token and parses JSON', async () => {
   )
 })
 
-test('sidecar client maps HTTP errors into Mem0SidecarError', async () => {
+localServerTest('sidecar client maps HTTP errors into Mem0SidecarError', async () => {
   const client = new Mem0SidecarClient({
     pythonPath: '/usr/bin/false',
     mem0ConfigPath: '/not-used',
@@ -252,4 +253,9 @@ test('buildSidecarEnv keeps basics, Python and provider variables only', () => {
   assert.deepEqual(Object.keys(env).sort(), [
     'AWS_REGION', 'HF_HOME', 'HOME', 'LC_ALL', 'MEM0_TELEMETRY', 'NPM_TOKEN', 'OLLAMA_HOST', 'PATH', 'PYTHONPATH', 'PYTHONUNBUFFERED',
   ])
+})
+
+test('CircuitBreaker lives in lib/http.js and is still exported from sidecar-client (G7)', async () => {
+  const http = await import('../lib/http.js')
+  assert.equal(CircuitBreaker, http.CircuitBreaker)
 })

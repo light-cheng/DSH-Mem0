@@ -7,24 +7,17 @@
  * discovery defaults.
  * Creates a uniquely named temporary collection and deletes it afterwards.
  */
-import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { Mem0SidecarClient } from '../lib/sidecar-client.js'
+import { findDefaultMem0Config, findDefaultPython } from '../lib/config.js'
 
 const collection = `dsh_mem0_smoke_${Date.now()}`
 const historyDb = path.join(os.tmpdir(), `dsh-mem0-smoke-${process.pid}`, 'history.db')
-const configuredConfigPath =
-  process.env.DSH_MEM0_OSS_CONFIG ??
-  path.join(os.homedir(), '.dsh', 'mem0', 'oss.json')
-const mem0ConfigPath = fs.existsSync(configuredConfigPath)
-  ? configuredConfigPath
-  : path.join(os.homedir(), '.hermes', 'mem0.json')
-const pythonPath =
-  process.env.DSH_MEM0_PYTHON ??
-  (fs.existsSync(path.join(os.homedir(), '.dsh', 'mem0', 'venv', 'bin', 'python'))
-    ? path.join(os.homedir(), '.dsh', 'mem0', 'venv', 'bin', 'python')
-    : path.join(os.homedir(), '.hermes', 'hermes-agent', 'venv', 'bin', 'python'))
+// Same discovery as the plugin (lib/config.js, including the legacy
+// locations in lib/legacy-paths.js) unless overridden.
+const mem0ConfigPath = process.env.DSH_MEM0_OSS_CONFIG ?? findDefaultMem0Config()
+const pythonPath = process.env.DSH_MEM0_PYTHON ?? findDefaultPython()
 
 async function qdrantDelete(name) {
   const response = await fetch(`http://127.0.0.1:6333/collections/${encodeURIComponent(name)}`, {
