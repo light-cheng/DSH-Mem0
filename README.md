@@ -157,7 +157,13 @@ config:
   userId: "your-user-id"
 ```
 
-The API key can also come from an environment variable instead of the config:
+The key does not have to be in the plugin config. Recommended: store it in DSH credentials (for example `~/.dsh/.credentials.yaml`), so it never appears in the profile config:
+
+```yaml
+MEM0_API_KEY: m0-your-key
+```
+
+and refer to it by name (this is the default):
 
 ```yaml
 config:
@@ -165,7 +171,9 @@ config:
   apiKeyEnv: MEM0_API_KEY
 ```
 
-> **Note on `backend: auto`:** if `MEM0_API_KEY` (or the variable named by `apiKeyEnv`) is set in DSH's environment, `auto` picks the cloud Platform even when a local OSS config exists. `mem0_status` and the settings page show why the backend was chosen ("backend choice"). Set `backend` explicitly if you want a specific one.
+Lookup order: a literal `apiKey` in the config, then DSH credentials for the name in `apiKeyEnv` (the store first, then the launching environment and `.env` files), then the environment variable of that name. With credentials, a rotated key applies on the next request without a restart. `mem0_status` reports where the key came from (`key source: config`, `credentials`, `env` or `none`), never the key.
+
+> **Note on `backend: auto`:** if `MEM0_API_KEY` (or the name in `apiKeyEnv`) is stored in DSH credentials or set in DSH's environment, `auto` picks the cloud Platform even when a local OSS config exists. `mem0_status` and the settings page show why the backend was chosen ("backend choice"). Set `backend` explicitly if you want a specific one.
 
 #### Self-hosted Mem0 server
 
@@ -217,8 +225,8 @@ When the sidecar is still starting (first use, or after it crashed), automatic r
 | Field | Default | Description |
 |---|---|---|
 | `backend` | `auto` | `auto` / `platform` / `server` / `oss` |
-| `apiKey` | empty | Platform or server API key |
-| `apiKeyEnv` | `MEM0_API_KEY` | API key environment variable name |
+| `apiKey` | empty | Platform or server API key (prefer DSH credentials, see `apiKeyEnv`) |
+| `apiKeyEnv` | `MEM0_API_KEY` | Name of the API key in DSH credentials, or of the environment variable |
 | `baseUrl` | Platform: `https://api.mem0.ai`; server: `http://127.0.0.1:8888` | API endpoint |
 | `authType` | `apiKey` (Platform is fixed to token) | `apiKey` / `bearer` / `token` / `none` |
 | `pythonPath` | auto-discovered | OSS-mode Python interpreter |

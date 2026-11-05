@@ -157,7 +157,13 @@ config:
   userId: "your-user-id"
 ```
 
-API Key 也可以不放配置里，改为使用环境变量：
+API Key 不必写进插件配置。推荐存到 DSH 凭据里（例如 `~/.dsh/.credentials.yaml`），这样它不会出现在 profile 配置中：
+
+```yaml
+MEM0_API_KEY: m0-your-key
+```
+
+然后按名字引用（这也是默认值）：
 
 ```yaml
 config:
@@ -165,7 +171,9 @@ config:
   apiKeyEnv: MEM0_API_KEY
 ```
 
-> **关于 `backend: auto`：** 只要 DSH 的环境变量里有 `MEM0_API_KEY`（或 `apiKeyEnv` 指定的变量），`auto` 就会选择云端 Platform，即使本地有 OSS 配置。`mem0_status` 和设置页会显示「后端选择依据」。想用特定后端请明确设置 `backend`。
+查找顺序：配置里的 `apiKey` → DSH 凭据里 `apiKeyEnv` 指定的名字（先查凭据文件，再查启动环境和 `.env` 文件）→ 同名环境变量。使用凭据时，更换 Key 后下一次请求就会生效，不用重启。`mem0_status` 会显示 Key 的来源（`key source: config`、`credentials`、`env` 或 `none`），不显示 Key 本身。
+
+> **关于 `backend: auto`：** 只要 DSH 凭据或 DSH 的环境变量里有 `MEM0_API_KEY`（或 `apiKeyEnv` 指定的名字），`auto` 就会选择云端 Platform，即使本地有 OSS 配置。`mem0_status` 和设置页会显示「后端选择依据」。想用特定后端请明确设置 `backend`。
 
 #### Self-hosted Mem0 server
 
@@ -217,8 +225,8 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 | 字段 | 默认值 | 说明 |
 |---|---|---|
 | `backend` | `auto` | `auto` / `platform` / `server` / `oss` |
-| `apiKey` | 空 | Platform 或 server 的 API Key |
-| `apiKeyEnv` | `MEM0_API_KEY` | API Key 环境变量名 |
+| `apiKey` | 空 | Platform 或 server 的 API Key（建议改用 DSH 凭据，见 `apiKeyEnv`） |
+| `apiKeyEnv` | `MEM0_API_KEY` | API Key 在 DSH 凭据里的名字，或环境变量名 |
 | `baseUrl` | Platform 为 `https://api.mem0.ai`，server 为 `http://127.0.0.1:8888` | API 地址 |
 | `authType` | `apiKey`（platform 固定 token） | `apiKey` / `bearer` / `token` / `none` |
 | `pythonPath` | 自动发现 | OSS 模式 Python 解释器 |

@@ -37,6 +37,7 @@ window.__ModuleLoader__.load({
       statusBackendChoice: 'Why this backend',
       backendChoiceAutoEnv: 'Auto: {env} is set in the environment, so memories are sent to the Mem0 Platform ({endpoint}). Pick a backend below to override.',
       backendChoiceAutoKey: 'Auto: an API key is configured, so memories are sent to the Mem0 Platform ({endpoint}).',
+      backendChoiceAutoCredentials: 'Auto: {env} is stored in DSH credentials, so memories are sent to the Mem0 Platform ({endpoint}).',
       backendChoiceAutoUrl: 'Auto: a custom server address is configured ({endpoint}).',
       backendChoiceAutoOss: 'Auto: a local Mem0 OSS config was found; memories stay on this machine.',
       backendChoiceAutoDefault: 'Auto: nothing else is configured, so the Mem0 Platform ({endpoint}) is used. It needs an API key.',
@@ -69,7 +70,7 @@ window.__ModuleLoader__.load({
       apiKeyUnset: 'No key configured.',
       clearKey: 'Clear saved key',
       apiKeyEnv: 'API key environment variable',
-      apiKeyEnvHint: 'Used when the API key field is empty.',
+      apiKeyEnvHint: 'Used when the API key field is empty: looked up in DSH credentials (~/.dsh/.credentials.yaml), then in the environment.',
       baseUrl: 'Base URL',
       baseUrlPlatformHint: 'Leave blank for https://api.mem0.ai.',
       baseUrlServerHint: 'Example: http://127.0.0.1:8888',
@@ -261,6 +262,7 @@ window.__ModuleLoader__.load({
       statusBackendChoice: '后端选择依据',
       backendChoiceAutoEnv: '自动：环境变量 {env} 已设置，因此记忆会发送到 Mem0 Platform（{endpoint}）。可在下方明确选择后端来改变。',
       backendChoiceAutoKey: '自动：已配置 API Key，因此记忆会发送到 Mem0 Platform（{endpoint}）。',
+      backendChoiceAutoCredentials: '自动：DSH 凭据里存有 {env}，因此记忆会发送到 Mem0 Platform（{endpoint}）。',
       backendChoiceAutoUrl: '自动：已配置自定义服务器地址（{endpoint}）。',
       backendChoiceAutoOss: '自动：找到了本地 Mem0 OSS 配置，记忆留在本机。',
       backendChoiceAutoDefault: '自动：没有其他配置，因此使用 Mem0 Platform（{endpoint}），需要 API Key。',
@@ -293,7 +295,7 @@ window.__ModuleLoader__.load({
       apiKeyUnset: '尚未配置 Key。',
       clearKey: '清除已保存的 Key',
       apiKeyEnv: 'API Key 环境变量名',
-      apiKeyEnvHint: 'API Key 输入框为空时使用该环境变量。',
+      apiKeyEnvHint: 'API Key 输入框为空时使用：先在 DSH 凭据（~/.dsh/.credentials.yaml）里找这个名字，再找同名环境变量。',
       baseUrl: 'Base URL',
       baseUrlPlatformHint: '留空使用 https://api.mem0.ai。',
       baseUrlServerHint: '例如 http://127.0.0.1:8888',
@@ -850,6 +852,8 @@ window.__ModuleLoader__.load({
       switch (data?.backendSource) {
         case 'auto-api-key-env':
           return template(t('backendChoiceAutoEnv'), values)
+        case 'auto-api-key-credentials':
+          return template(t('backendChoiceAutoCredentials'), values)
         case 'auto-api-key':
           return template(t('backendChoiceAutoKey'), values)
         case 'auto-base-url':
