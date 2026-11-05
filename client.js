@@ -43,6 +43,9 @@ window.__ModuleLoader__.load({
       backendChoiceAutoDefault: 'Auto: nothing else is configured, so the Mem0 Platform ({endpoint}) is used. It needs an API key.',
       translateMemories: 'Translate memories on this page',
       translateMemoriesHint: 'Off by default. When on, memory text shown here is sent to DSH’s current default model (which may be a cloud model) for translation, and translations are cached in the profile folder.',
+      captureStrataFolds: 'Save dsh-strata fold summaries',
+      captureStrataFoldsHint: 'Off by default. Needs Automatic capture and the dsh-strata plugin. Also saves each first-level fold summary that Strata writes, a cleaner second copy of turns already captured; Mem0 dedupes repeated facts.',
+      activityBudget: 'recall budget',
       hygieneItemDuplicate: 'duplicate',
       hygieneItemBudget: 'over budget',
       statusCollection: 'Collection',
@@ -268,6 +271,9 @@ window.__ModuleLoader__.load({
       backendChoiceAutoDefault: '自动：没有其他配置，因此使用 Mem0 Platform（{endpoint}），需要 API Key。',
       translateMemories: '在本页翻译记忆',
       translateMemoriesHint: '默认关闭。开启后，本页显示的记忆原文会发送给 DSH 当前默认模型（可能是云端模型）进行翻译，译文缓存在 profile 目录中。',
+      captureStrataFolds: '保存 dsh-strata 折叠摘要',
+      captureStrataFoldsHint: '默认关闭。需要开启自动保存并安装 dsh-strata。额外保存 Strata 写下的每份一级折叠摘要，相当于已保存回合的一份更干净的副本；重复的事实由 Mem0 自己去重。',
+      activityBudget: '召回预算',
       hygieneItemDuplicate: '重复',
       hygieneItemBudget: '超出预算',
       statusCollection: '集合',
@@ -629,6 +635,7 @@ window.__ModuleLoader__.load({
       'hygieneEnabled',
       'hygieneIntervalDays',
       'translateMemories',
+      'captureStrataFolds',
       'enabled',
     ]
 
@@ -662,6 +669,7 @@ window.__ModuleLoader__.load({
         hygieneEnabled: value?.hygieneEnabled !== false,
         hygieneIntervalDays: Number(value?.hygieneIntervalDays ?? 7),
         translateMemories: value?.translateMemories === true,
+        captureStrataFolds: value?.captureStrataFolds === true,
         enabled: value?.enabled !== false,
       }
     }
@@ -1513,6 +1521,12 @@ window.__ModuleLoader__.load({
       const recallMeta = []
       if (recall?.count !== undefined) recallMeta.push(`${recall.count} ${t('activityReturned')}`)
       if (recall?.latencyMs !== undefined) recallMeta.push(`${recall.latencyMs} ms`)
+      // Present only when dsh-strata's budget service took part (interop §2).
+      if (Number.isFinite(recall?.budget?.allowance) && Number.isFinite(recall?.budget?.wanted)) {
+        recallMeta.push(
+          `${t('activityBudget')} ${recall.budget.allowance} / ${recall.budget.wanted}${recall.budget.stage ? ` (strata: ${recall.budget.stage})` : ''}`,
+        )
+      }
       if (recall?.at) recallMeta.push(activityTime(recall.at))
 
       const backendOptions = [
@@ -2119,6 +2133,12 @@ window.__ModuleLoader__.load({
               hint: t('translateMemoriesHint'),
               checked: draft.translateMemories,
               onChange: (value) => setField('translateMemories', value),
+            }),
+            h(ToggleRow, {
+              label: t('captureStrataFolds'),
+              hint: t('captureStrataFoldsHint'),
+              checked: draft.captureStrataFolds,
+              onChange: (value) => setField('captureStrataFolds', value),
             }),
             h(SelectField, {
               label: t('captureFilter'),

@@ -91,6 +91,27 @@ The generated memory summary uses local deterministic logic without extra model 
 
 To keep DeepSeek's prefix cache warm, the summary is a system-prompt section (`plugin:dsh-mem0:profile`) that changes only when the stored summary changes. The per-turn `<mem0-relevant-memories>` block is a runtime context (`mem0:recall`), which DSH appends next to the latest user message, so it never rewrites earlier history.
 
+## Working with context plugins
+
+Context-management plugins (for example dsh-strata) can recognise what DSH-Mem0 injects by these names and tags. They are stable across releases; changing any of them is a breaking change, and `test/interop-contract.test.js` guards them.
+
+| What | Where it goes | Name | Text starts / ends with | Changes |
+|---|---|---|---|---|
+| Memory summary | system-prompt section | `plugin:dsh-mem0:profile` | `<mem0-user-profile>` … `</mem0-user-profile>` | only when the stored summary changes |
+| Recalled memories | runtime context, always last | `mem0:recall` | `<mem0-relevant-memories>` … `</mem0-relevant-memories>` | usually every turn |
+
+- DSH joins all runtime contexts into one snapshot and appends it to history as a user-role message with `source.kind: "runtime-context"` whenever the joined text changes. Older snapshots stay in history, so their recall blocks are stale: a context plugin can trim or drop them without a model summary and without keeping the original, because Mem0 can recall again at any time. The newest snapshot should be left alone.
+- The snapshot is not user input. Automatic capture only reads `user/message` events whose source is `user`, so recall blocks are never captured back into Mem0.
+- Capture runs on `turn/end` from the text DSH-Mem0 buffered from that turn's events (the user messages and the final assistant reply). It does not read session history or tool output, so trimming history at the end of a turn, before or after capture, does not change what is saved.
+- Memory text in a recall block has forged block tags removed, so each block contains exactly one opening and one closing tag.
+
+### dsh-strata
+
+With [dsh-strata](https://www.npmjs.com/package/@lightcheng/dsh-strata) installed, the two plugins follow a shared contract:
+
+- **Shared recall budget.** Before each recall, DSH-Mem0 asks Strata's optional `strataBudget` service how many tokens the recall block may use this turn: the full `memoryBudgetTokens` normally, half once the context passes 65% (`tight`), and at most 512 tokens past 75% (`critical`). An allowance of 0 skips recall for that turn. The block is fitted with Strata's token counter, the same one its thresholds use. Without Strata, or if the service fails or returns something unusable, recall uses `memoryBudgetTokens` as before. The memory summary is never shrunk per turn: it sits in the cached system prompt, and changing it every turn would cost more than it saves. `mem0_status` and the Recent activity card show the last budget, e.g. `recall budget 1100 / 2200 (strata: tight)`.
+- **Fold summaries as a memory source (`captureStrataFolds`, off by default).** When it is on, together with automatic capture, each first-level fold summary that Strata lands (`strata/fold-landed`, tier 1 only, main-agent sessions only) is redacted and saved through the same capture queue, with metadata `source: "dsh"`, `via: "dsh-strata"`, `fold`, `tier` and `session_id`, so hygiene treats it like any other capture. These are the same turns automatic capture already saved, a second time as a cleaner summary; Mem0's own inference merges repeated facts. Empty or low-value summaries are skipped. Recall blocks are never written to Strata's archive, and Strata drops stale recall snapshots instead of folding them.
+
 ## Architecture
 
 ```text
@@ -253,6 +274,7 @@ When the sidecar is still starting (first use, or after it crashed), automatic r
 | `hygieneEnabled` | `true` | Enable memory hygiene |
 | `hygieneIntervalDays` | `7` | Hygiene interval in days, 1–90 |
 | `translateMemories` | `false` | Translate memory text on the settings page with the DSH default model (sends memory text to that model) |
+| `captureStrataFolds` | `false` | Also save dsh-strata's tier-1 fold summaries (needs `autoCapture` and dsh-strata). A second, cleaner copy of turns already captured; see [dsh-strata](#dsh-strata) |
 | `timeoutMs` | `30000` | Timeout for each backend request on every backend (Platform, server and OSS): tools, listing, hygiene. Writes and automatic recall use the two settings below |
 | `recallTimeoutMs` | `3000` | Timeout for automatic recall, 100–60000; on timeout the turn continues without recalled memories |
 | `addTimeoutMs` | `120000` | Timeout for storing memories (capture and `mem0_add`), which may run LLM fact extraction, 1000–600000 |
@@ -296,7 +318,7 @@ node scripts/smoke-sidecar.mjs
 
 | Backend / feature | Sent | To |
 |---|---|---|
-| Platform | Captured conversation text (user and assistant messages, redacted and truncated), recall queries, `userId`/`agentId`, metadata `source`, `channel`, `session_id` | `https://api.mem0.ai` (or your `baseUrl`) |
+| Platform | Captured conversation text (user and assistant messages, redacted and truncated; with `captureStrataFolds`, also redacted dsh-strata fold summaries with metadata `via`, `fold`, `tier`), recall queries, `userId`/`agentId`, metadata `source`, `channel`, `session_id` | `https://api.mem0.ai` (or your `baseUrl`) |
 | Server | The same | Your self-hosted Mem0 server |
 | OSS | The same, via a loopback-only sidecar | The LLM, embedder and vector store in your `oss.json`; if those are cloud APIs (e.g. OpenAI), the text goes there |
 | Memory translation (`translateMemories`, off by default) | Memory text shown on the settings page, up to the full list when the memory browser opens | DSH's current default model, which may be a cloud model |
