@@ -141,7 +141,17 @@ export async function apply(ctx, rawConfig) {
     activity,
     localizer,
   })
-  const lifecycle = new MemoryLifecycle({ client, config, logger, breaker, activity, maintenance })
+  const lifecycle = new MemoryLifecycle({
+    client,
+    config,
+    logger,
+    breaker,
+    activity,
+    maintenance,
+    // dsh-strata's optional `strataBudget` service (interop §2). Looked up on
+    // every recall, never injected: Strata may load later or not at all.
+    budget: () => ctx.get?.('strataBudget'),
+  })
   runtime.client = client
   runtime.breaker = breaker
   runtime.lifecycle = lifecycle
@@ -174,7 +184,7 @@ export async function apply(ctx, rawConfig) {
     )
   }
 
-  const tools = createMem0Tools(client, config, { maintenance, localizer })
+  const tools = createMem0Tools(client, config, { maintenance, localizer, activity })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
     return () => {
@@ -200,6 +210,10 @@ export async function apply(ctx, rawConfig) {
     ctx.on('system-prompt/assemble', (assembly, context, next) =>
       lifecycle.onSystemPromptAssemble(assembly, context, next),
     )
+  }
+  // Interop §4 (opt-in): store dsh-strata's landed tier-1 fold summaries.
+  if (config.autoCapture && config.captureStrataFolds) {
+    ctx.on('strata/fold-landed', (payload) => lifecycle.onStrataFold(payload))
   }
   // Recall needs turn/start to reset its per-turn dedupe state even when
   // capture is off, so subscribe when either feature is enabled.
