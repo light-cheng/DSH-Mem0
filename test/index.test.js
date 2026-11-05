@@ -124,6 +124,8 @@ test('config composition: recall without capture still subscribes to turn events
   await apply(ctx, { ...PLATFORM, autoCapture: false })
   assert.equal(ctx.listeners.get('session/event')?.length, 1)
   assert.equal(ctx.listeners.get('system-prompt/assemble')?.length, 1)
+  // Turn-1 recall: the current question arrives via the inbox claim.
+  assert.equal(ctx.listeners.get('agent/inbox/claimed')?.length, 1)
 })
 
 test('config composition: capture without recall has no summary section or recall hook', async (t) => {
@@ -133,6 +135,7 @@ test('config composition: capture without recall has no summary section or recal
   await apply(ctx, { ...PLATFORM, autoRecall: false })
   assert.equal(ctx.listeners.get('session/event')?.length, 1)
   assert.equal(ctx.listeners.has('system-prompt/assemble'), false)
+  assert.equal(ctx.listeners.has('agent/inbox/claimed'), false)
   assert.equal(ctx.sections.some((section) => section.name === PROFILE_SECTION_NAME), false)
 })
 

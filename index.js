@@ -200,6 +200,9 @@ export async function apply(ctx, rawConfig) {
     ctx.on('system-prompt/assemble', (assembly, context, next) =>
       lifecycle.onSystemPromptAssemble(assembly, context, next),
     )
+    // DSH assembles the prompt before it appends the claimed user message to
+    // the session, so recall learns the current question from the claim.
+    ctx.on('agent/inbox/claimed', (payload) => lifecycle.onInboxClaimed(payload))
   }
   // Recall needs turn/start to reset its per-turn dedupe state even when
   // capture is off, so subscribe when either feature is enabled.
