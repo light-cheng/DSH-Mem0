@@ -91,6 +91,20 @@ The generated memory summary uses local deterministic logic without extra model 
 
 To keep DeepSeek's prefix cache warm, the summary is a system-prompt section (`plugin:dsh-mem0:profile`) that changes only when the stored summary changes. The per-turn `<mem0-relevant-memories>` block is a runtime context (`mem0:recall`), which DSH appends next to the latest user message, so it never rewrites earlier history.
 
+## Working with context plugins
+
+Context-management plugins (for example dsh-strata) can recognise what DSH-Mem0 injects by these names and tags. They are stable across releases; changing any of them is a breaking change, and `test/interop-contract.test.js` guards them.
+
+| What | Where it goes | Name | Text starts / ends with | Changes |
+|---|---|---|---|---|
+| Memory summary | system-prompt section | `plugin:dsh-mem0:profile` | `<mem0-user-profile>` … `</mem0-user-profile>` | only when the stored summary changes |
+| Recalled memories | runtime context, always last | `mem0:recall` | `<mem0-relevant-memories>` … `</mem0-relevant-memories>` | usually every turn |
+
+- DSH joins all runtime contexts into one snapshot and appends it to history as a user-role message with `source.kind: "runtime-context"` whenever the joined text changes. Older snapshots stay in history, so their recall blocks are stale: a context plugin can trim or drop them without a model summary and without keeping the original, because Mem0 can recall again at any time. The newest snapshot should be left alone.
+- The snapshot is not user input. Automatic capture only reads `user/message` events whose source is `user`, so recall blocks are never captured back into Mem0.
+- Capture runs on `turn/end` from the text DSH-Mem0 buffered from that turn's events (the user messages and the final assistant reply). It does not read session history or tool output, so trimming history at the end of a turn, before or after capture, does not change what is saved.
+- Memory text in a recall block has forged block tags removed, so each block contains exactly one opening and one closing tag.
+
 ## Architecture
 
 ```text
