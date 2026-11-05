@@ -102,6 +102,7 @@ DSH Agent
   │                          后端适配器（二选一）
   │                          ├─ Mem0RestClient（platform / server）
   │                          └─ Mem0SidecarClient（oss）
+  │                          （共用的 HTTP、超时和熔断：lib/http.js）
   │                                     │
   │                                     ▼
   │                          Mem0 Platform / 自建 server / 本地 Python Mem0
@@ -256,7 +257,7 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 | `sidecarEnv` | `[]` | OSS：在内置白名单之外，额外传给 sidecar 的环境变量名 |
 | `enabled` | `true` | 总开关 |
 
-修改配置后重新加载插件或重启 DSH。
+在设置页或 profile 配置里保存的修改会自动生效：loader 提交新配置时（`loader/volatile-update`）插件会自己重启，不需要手动重新加载插件或重启 DSH。`backend: auto` 下，在 DSH 凭据里存入或删除 Key 也会让插件重启。
 
 ## 工具
 
@@ -264,7 +265,7 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 |---|---|
 | `mem0_search` | 语义搜索，返回 `[mem0:<id>]` 和相关度 |
 | `mem0_add` | 原样存储一条持久事实（`infer:false`） |
-| `mem0_get` | 按 id 读取，或按配置用户列出 |
+| `mem0_get` | 按 id 读取，或按配置用户列出；会校验归属 |
 | `mem0_update` | 按 id 更新文本；会校验归属 |
 | `mem0_delete` | 按 id 删除单条；不提供批量删除/reset |
 | `mem0_status` | 检查后端连接和存储状态 |
@@ -276,10 +277,10 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 
 ```bash
 pnpm install --ignore-scripts
-node --check index.js
-node --test
+npm run check   # 对所有 .js/.mjs/.cjs 文件做 node --check
+node --test     # 需要本地端口的测试在不允许监听的环境里会跳过并说明原因
 
-# OSS 模式 Python 测试（使用你的 Mem0 Python 环境）
+# Python 测试：配置构建和 HTTP 处理器（用假 service，不需要安装 mem0ai）
 PYTHONPYCACHEPREFIX="$PWD/.pycache" \
   python3 -m unittest discover -s python/tests -v
 

@@ -102,6 +102,7 @@ DSH Agent
   │                          backend adapter (one of)
   │                          ├─ Mem0RestClient (platform / server)
   │                          └─ Mem0SidecarClient (oss)
+  │                          (shared HTTP, timeouts, circuit breaker: lib/http.js)
   │                                     │
   │                                     ▼
   │                          Mem0 Platform / self-hosted server / local Python Mem0
@@ -256,7 +257,7 @@ When the sidecar is still starting (first use, or after it crashed), automatic r
 | `sidecarEnv` | `[]` | OSS: names of extra environment variables passed to the sidecar, on top of the built-in allowlist |
 | `enabled` | `true` | Master switch |
 
-Reload the plugin or restart DSH after changing configuration.
+Changes saved in the settings page or the profile config apply on their own: the plugin restarts itself when the loader commits new values (`loader/volatile-update`), so no manual reload or DSH restart is needed. With `backend: auto`, storing or removing the key in DSH credentials restarts it too.
 
 ## Tools
 
@@ -264,7 +265,7 @@ Reload the plugin or restart DSH after changing configuration.
 |---|---|
 | `mem0_search` | Semantic search; returns `[mem0:<id>]` and relevance |
 | `mem0_add` | Store one persistent fact verbatim (`infer:false`) |
-| `mem0_get` | Read by ID, or list for the configured user |
+| `mem0_get` | Read by ID, or list for the configured user; ownership is checked |
 | `mem0_update` | Update text by ID; ownership is checked |
 | `mem0_delete` | Delete one memory by ID; no bulk delete/reset |
 | `mem0_status` | Check backend connection and storage status |
@@ -276,10 +277,10 @@ Reload the plugin or restart DSH after changing configuration.
 
 ```bash
 pnpm install --ignore-scripts
-node --check index.js
-node --test
+npm run check   # node --check on every .js/.mjs/.cjs file
+node --test     # tests that need a local port skip with a reason where binding is not allowed
 
-# OSS-mode Python tests (using your Mem0 Python environment)
+# Python tests: config building and the HTTP handler (fake service, no mem0ai needed)
 PYTHONPYCACHEPREFIX="$PWD/.pycache" \
   python3 -m unittest discover -s python/tests -v
 
