@@ -208,6 +208,8 @@ sidecar 会读取 `mem0ConfigPath` 中的 `oss.llm`、`oss.embedder`、`oss.vect
 
 sidecar 不继承 DSH 的全部环境变量，只拿到：`PATH`、`HOME`、语言区域、代理和 CA 证书相关变量，Python/virtualenv/Conda 变量，模型缓存变量（`HF_*`、`TRANSFORMERS_*`、`TORCH_*` 等），以及 `oss.json` 没写 `api_key` 时 Mem0 OSS 会去读的各家服务商前缀（`OPENAI_*`、`AZURE_*`、`ANTHROPIC_*`、`GOOGLE_*`、`GEMINI_*`、`AWS_*`、`OLLAMA_*`、`DEEPSEEK_*`、`GROQ_*`、`TOGETHER_*`、`MISTRAL_*`、`LITELLM_*`、`QDRANT_*` 等）。`MEM0_API_KEY` 和 `OPENROUTER_API_KEY` 不会传过去。如果你的服务商读取别的变量名，把它写进 `sidecarEnv`。每个进程的 token 通过 sidecar 的 stdin 传入，不出现在命令行参数里。
 
+**旧版配置位置。** 没有设置 `mem0ConfigPath` 或 `pythonPath` 时，插件先找 `~/.dsh/mem0/`；为了兼容早于这个目录的旧环境，接着还会（只读地）检查 `~/.hermes/mem0.json` 和 `~/.hermes/hermes-agent/venv/bin/python`。新安装用不到这些路径；设置这两个配置项，或把文件移到 `~/.dsh/mem0/`，就不会再用它们。完整列表在 [lib/legacy-paths.js](lib/legacy-paths.js)。
+
 sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回会直接跳过这一轮、不等待，sidecar 在后台继续启动；工具调用和自动保存会等它启动完成（启动最多 15 秒）。
 
 ### 全部配置项

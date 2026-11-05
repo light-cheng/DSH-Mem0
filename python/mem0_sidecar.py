@@ -130,8 +130,8 @@ class Mem0Service:
         # Do this before importing mem0 so its telemetry module observes it.
         os.environ["MEM0_TELEMETRY"] = "false"
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-        # OpenAILLM falls back to OpenRouter when that env var exists; the local
-        # Magpie gateway is an OpenAI-compatible endpoint, not OpenRouter.
+        # OpenAILLM switches to OpenRouter whenever this variable exists, even
+        # when the config points at another OpenAI-compatible endpoint.
         os.environ.pop("OPENROUTER_API_KEY", None)
 
         from mem0.memory.main import Memory

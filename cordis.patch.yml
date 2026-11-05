@@ -6,7 +6,7 @@
 #   oss      — a local Mem0 OSS Python sidecar
 #
 # Defaults use `backend: auto`: platform if an API key is configured, otherwise
-# OSS when a local `~/.dsh/mem0/oss.json` (or legacy `~/.hermes/mem0.json`)
+# OSS when a local `~/.dsh/mem0/oss.json` (or a legacy location, see lib/legacy-paths.js)
 # exists, otherwise platform. Configure the row in the profile patch layer.
 - insert:
     - id: dsh-mem0

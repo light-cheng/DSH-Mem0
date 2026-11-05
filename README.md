@@ -208,6 +208,8 @@ The sidecar reads `oss.llm`, `oss.embedder` and `oss.vector_store` from `mem0Con
 
 The sidecar does not inherit DSH's whole environment. It gets `PATH`, `HOME`, locale, proxy and CA-bundle variables, Python/virtualenv/Conda variables, model-cache variables (`HF_*`, `TRANSFORMERS_*`, `TORCH_*` …) and the provider prefixes Mem0 OSS falls back to when `oss.json` has no `api_key` (`OPENAI_*`, `AZURE_*`, `ANTHROPIC_*`, `GOOGLE_*`, `GEMINI_*`, `AWS_*`, `OLLAMA_*`, `DEEPSEEK_*`, `GROQ_*`, `TOGETHER_*`, `MISTRAL_*`, `LITELLM_*`, `QDRANT_*` and similar). `MEM0_API_KEY` and `OPENROUTER_API_KEY` are not passed. If your providers read a variable with another name, list it in `sidecarEnv`. The per-process token is sent on the sidecar's stdin, never as a command-line argument.
 
+**Legacy config locations.** When `mem0ConfigPath` or `pythonPath` is not set, the plugin looks in `~/.dsh/mem0/` first. For setups that predate that folder it then also checks `~/.hermes/mem0.json` and `~/.hermes/hermes-agent/venv/bin/python` (read-only). New installs never need these; set the two options, or move the files into `~/.dsh/mem0/`, to stop using them. The list lives in [lib/legacy-paths.js](lib/legacy-paths.js).
+
 When the sidecar is still starting (first use, or after it crashed), automatic recall skips that turn instead of waiting and the sidecar keeps starting in the background; tools and capture wait for it (startup is bounded at 15 s).
 
 ### All options
