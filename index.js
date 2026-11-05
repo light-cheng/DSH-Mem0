@@ -11,7 +11,8 @@
  * configuration comes from the profile patch.
  */
 import path from 'node:path'
-import { CircuitBreaker, Mem0SidecarClient } from './lib/sidecar-client.js'
+import { CircuitBreaker } from './lib/http.js'
+import { Mem0SidecarClient } from './lib/sidecar-client.js'
 import { Mem0RestClient } from './lib/rest-client.js'
 import { Config, resolveConfig } from './lib/config.js'
 import { MemoryLifecycle, PROFILE_SECTION_NAME } from './lib/memory-lifecycle.js'
