@@ -494,3 +494,29 @@ test('status strips previews from reports written by older versions', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('maintenance state is cached in memory and re-read only when the file changes (G4)', () => {
+  const { dir, state } = tempState('dsh-mem0-state-cache-')
+  try {
+    state.write({ version: 1, userId: 'dsh-user', profile: { text: 'v1', updatedAt: 'a' }, hygiene: null })
+    for (let index = 0; index < 50; index += 1) assert.equal(state.read().profile.text, 'v1')
+    assert.equal(state.fileReads, 0, 'own write refreshes the cache without a file read')
+
+    // Mutating a returned value must not leak into the cache.
+    state.read().profile.text = 'mutated'
+    assert.equal(state.read().profile.text, 'v1')
+
+    // Another process replaces the file: the stat signature changes.
+    const other = path.join(dir, 'other.tmp')
+    fs.writeFileSync(other, JSON.stringify({ version: 1, userId: 'dsh-user', profile: { text: 'from another process' } }))
+    fs.renameSync(other, path.join(dir, 'maintenance.json'))
+    assert.equal(state.read().profile.text, 'from another process')
+    assert.equal(state.read().profile.text, 'from another process')
+    assert.equal(state.fileReads, 1)
+
+    fs.rmSync(path.join(dir, 'maintenance.json'))
+    assert.equal(state.read().profile, null)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})

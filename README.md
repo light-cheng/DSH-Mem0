@@ -191,6 +191,8 @@ config:
   mem0ConfigPath: "~/.dsh/mem0/oss.json"
   collectionName: "dsh_mem0"
   userId: "your-user-id"
+  # Optional: extra environment variables the sidecar may see (see below)
+  # sidecarEnv: ["MY_GATEWAY_API_KEY"]
 ```
 
 The Python environment needs:
@@ -203,6 +205,10 @@ python3 -m venv ~/.dsh/mem0/venv
 This version **does not silently install** Python or Qdrant when the plugin loads, and does not modify the system Python. The settings page shows connection errors; prefer Platform, or prepare the local environment manually with the commands above. A better future flow is a guided **environment check + explicit one-click venv creation** in the settings page, rather than automatic execution at plugin install time.
 
 The sidecar reads `oss.llm`, `oss.embedder` and `oss.vector_store` from `mem0ConfigPath` and overrides the collection name with `collectionName`; other Mem0 clients can keep using their own collections.
+
+The sidecar does not inherit DSH's whole environment. It gets `PATH`, `HOME`, locale, proxy and CA-bundle variables, Python/virtualenv/Conda variables, model-cache variables (`HF_*`, `TRANSFORMERS_*`, `TORCH_*` …) and the provider prefixes Mem0 OSS falls back to when `oss.json` has no `api_key` (`OPENAI_*`, `AZURE_*`, `ANTHROPIC_*`, `GOOGLE_*`, `GEMINI_*`, `AWS_*`, `OLLAMA_*`, `DEEPSEEK_*`, `GROQ_*`, `TOGETHER_*`, `MISTRAL_*`, `LITELLM_*`, `QDRANT_*` and similar). `MEM0_API_KEY` and `OPENROUTER_API_KEY` are not passed. If your providers read a variable with another name, list it in `sidecarEnv`. The per-process token is sent on the sidecar's stdin, never as a command-line argument.
+
+When the sidecar is still starting (first use, or after it crashed), automatic recall skips that turn instead of waiting and the sidecar keeps starting in the background; tools and capture wait for it (startup is bounded at 15 s).
 
 ### All options
 
@@ -226,7 +232,7 @@ The sidecar reads `oss.llm`, `oss.embedder` and `oss.vector_store` from `mem0Con
 | `captureMaxChars` | `450` | Per-message truncation limit for automatic capture |
 | `captureFilter` | `heuristic` | `heuristic` skips low-value turns; `off` saves every completed turn |
 | `recallTopK` | `5` | Number of automatic recall results |
-| `memoryBudgetTokens` | `2200` | Token budget for injected recalled memories |
+| `memoryBudgetTokens` | `2200` | Token limit for the recalled-memory block, 128–20000. This is the real limit (CJK ≈ 1 token per character, Latin ≈ 4 characters per token); there is no smaller character cap |
 | `profileEnabled` | `true` | Generate and inject a compact user profile |
 | `profileBudgetTokens` | `1375` | Token budget for the injected profile |
 | `storeMaxMemories` | `500` | Maximum memories retained after hygiene |
@@ -234,7 +240,10 @@ The sidecar reads `oss.llm`, `oss.embedder` and `oss.vector_store` from `mem0Con
 | `hygieneEnabled` | `true` | Enable memory hygiene |
 | `hygieneIntervalDays` | `7` | Hygiene interval in days, 1–90 |
 | `translateMemories` | `false` | Translate memory text on the settings page with the DSH default model (sends memory text to that model) |
-| `timeoutMs` | `30000` | Per-request timeout for REST backends |
+| `timeoutMs` | `30000` | Timeout for each backend request on every backend (Platform, server and OSS): tools, listing, hygiene. Writes and automatic recall use the two settings below |
+| `recallTimeoutMs` | `3000` | Timeout for automatic recall, 100–60000; on timeout the turn continues without recalled memories |
+| `addTimeoutMs` | `120000` | Timeout for storing memories (capture and `mem0_add`), which may run LLM fact extraction, 1000–600000 |
+| `sidecarEnv` | `[]` | OSS: names of extra environment variables passed to the sidecar, on top of the built-in allowlist |
 | `enabled` | `true` | Master switch |
 
 Reload the plugin or restart DSH after changing configuration.
@@ -293,7 +302,7 @@ The working directory is not sent. With `backend: auto`, an inherited `MEM0_API_
 - In OSS mode, memories are stored in the Qdrant/embedder/LLM services you configure.
 - `autoCapture` is enabled by default; set it to `false` if you do not want automatic saving. The default `captureFilter: heuristic` only skips clearly low-value turns; common secrets (API keys such as `sk-`, `tvly-`, `AIza…`, JWTs, `Bearer` tokens, passwords in URLs, `password=` / `密码：` phrasing, private keys) are still redacted before writing, but regular expressions are not a substitute for full secret management.
 - Weekly hygiene deletes duplicates and over-budget memories written by this plugin, and only after you have confirmed one manual run. Deletion is real and there is no recycle bin; if you want full manual control, set `hygieneEnabled: false`. The profile is still built when missing, but memories are not automatically deleted.
-- The sidecar listens only on loopback, with a random port and random token; `mem0_status` never returns the API key.
+- The sidecar listens only on loopback, with a random port and random token; the token reaches the sidecar on stdin (not visible in `ps`), and the sidecar gets an allowlisted environment rather than all of DSH's; `mem0_status` never returns the API key.
 
 ## Marketplace notes
 
