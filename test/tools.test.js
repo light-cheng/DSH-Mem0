@@ -11,7 +11,7 @@ function toolMap(client, maintenance, extra = {}) {
     baseUrl: 'https://api.mem0.ai',
     ...(extra.config ?? {}),
   }
-  return new Map(createMem0Tools(client, config, { maintenance, localizer: extra.localizer }).map((tool) => [tool.name, tool]))
+  return new Map(createMem0Tools(client, config, { maintenance, localizer: extra.localizer, activity: extra.activity }).map((tool) => [tool.name, tool]))
 }
 
 function fakeClient(overrides = {}) {
@@ -155,6 +155,14 @@ test('mem0_status reports the sidecar health without secrets', async () => {
   assert.match(result, /mem0: 2\.0\.10/)
   assert.match(result, /embedder: ok \(1024 dims\)/)
   assert.doesNotMatch(result, /api.?key/i)
+})
+
+test('mem0_status shows the strata recall budget only when Strata took part', async () => {
+  const plain = await toolMap(fakeClient()).get('mem0_status').execute({}, {})
+  assert.doesNotMatch(plain, /recall budget/)
+  const activity = { recall: { status: 'ok', budget: { allowance: 1100, wanted: 2200, stage: 'tight' } } }
+  const result = await toolMap(fakeClient(), undefined, { activity }).get('mem0_status').execute({}, {})
+  assert.match(result, /recall budget 1100 \/ 2200 \(strata: tight\)/)
 })
 
 test('all tools return a readable failure instead of throwing', async () => {
