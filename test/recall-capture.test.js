@@ -493,3 +493,75 @@ test('memoryBudgetTokens, not a fixed character cap, limits the recall block (G1
   const smallResult = await small.onSystemPromptAssemble(assembly(), { agent: { session: other } }, async () => assembly())
   assert.ok(estimateTokens(smallResult.contexts[0].text) <= 300)
 })
+
+// DSH 0.2.1-rc.5 order per turn (dsh-agent-loop lib/index.js): turn/start is
+// appended (:945), preStep claims the inbox and emits agent/inbox/claimed
+// (:906, :103-110), system-prompt/assemble runs (:907), and only step()
+// appends the claimed user message to the session (:1066). So during the
+// assemble, deriveMessages() does not hold the current turn's message yet.
+async function hostTurn(engine, session, messages, turn, text) {
+  const message = userMessage(text)
+  engine.onSessionEvent(session, { type: 'turn/start', data: { turn } })
+  engine.onInboxClaimed?.({ agent: { session }, message, turn })
+  const base = assembly()
+  const result = await engine.onSystemPromptAssemble(base, { agent: { session } }, async () => base)
+  messages.push(message)
+  engine.onSessionEvent(session, { type: 'user/message', data: message })
+  messages.push({ role: 'assistant', content: [{ type: 'text', text: 'ok' }] })
+  return result
+}
+
+test('turn 1 recall: the first request carries a mem0:recall block (host order)', async () => {
+  const client = fakeClient()
+  const engine = lifecycle(client)
+  const messages = []
+  const session = fakeSession({ messages })
+  const result = await hostTurn(engine, session, messages, 1, 'What do I drink?')
+  const recall = result.contexts.find((entry) => entry.name === 'mem0:recall')
+  assert.ok(recall, 'turn 1 has no mem0:recall context')
+  assert.match(recall.text, /<mem0-relevant-memories>[\s\S]*Likes tea/)
+  assert.equal(result.contexts.at(-1).name, 'mem0:recall')
+  const searches = client.calls.filter((call) => call[0] === 'search')
+  assert.equal(searches.length, 1)
+  assert.equal(searches[0][1], 'What do I drink?')
+})
+
+test('later turns search with the current question, not the previous one (host order)', async () => {
+  const client = fakeClient()
+  const engine = lifecycle(client)
+  const messages = []
+  const session = fakeSession({ messages })
+  await hostTurn(engine, session, messages, 1, 'What do I drink?')
+  await hostTurn(engine, session, messages, 2, 'Where do I live?')
+  const queries = client.calls.filter((call) => call[0] === 'search').map((call) => call[1])
+  assert.deepEqual(queries, ['What do I drink?', 'Where do I live?'])
+})
+
+test('a later step in the same turn reuses the claimed question without a new search', async () => {
+  const client = fakeClient()
+  const engine = lifecycle(client)
+  const messages = []
+  const session = fakeSession({ messages })
+  await hostTurn(engine, session, messages, 1, 'What do I drink?')
+  // Step 2: nothing new is claimed; the message is now in the session.
+  const base = assembly()
+  const step2 = await engine.onSystemPromptAssemble(base, { agent: { session } }, async () => base)
+  assert.match(step2.contexts.at(-1).text, /Likes tea/)
+  assert.equal(client.calls.filter((call) => call[0] === 'search').length, 1)
+})
+
+test('claimed non-user input does not become the recall query', async () => {
+  const client = fakeClient()
+  const engine = lifecycle(client)
+  const session = fakeSession({ messages: [] })
+  engine.onSessionEvent(session, { type: 'turn/start', data: { turn: 1 } })
+  engine.onInboxClaimed({
+    agent: { session },
+    message: { role: 'user', content: [{ type: 'text', text: 'job finished' }], source: { kind: 'tool-job' } },
+    turn: 1,
+  })
+  const base = assembly()
+  const result = await engine.onSystemPromptAssemble(base, { agent: { session } }, async () => base)
+  assert.deepEqual(result, base)
+  assert.equal(client.calls.length, 0)
+})

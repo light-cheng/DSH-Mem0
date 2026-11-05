@@ -210,6 +210,9 @@ export async function apply(ctx, rawConfig) {
     ctx.on('system-prompt/assemble', (assembly, context, next) =>
       lifecycle.onSystemPromptAssemble(assembly, context, next),
     )
+    // DSH assembles the prompt before it appends the claimed user message to
+    // the session, so recall learns the current question from the claim.
+    ctx.on('agent/inbox/claimed', (payload) => lifecycle.onInboxClaimed(payload))
   }
   // Interop §4 (opt-in): store dsh-strata's landed tier-1 fold summaries.
   if (config.autoCapture && config.captureStrataFolds) {
