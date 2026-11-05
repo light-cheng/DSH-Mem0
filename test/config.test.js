@@ -7,6 +7,7 @@ import {
   Config,
   DEFAULT_MEM0_CONFIG,
   LEGACY_HERMES_CONFIG,
+  describeBackendChoice,
   resolveConfig,
 } from '../lib/config.js'
 
@@ -96,4 +97,32 @@ test('Config is volatile so the settings page can edit it live', () => {
   assert.equal(typeof parsed.get, 'function')
   assert.equal(parsed.get().backend, 'platform')
   assert.equal(resolveConfig(parsed).backend, 'platform')
+})
+
+test('auto backend records that an inherited API key chose the Platform', () => {
+  const saved = process.env.DSH_MEM0_TEST_KEY
+  process.env.DSH_MEM0_TEST_KEY = 'm0sk_fromenvironment'
+  try {
+    const config = resolveConfig({ apiKeyEnv: 'DSH_MEM0_TEST_KEY' })
+    assert.equal(config.backend, 'platform')
+    assert.equal(config.backendSource, 'auto-api-key-env')
+    assert.equal(config.apiKeySource, 'env')
+    const text = describeBackendChoice(config)
+    assert.match(text, /DSH_MEM0_TEST_KEY is set in the environment/)
+    assert.match(text, /api\.mem0\.ai/)
+    const explicit = resolveConfig({ backend: 'oss', apiKeyEnv: 'DSH_MEM0_TEST_KEY' })
+    assert.equal(explicit.backend, 'oss')
+    assert.equal(explicit.backendSource, 'configured')
+    const fromSettings = resolveConfig({ apiKey: 'm0sk_x', apiKeyEnv: 'DSH_MEM0_TEST_KEY' })
+    assert.equal(fromSettings.apiKeySource, 'config')
+    assert.equal(fromSettings.backendSource, 'auto-api-key')
+  } finally {
+    if (saved === undefined) delete process.env.DSH_MEM0_TEST_KEY
+    else process.env.DSH_MEM0_TEST_KEY = saved
+  }
+})
+
+test('memory translation is off unless enabled', () => {
+  assert.equal(resolveConfig({}).translateMemories, false)
+  assert.equal(resolveConfig({ translateMemories: true }).translateMemories, true)
 })

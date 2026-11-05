@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { MemoryLocalizer, needsTranslation, normalizeLanguage, preserveMarkdownPrefixes } from '../lib/memory-localizer.js'
@@ -139,4 +139,39 @@ test('translates multiple batches concurrently', async () => {
   const output = await localizer.translate(texts, 'zh')
   assert.equal(output.length, 25)
   assert.ok(maximum >= 2, `expected concurrent batches, maximum was ${maximum}`)
+})
+
+test('a disabled localizer never calls the model', async () => {
+  const localizer = new MemoryLocalizer({
+    enabled: false,
+    llm: { stream() { throw new Error('must not be called') } },
+    modelSelection: { currentSelection: () => ({ provider: 'p', model: 'm' }) },
+  })
+  assert.deepEqual(await localizer.translate(['Likes tea'], 'zh'), ['Likes tea'])
+  assert.equal(localizer.diagnostics().enabled, false)
+})
+
+test('writes the cache owner-only and forgets deleted memories', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'dsh-mem0-localizer-'))
+  const cachePath = path.join(dir, 'translation-cache.json')
+  try {
+    const localizer = new MemoryLocalizer({
+      llm: fakeLlm(['喜欢茶', '使用 Node 22']),
+      modelSelection: { currentSelection: () => ({ provider: 'p', model: 'm' }) },
+      cachePath,
+    })
+    await localizer.translate(['Likes tea', 'Uses Node 22'], 'zh')
+    await localizer.flush()
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(cachePath)).mode & 0o777, 0o600)
+    }
+    assert.equal(await localizer.forget(['Likes tea']), 1)
+    await localizer.flush()
+    const saved = JSON.parse(await readFile(cachePath, 'utf8'))
+    const sources = saved.entries.map(([key]) => key.split('\u0000')[1])
+    assert.deepEqual(sources, ['Uses Node 22'])
+    assert.equal(JSON.stringify(saved).includes('Likes tea'), false)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })

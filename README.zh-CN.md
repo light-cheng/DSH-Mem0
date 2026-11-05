@@ -24,7 +24,7 @@
 - **后端可切换**：Platform、自托管 server、本地 OSS sidecar 共用同一套工具与自动记忆逻辑。
 - **可验证的记忆活动**：设置页显示自动保存 / 自动召回的最后状态，列出最近写入的记忆（文本、ID、时间），并可打开「记忆库」搜索当前用户的全部记忆；「上次召回的记忆」显示最近一次召回实际命中的文本。
 - **前台状态图标**：对话输入框下方有一个由大小不一的圆点组成的镂空地球仪；自动保存/召回时沿倾斜方向滚动，成功后变成浅蓝色并继续滚动，失败显示红色。滚动时球体轮廓保持圆形，不会压扁。浅色主题下是黑点，深色主题自动用浅色点保证可见。
-- **中英双语界面与记忆内容**：文案跟随 DSH 的语言设置；已存记忆文本会用当前 DSH 模型翻译成页面语言，带缓存，没有可用模型时回退原文。
+- **中英双语界面与记忆内容**：文案跟随 DSH 的语言设置；开启 `translateMemories`（默认关闭）后，已存记忆文本会用当前 DSH 模型翻译成页面语言，带缓存，没有可用模型时回退原文。
 - **安全边界**：sidecar 只监听 `127.0.0.1` 的随机端口并使用随机 token；写入/召回前做常见密钥脱敏；`mem0_status` 不输出 API key。
 
 ## 界面
@@ -163,6 +163,8 @@ config:
   apiKeyEnv: MEM0_API_KEY
 ```
 
+> **关于 `backend: auto`：** 只要 DSH 的环境变量里有 `MEM0_API_KEY`（或 `apiKeyEnv` 指定的变量），`auto` 就会选择云端 Platform，即使本地有 OSS 配置。`mem0_status` 和设置页会显示「后端选择依据」。想用特定后端请明确设置 `backend`。
+
 #### Self-hosted Mem0 server
 
 ```yaml
@@ -229,6 +231,7 @@ sidecar 会读取 `mem0ConfigPath` 中的 `oss.llm`、`oss.embedder`、`oss.vect
 | `storeMaxTokens` | `20000` | 巡检后保留的记忆估算 token 上限 |
 | `hygieneEnabled` | `true` | 是否启用记忆卫生巡检 |
 | `hygieneIntervalDays` | `7` | 巡检间隔天数，1–90 |
+| `translateMemories` | `false` | 用 DSH 默认模型在设置页翻译记忆（会把记忆原文发给该模型） |
 | `timeoutMs` | `30000` | REST 后端单请求超时 |
 | `enabled` | `true` | 总开关 |
 
@@ -265,9 +268,28 @@ node scripts/smoke-sidecar.mjs
 
 ## 隐私与数据
 
+**哪些数据会离开本机**
+
+| 后端 / 功能 | 发送内容 | 发往 |
+|---|---|---|
+| Platform | 捕获的对话文本（用户和助手消息，已脱敏并截断）、召回查询、`userId`/`agentId`、元数据 `source`、`channel`、`session_id` | `https://api.mem0.ai`（或你的 `baseUrl`） |
+| Server | 同上 | 你自建的 Mem0 服务器 |
+| OSS | 同上，经由只监听 loopback 的 sidecar | `oss.json` 里配置的 LLM、embedder 和向量库；如果它们是云端 API（如 OpenAI），文本会发到那里 |
+| 记忆翻译（`translateMemories`，默认关闭） | 设置页上显示的记忆原文，打开记忆库时最多是整个列表 | DSH 当前默认模型，可能是云端模型 |
+
+不会发送工作目录。`backend: auto` 下，仅凭继承来的 `MEM0_API_KEY` 就会选择 Platform；可在 `mem0_status` 或设置页查看「后端选择依据」。
+
+**哪些数据保存在本地**
+
+- `<DSH profile>/dsh-mem0/maintenance.json`（权限 0600）：记忆摘要文本和巡检报告。报告只保留记忆 id、数量和原因，不保留被删记忆的文本。
+- `<DSH profile>/dsh-mem0/translation-cache.json`（权限 0600，仅在开启翻译时产生）：记忆原文和译文明文。通过 `mem0_delete` 或巡检删除记忆时会同步删除对应条目；在别处删除的记忆会留到缓存淘汰为止（最多 2000 条）。删除该文件即可清空。
+- OSS 模式：`historyDbPath`（`~/.dsh/mem0/history.db`）以及你 OSS 环境里的 Qdrant 数据。
+
+**其他说明**
+
 - Platform/server 模式的记忆由对应服务保存；请阅读服务方的隐私和保留策略。
 - OSS 模式的记忆保存在你配置的 Qdrant/embedder/LLM 服务中。
-- `autoCapture` 默认开启；如果不希望自动保存，请显式设为 `false`。默认的 `captureFilter: heuristic` 只跳过明显的低价值回合；写入前仍会做常见密钥脱敏，但正则表达式不能替代完整的 secret 管理。
+- `autoCapture` 默认开启；如果不希望自动保存，请显式设为 `false`。默认的 `captureFilter: heuristic` 只跳过明显的低价值回合；写入前仍会做常见密钥脱敏（`sk-`、`tvly-`、`AIza…` 等 API Key、JWT、`Bearer` 令牌、URL 里的密码、`password=` / `密码：` 写法、私钥），但正则表达式不能替代完整的 secret 管理。
 - 周巡检会删除本插件写入的重复项和超预算记忆，且只在你确认过一次手动巡检之后才会自动删除。删除是真实删除，不会进入回收站；如果希望完全手动控制，可设 `hygieneEnabled: false`，此时仍会在画像缺失时构建画像，但不会自动删除记忆。
 - sidecar 只监听 loopback，随机端口 + 随机 token；`mem0_status` 不返回 API key。
 

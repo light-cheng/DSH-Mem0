@@ -2,15 +2,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createMem0Tools } from '../lib/tools.js'
 
-function toolMap(client, maintenance) {
+function toolMap(client, maintenance, extra = {}) {
   const config = {
     backend: 'platform',
     collectionName: 'dsh_mem0',
     userId: 'dsh-user',
     agentId: 'dsh',
     baseUrl: 'https://api.mem0.ai',
+    ...(extra.config ?? {}),
   }
-  return new Map(createMem0Tools(client, config, { maintenance }).map((tool) => [tool.name, tool]))
+  return new Map(createMem0Tools(client, config, { maintenance, localizer: extra.localizer }).map((tool) => [tool.name, tool]))
 }
 
 function fakeClient(overrides = {}) {
@@ -111,6 +112,23 @@ test('mem0_delete removes an owned memory', async () => {
   const result = await toolMap(client).get('mem0_delete').execute({ memory_id: 'm1' }, {})
   assert.match(result, /Deleted memory m1/)
   assert.equal(client.calls.at(-1)[0], 'remove')
+})
+
+test('mem0_delete drops cached translations of the deleted memory', async () => {
+  const client = fakeClient()
+  const forgotten = []
+  const localizer = { forget: (texts) => forgotten.push(...texts) }
+  await toolMap(client, undefined, { localizer }).get('mem0_delete').execute({ memory_id: 'm1' }, {})
+  assert.deepEqual(forgotten, ['Likes tea'])
+})
+
+test('mem0_status says when an environment API key chose the Platform', async () => {
+  const client = fakeClient()
+  const result = await toolMap(client, undefined, {
+    config: { backendSource: 'auto-api-key-env', apiKeyEnv: 'MEM0_API_KEY' },
+  }).get('mem0_status').execute({}, {})
+  assert.match(result, /backend choice: auto: MEM0_API_KEY is set in the environment/)
+  assert.match(result, /api\.mem0\.ai/)
 })
 
 test('mem0_status reports the sidecar health without secrets', async () => {
