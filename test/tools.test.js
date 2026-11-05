@@ -107,6 +107,22 @@ test('mem0_update rejects a memory owned by another user', async () => {
   assert.match(result, /does not belong to user dsh-user/)
 })
 
+test('mem0_get by ID rejects a memory owned by another user, like update/delete (G11)', async () => {
+  const client = fakeClient({
+    async get() {
+      return { id: 'm1', memory: 'Someone else’s secret', user_id: 'somebody-else' }
+    },
+  })
+  const result = await toolMap(client).get('mem0_get').execute({ memory_id: 'm1' }, {})
+  assert.match(result, /^mem0_get failed: memory m1 does not belong to user dsh-user/)
+  assert.doesNotMatch(result, /secret/)
+})
+
+test('mem0_get by ID returns an owned memory', async () => {
+  const result = await toolMap(fakeClient()).get('mem0_get').execute({ memory_id: 'm1' }, {})
+  assert.match(result, /Likes tea/)
+})
+
 test('mem0_delete removes an owned memory', async () => {
   const client = fakeClient()
   const result = await toolMap(client).get('mem0_delete').execute({ memory_id: 'm1' }, {})
