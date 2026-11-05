@@ -161,7 +161,9 @@ config:
 API Key 不必写进插件配置。推荐存到 DSH 凭据里（例如 `~/.dsh/.credentials.yaml`），这样它不会出现在 profile 配置中：
 
 ```yaml
-MEM0_API_KEY: m0-your-key
+version: 1
+refs:
+  MEM0_API_KEY: m0-your-key
 ```
 
 然后按名字引用（这也是默认值）：

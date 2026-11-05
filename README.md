@@ -161,7 +161,9 @@ config:
 The key does not have to be in the plugin config. Recommended: store it in DSH credentials (for example `~/.dsh/.credentials.yaml`), so it never appears in the profile config:
 
 ```yaml
-MEM0_API_KEY: m0-your-key
+version: 1
+refs:
+  MEM0_API_KEY: m0-your-key
 ```
 
 and refer to it by name (this is the default):
