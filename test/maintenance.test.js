@@ -6,6 +6,7 @@ import path from 'node:path'
 import {
   MemoryMaintenance,
   buildProfile,
+  profileLanguage,
   dedupeMemories,
   estimateTokens,
   memoryScore,
@@ -14,7 +15,7 @@ import {
   shouldCaptureConversation,
 } from '../lib/memory-maintenance.js'
 import { MaintenanceState } from '../lib/maintenance-state.js'
-import { buildRecallBlock } from '../lib/memory-lifecycle.js'
+import { buildProfileBlock, buildRecallBlock } from '../lib/memory-lifecycle.js'
 
 function config(overrides = {}) {
   return {
@@ -359,17 +360,42 @@ test('hygiene disabled still builds a profile without deleting memories', async 
   }
 })
 
-test('recall block prepends the compact profile without breaking delimiters', () => {
-  const block = buildRecallBlock(
-    [memory('a', 'Likes tea')],
-    new Set(),
-    1000,
-    '- Works on DSH plugins',
-  )
+test('profile block wraps the summary without breaking delimiters', () => {
+  const block = buildProfileBlock('- Works on DSH plugins')
   assert.match(block, /^<mem0-user-profile>/)
-  assert.match(block, /<mem0-relevant-memories>/)
-  assert.match(block, /Likes tea/)
-  assert.ok(block.endsWith('</mem0-relevant-memories>'))
+  assert.match(block, /Works on DSH plugins/)
+  assert.ok(block.endsWith('</mem0-user-profile>'))
+  assert.equal(buildProfileBlock('   '), '')
+  const recall = buildRecallBlock([memory('a', 'Likes tea')], new Set(), 1000)
+  assert.match(recall, /^<mem0-relevant-memories>/)
+  assert.doesNotMatch(recall, /mem0-user-profile/)
+  assert.ok(recall.endsWith('</mem0-relevant-memories>'))
+})
+
+test('profile headings follow the dominant language of the memories', () => {
+  const english = buildProfile([
+    memory('a', 'Works on the DSH plugin project'),
+    memory('b', 'Prefers green tea'),
+    memory('c', 'Visited Kyoto last spring'),
+  ])
+  assert.match(english.text, /^## Work and projects$/m)
+  assert.match(english.text, /^## Preferences and habits$/m)
+  assert.match(english.text, /^## Other$/m)
+  assert.doesNotMatch(english.text, /[\u4e00-\u9fff]/)
+
+  const chinese = buildProfile([
+    memory('a', '用户在开发 DSH 插件'),
+    memory('b', '用户喜欢喝茶'),
+    memory('c', 'Uses macOS'),
+  ])
+  assert.match(chinese.text, /^## 工作与项目$/m)
+  assert.match(chinese.text, /^## 偏好与习惯$/m)
+  assert.match(chinese.text, /^## 其他$/m)
+
+  assert.equal(profileLanguage([]), 'en')
+  assert.equal(profileLanguage([memory('a', '用户喜欢喝茶'), memory('b', 'Likes tea')]), 'en')
+  assert.equal(profileLanguage([memory('a', '日本語の会話が好き'), memory('b', '東京に住んでいる')]), 'en')
+  assert.match(buildProfile([memory('a', 'Likes tea')], 1375, { language: 'zh' }).text, /^## 偏好与习惯$/m)
 })
 
 test('manual long-term memory persists across hygiene and can be rebuilt', async () => {

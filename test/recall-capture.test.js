@@ -107,7 +107,6 @@ test('buildRecallBlock enforces the token budget for CJK text', () => {
     [{ id: 'm1', memory: '这是一个很长的中文记忆'.repeat(200) }],
     new Set(),
     10_000,
-    '',
     100,
   )
   assert.ok(block.length > 0)
@@ -232,12 +231,9 @@ test('activity records automatic capture completion', async () => {
 })
 
 
-test('auto recall prepends a compact profile when maintenance provides one', async () => {
+test('memory summary goes to a system-prompt section, not the recall context', async () => {
   const client = fakeClient()
-  const maintenance = {
-    profileBlock: () => '- Works on DSH plugins',
-    profileVersion: () => 'v1',
-  }
+  const maintenance = { profileBlock: () => '- Works on DSH plugins' }
   const engine = lifecycle(client, {}, { recall: null, capture: null }, maintenance)
   const session = fakeSession({ messages: [userMessage('What do I work on?')] })
   const result = await engine.onSystemPromptAssemble(
@@ -245,9 +241,126 @@ test('auto recall prepends a compact profile when maintenance provides one', asy
     { agent: { session } },
     async () => assembly(),
   )
-  assert.match(result.contexts[0].text, /^<mem0-user-profile>/)
-  assert.match(result.contexts[0].text, /Works on DSH plugins/)
+  assert.equal(result.contexts.length, 1)
+  assert.equal(result.contexts[0].name, 'mem0:recall')
+  assert.doesNotMatch(result.contexts[0].text, /mem0-user-profile|Works on DSH plugins/)
   assert.match(result.contexts[0].text, /Likes tea/)
+  const section = engine.profileSectionText({ agent: { session } })
+  assert.match(section, /^<mem0-user-profile>\n/)
+  assert.match(section, /Works on DSH plugins/)
+  assert.ok(section.endsWith('</mem0-user-profile>'))
+})
+
+test('memory summary is byte-identical across turns while only recall changes', async () => {
+  let turnNumber = 0
+  const client = fakeClient({
+    async search() {
+      return { results: [{ id: `m${turnNumber}`, memory: `Fact for turn ${turnNumber}` }] }
+    },
+  })
+  const maintenance = { profileBlock: () => '## Work and projects\n- Works on DSH plugins' }
+  const engine = lifecycle(client, {}, { recall: null, capture: null }, maintenance)
+  const messages = []
+  const session = fakeSession({ messages })
+  const context = { agent: { session } }
+  const sections = []
+  const recalls = []
+  for (turnNumber = 1; turnNumber <= 3; turnNumber += 1) {
+    engine.onSessionEvent(session, { type: 'turn/start', data: { turn: turnNumber } })
+    messages.push(userMessage(`question ${turnNumber}`))
+    sections.push(engine.profileSectionText(context))
+    const result = await engine.onSystemPromptAssemble(assembly(), context, async () => assembly())
+    recalls.push(result.contexts.find((entry) => entry.name === 'mem0:recall')?.text)
+  }
+  assert.ok(sections[0].length > 0)
+  assert.equal(new Set(sections).size, 1, 'summary text must not change between turns')
+  assert.equal(new Set(recalls).size, 3, 'recall block changes with each turn')
+  for (const [index, text] of recalls.entries()) {
+    assert.match(text, new RegExp(`Fact for turn ${index + 1}`))
+    assert.match(text, /^<mem0-relevant-memories>\n/)
+  }
+})
+
+test('failed recall keeps the mem0:recall name and leaves the summary section intact', async () => {
+  let fail = false
+  const client = fakeClient({
+    async search() {
+      if (fail) throw new Error('down')
+      return { results: [{ id: 'm1', memory: 'Likes tea' }] }
+    },
+  })
+  const maintenance = { profileBlock: () => '- Works on DSH plugins' }
+  const engine = lifecycle(client, {}, { recall: null, capture: null }, maintenance)
+  const messages = [userMessage('first question')]
+  const session = fakeSession({ messages })
+  const context = { agent: { session } }
+  const before = engine.profileSectionText(context)
+  const ok = await engine.onSystemPromptAssemble(assembly(), context, async () => assembly())
+  fail = true
+  messages.push(userMessage('second question'))
+  const failed = await engine.onSystemPromptAssemble(assembly(), context, async () => assembly())
+  assert.deepEqual(failed.contexts.map((entry) => entry.name), ['mem0:recall'])
+  assert.equal(failed.contexts[0].text, ok.contexts[0].text)
+  assert.equal(engine.profileSectionText(context), before)
+
+  // A failed search with nothing shown yet adds no context at all.
+  engine.onSessionEvent(session, { type: 'turn/start', data: { turn: 2 } })
+  const empty = await engine.onSystemPromptAssemble(assembly(), context, async () => assembly())
+  assert.deepEqual(empty.contexts, [])
+})
+
+test('summary section is empty for skipped subagents and when auto recall is off', () => {
+  const maintenance = { profileBlock: () => '- Works on DSH plugins' }
+  const engine = lifecycle(fakeClient(), {}, { recall: null, capture: null }, maintenance)
+  const subagent = fakeSession({ origin: 'subagent' })
+  assert.equal(engine.profileSectionText({ agent: { session: subagent } }), '')
+  const off = lifecycle(fakeClient(), { autoRecall: false }, { recall: null, capture: null }, maintenance)
+  assert.equal(off.profileSectionText({ agent: { session: fakeSession() } }), '')
+  const blank = lifecycle(fakeClient(), {}, { recall: null, capture: null }, { profileBlock: () => '  ' })
+  assert.equal(blank.profileSectionText({ agent: { session: fakeSession() } }), '')
+})
+
+test('a mid-turn user message merges new recall with memories already shown this turn', async () => {
+  const hits = {
+    'What do I drink?': [{ id: 'm1', memory: 'Likes oolong tea' }],
+    'And where do I live?': [
+      { id: 'm1', memory: 'Likes oolong tea' },
+      { id: 'm2', memory: 'Lives in Shanghai' },
+    ],
+  }
+  const client = fakeClient({
+    async search(query) {
+      return { results: hits[query] ?? [] }
+    },
+  })
+  const engine = lifecycle(client)
+  const messages = [userMessage('What do I drink?')]
+  const session = fakeSession({ messages })
+  const context = { agent: { session } }
+  engine.onSessionEvent(session, { type: 'turn/start', data: { turn: 1 } })
+  const first = await engine.onSystemPromptAssemble(assembly(), context, async () => assembly())
+  assert.match(first.contexts[0].text, /Likes oolong tea/)
+
+  messages.push(userMessage('And where do I live?'))
+  const second = await engine.onSystemPromptAssemble(assembly(), context, async () => assembly())
+  assert.equal(second.contexts.length, 1)
+  const text = second.contexts[0].text
+  assert.match(text, /Lives in Shanghai/)
+  assert.match(text, /Likes oolong tea/, 'memory recalled earlier this turn must stay')
+  assert.equal(text.match(/\[mem0:m1\]/g).length, 1, 'no duplicate lines')
+  assert.ok(text.indexOf('Lives in Shanghai') < text.indexOf('Likes oolong tea'), 'new hits lead')
+
+  // The merge respects the recall budget: with room for one line only, the
+  // newest hit wins and the block stays within budget.
+  const tight = lifecycle(client, { memoryBudgetTokens: 128 })
+  const tightMessages = [userMessage('What do I drink?')]
+  const tightSession = fakeSession({ messages: tightMessages })
+  const tightContext = { agent: { session: tightSession } }
+  await tight.onSystemPromptAssemble(assembly(), tightContext, async () => assembly())
+  tightMessages.push(userMessage('And where do I live?'))
+  const bounded = await tight.onSystemPromptAssemble(assembly(), tightContext, async () => assembly())
+  assert.ok(estimateTokens(bounded.contexts[0].text) <= 128)
+  assert.ok(bounded.contexts[0].text.length <= 512)
 })
 
 test('capture filter skips low-value turns before enqueueing', async () => {
