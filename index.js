@@ -14,7 +14,7 @@ import path from 'node:path'
 import { CircuitBreaker, Mem0SidecarClient } from './lib/sidecar-client.js'
 import { Mem0RestClient } from './lib/rest-client.js'
 import { Config, resolveConfig } from './lib/config.js'
-import { MemoryLifecycle } from './lib/memory-lifecycle.js'
+import { MemoryLifecycle, PROFILE_SECTION_NAME } from './lib/memory-lifecycle.js'
 import { MemoryLocalizer } from './lib/memory-localizer.js'
 import { MemoryMaintenance } from './lib/memory-maintenance.js'
 import { MaintenanceState } from './lib/maintenance-state.js'
@@ -152,6 +152,20 @@ export function apply(ctx, rawConfig) {
   }, 'dsh-mem0: tools')
 
   if (config.autoRecall) {
+    // The memory summary is a system-prompt section, not a runtime context:
+    // DSH re-appends the whole context snapshot whenever any context changes,
+    // and recall changes every turn. As a section it renders into the cached
+    // system prompt and changes only when the stored summary does.
+    ctx.effect(
+      () =>
+        ctx.systemPrompt.section({
+          name: PROFILE_SECTION_NAME,
+          order: 951,
+          text: (context) => lifecycle.profileSectionText(context),
+          interpolate: false,
+        }),
+      'dsh-mem0: memory summary',
+    )
     ctx.on('system-prompt/assemble', (assembly, context, next) =>
       lifecycle.onSystemPromptAssemble(assembly, context, next),
     )
