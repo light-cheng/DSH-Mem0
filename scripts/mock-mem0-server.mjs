@@ -12,7 +12,17 @@
 // `userId`. Inspection endpoints (no auth):
 //   GET  /__captures  every POST /memories body, verbatim (check capture text)
 //   GET  /__log       request log and memory count
-//   POST /__reset     restore the seed state
+//   POST /__reset     restore the seed state (also clears the fault)
+//   POST /__fault     inject a failure for every non-inspection request:
+//                     {"mode":"none"}            normal answers (default)
+//                     {"mode":"delay","ms":5000} answer normally after a delay (client timeouts)
+//                     {"mode":"status","status":401,"detail":"invalid api key"}
+//                     {"mode":"status","status":429,"detail":"quota exceeded"}
+//                     {"mode":"drop"}            destroy the socket without answering (connection reset)
+//                     optional "paths": ["/search"] limits the fault to those paths
+//   GET  /__fault     the current fault
+// MOCK_MEM0_FAULT may set the startup fault as the same JSON.
+// MOCK_MEM0_PORT=0 picks a free port; the listen line prints the real one.
 import http from 'node:http'
 import { randomUUID } from 'node:crypto'
 
@@ -39,6 +49,27 @@ const SEED = [
 let store
 let captures
 let log
+let fault = { mode: 'none' }
+
+function parseFault(value) {
+  const mode = ['none', 'delay', 'status', 'drop'].includes(value?.mode) ? value.mode : 'none'
+  const next = { mode }
+  if (mode === 'delay') next.ms = Math.max(0, Number(value.ms ?? 5000))
+  if (mode === 'status') {
+    next.status = Number(value.status ?? 500)
+    next.detail = String(value.detail ?? `mock fault ${next.status}`)
+  }
+  if (Array.isArray(value?.paths)) next.paths = value.paths.map(String)
+  return next
+}
+
+if (process.env.MOCK_MEM0_FAULT) {
+  try {
+    fault = parseFault(JSON.parse(process.env.MOCK_MEM0_FAULT))
+  } catch {
+    console.error('MOCK_MEM0_FAULT is not JSON; ignoring it')
+  }
+}
 
 function reset() {
   store = new Map()
@@ -82,7 +113,26 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/__log') return json(res, 200, { log, count: store.size })
   if (url.pathname === '/__reset' && req.method === 'POST') {
     reset()
+    fault = { mode: 'none' }
     return json(res, 200, { ok: true })
+  }
+  if (url.pathname === '/__fault') {
+    if (req.method === 'POST') {
+      try {
+        fault = parseFault(raw ? JSON.parse(raw) : {})
+      } catch {
+        return json(res, 400, { detail: 'invalid json' })
+      }
+    }
+    return json(res, 200, { fault })
+  }
+  if (fault.mode !== 'none' && (!fault.paths || fault.paths.includes(url.pathname))) {
+    if (fault.mode === 'drop') {
+      req.socket.destroy()
+      return undefined
+    }
+    if (fault.mode === 'status') return json(res, fault.status, { detail: fault.detail })
+    if (fault.mode === 'delay') await new Promise((resolve) => setTimeout(resolve, fault.ms))
   }
   if (KEY && req.headers['x-api-key'] !== KEY) return json(res, 401, { detail: 'invalid api key' })
 
@@ -153,5 +203,6 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`mock-mem0 listening on http://127.0.0.1:${PORT} (user ${USER}${KEY ? ', api key required' : ''})`)
+  const port = server.address().port
+  console.log(`mock-mem0 listening on http://127.0.0.1:${port} (user ${USER}${KEY ? ', api key required' : ''})`)
 })

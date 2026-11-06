@@ -328,6 +328,7 @@ The working directory is not sent. With `backend: auto`, an inherited `MEM0_API_
 **What is stored locally**
 
 - `<DSH profile>/dsh-mem0/maintenance.json` (mode 0600): the memory summary text and hygiene reports. Reports keep only memory ids, counts and reasons, not the text of deleted memories.
+- `<DSH profile>/dsh-mem0/failures.json` (mode 0600): the last 20 memory failures (time, kind, backend, cause, duration, short message). Messages are redacted and shortened before they are stored: no API keys, tokens, memory text or home-directory paths. Delete the file to clear the history.
 - `<DSH profile>/dsh-mem0/translation-cache.json` (mode 0600, only when translation is on): memory text and its translation in plain form. Entries are dropped when a memory is deleted through `mem0_delete` or hygiene; memories deleted elsewhere stay until the cache evicts them (2,000 entries max). Delete the file to clear it.
 - OSS mode: `historyDbPath` (`~/.dsh/mem0/history.db`) and the Qdrant data of your OSS setup.
 
