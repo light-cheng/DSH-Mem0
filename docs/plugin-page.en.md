@@ -42,7 +42,7 @@ Each backend has its own fields and guidance:
 
 ![Editable memory summary](/assets/screenshots/en/12-memory-summary.png)
 
-**Memory activity** records the latest automatic capture and recall; **Recent memories** reads the backend directly, so you can see whether capture actually worked.
+**Memory activity** records the latest automatic capture and recall; **Recent memories** reads the backend directly, so you can see whether capture actually worked. **Recent failures** keeps the last 20 failures with their cause (timeout, connection, auth or quota, circuit-breaker skip, other) and the component that failed (LLM, embedder, vector store, OSS sidecar, Mem0 API), across restarts. Under the chat input, **Memory failed** means a capture or recall failed and **Status unavailable** means DSH could not read the plugin's status; hover or click either to see the cause.
 
 ![Memory activity and recent memories](/assets/screenshots/en/06-activity.png)
 
@@ -243,6 +243,7 @@ The working directory is not sent.
 **What is stored locally**
 
 - `<DSH profile>/dsh-mem0/maintenance.json` (mode 0600): the memory summary and hygiene reports (memory IDs, counts and reasons only).
+- `<DSH profile>/dsh-mem0/failures.json` (mode 0600): the last 20 failures, redacted (no keys, memory text or home paths).
 - `<DSH profile>/dsh-mem0/translation-cache.json` (mode 0600, only when translation is on): memory text and its translation. Delete the file to clear it.
 - OSS mode: `historyDbPath` and the Qdrant data of your OSS setup.
 

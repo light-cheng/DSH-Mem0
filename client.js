@@ -210,7 +210,35 @@ window.__ModuleLoader__.load({
       dockCaptureSkipped: 'Capture skipped',
       dockRecallSearching: 'Recalling memory',
       dockRecallOk: 'Memory recalled',
-      dockError: 'Memory error',
+      dockError: 'Memory failed',
+      dockStatusUnavailable: 'Status unavailable',
+      dockStatusUnavailableDetail: 'Could not read the Mem0 plugin status from DSH. This is not a memory failure: the plugin or DSH did not answer.',
+      dockLatestFailure: 'Latest memory failure',
+      dockNoFailureDetail: 'No failure details recorded.',
+      failuresTitle: 'Recent failures',
+      failuresHint: 'The last 20 failures, newest first. Kept across restarts; a later success does not clear them.',
+      failuresEmpty: 'No memory failures recorded.',
+      failureKind_capture: 'Capture',
+      failureKind_recall: 'Recall',
+      failureKind_summary: 'Summary',
+      failureKind_maintenance: 'Maintenance',
+      failureCause_timeout: 'Timeout',
+      failureCause_connection: 'Connection failed',
+      failureCause_auth: 'Auth or quota',
+      failureCause_circuit: 'Circuit breaker skip',
+      failureCause_other: 'Other error',
+      failureRepeated: '{count} times since {since}',
+      failureComponent_llm: 'LLM',
+      failureComponent_embedder: 'Embedder',
+      failureComponent_vector_store: 'Vector store',
+      failureComponent_sidecar: 'OSS sidecar',
+      failureComponent_mem0_api: 'Mem0 API',
+      failureComponent_unknown: 'Unknown component',
+      failureStep_embed: 'embedding',
+      failureStep_search: 'vector search',
+      failureStep_llm_extract: 'fact extraction',
+      failureStep_store: 'storing',
+      failureStepRunning: '{step} still running after {ms} ms',
       dockOpen: 'Open Mem0 settings',
 
       activityAsyncHint: 'Platform extraction runs in the background. Queued memories can take a few seconds before they appear in the list below.',
@@ -439,6 +467,34 @@ window.__ModuleLoader__.load({
       dockRecallSearching: '召回记忆中',
       dockRecallOk: '已召回记忆',
       dockError: '记忆失败',
+      dockStatusUnavailable: '状态读取失败',
+      dockStatusUnavailableDetail: '无法从 DSH 读取 Mem0 插件状态。这不是记忆操作失败，而是插件或 DSH 没有响应。',
+      dockLatestFailure: '最近一次记忆失败',
+      dockNoFailureDetail: '没有记录到失败详情。',
+      failuresTitle: '最近失败',
+      failuresHint: '最近 20 次失败，最新的在前。重启后仍保留，之后的成功不会清掉它们。',
+      failuresEmpty: '没有记忆失败记录。',
+      failureKind_capture: '自动保存',
+      failureKind_recall: '自动召回',
+      failureKind_summary: '记忆摘要',
+      failureKind_maintenance: '记忆整理',
+      failureCause_timeout: '超时',
+      failureCause_connection: '连接失败',
+      failureCause_auth: '认证或额度',
+      failureCause_circuit: '熔断跳过',
+      failureCause_other: '其他错误',
+      failureRepeated: '自 {since} 起共 {count} 次',
+      failureComponent_llm: 'LLM',
+      failureComponent_embedder: '向量模型',
+      failureComponent_vector_store: '向量库',
+      failureComponent_sidecar: 'OSS 进程',
+      failureComponent_mem0_api: 'Mem0 API',
+      failureComponent_unknown: '未知组件',
+      failureStep_embed: '向量化',
+      failureStep_search: '向量检索',
+      failureStep_llm_extract: '事实抽取',
+      failureStep_store: '写入',
+      failureStepRunning: '{step}已运行 {ms} ms 仍未完成',
       dockOpen: '打开 Mem0 设置',
 
       activityAsyncHint: 'Platform 的事实抽取在后台进行；显示“后台抽取中”时，稍等几秒再刷新最近记忆。',
@@ -586,6 +642,15 @@ window.__ModuleLoader__.load({
       .mem0-globe.is-active .mem0-globe-static,.mem0-globe.is-success .mem0-globe-static{opacity:0}
       .mem0-globe.is-active .mem0-globe-roll,.mem0-globe.is-success .mem0-globe-roll{opacity:1}
       .mem0-dock-text{overflow:hidden;text-overflow:ellipsis}
+      .mem0-dock-wrap{position:relative;display:inline-flex;max-width:100%}
+      .mem0-dock-pop{position:fixed;z-index:1000;width:max-content;max-width:min(360px,80vw);white-space:normal;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));box-shadow:0 6px 24px rgba(0,0,0,.18);padding:9px 11px;display:flex;flex-direction:column;gap:3px;font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
+      .mem0-dock-pop-title{font-weight:600;color:var(--dsw-alias-state-error-primary)}
+      .mem0-dock-pop-line{word-break:break-word}
+      .mem0-dock-pop-link{align-self:flex-start;margin-top:4px;border:0;background:transparent;padding:0;font:inherit;color:var(--dsw-alias-label-primary);text-decoration:underline;cursor:pointer}
+      .mem0-failures{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:320px;overflow:auto}
+      .mem0-failure{border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+      .mem0-failure-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-primary)}
+      .mem0-failure-msg{font-size:12px;color:var(--dsw-alias-label-secondary);word-break:break-word;margin:0}
       @media (prefers-reduced-motion:reduce){
         .mem0-globe.is-active .mem0-globe-static,.mem0-globe.is-success .mem0-globe-static{opacity:1}
         .mem0-globe.is-active .mem0-globe-roll,.mem0-globe.is-success .mem0-globe-roll{opacity:0}
@@ -1023,9 +1088,100 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** One-line description of a stored failure: kind · cause · message. */
+    /** "Embedder (ollama @ 127.0.0.1:11434, embedding)" for a stored failure. */
+    function failureComponentLabel(t, failure) {
+      const component = failure?.component || 'unknown'
+      const extra = []
+      if (failure?.provider) extra.push(failure.endpoint ? `${failure.provider} @ ${failure.endpoint}` : failure.provider)
+      if (failure?.step) extra.push(t(`failureStep_${failure.step}`))
+      return `${t(`failureComponent_${component}`)}${extra.length ? ` (${extra.join(', ')})` : ''}`
+    }
+
+    /** One-line description of a stored failure: kind · component · cause · message. */
+    function failureSummary(t, failure) {
+      if (!failure) return ''
+      const parts = [t(`failureKind_${failure.kind}`), failureComponentLabel(t, failure), t(`failureCause_${failure.cause}`)]
+      if (Number.isFinite(failure.stepElapsedMs) && failure.step) {
+        parts.push(template(t('failureStepRunning'), { step: t(`failureStep_${failure.step}`), ms: failure.stepElapsedMs }))
+      }
+      if (failure.message) parts.push(failure.message)
+      return parts.join(' · ')
+    }
+
+    /**
+     * What the composer status shows. Pure, for tests. Two failure states:
+     * - `failed` (the page could not read /activity): "Status unavailable",
+     *   with the read error; it says nothing about the memory backend;
+     * - a capture/recall operation failed: "Memory failed", with the latest
+     *   stored failure (kind, cause, message, time).
+     * `details` (lines) is set only for the two failure states.
+     */
+    function dockView(t, { data, failed = false, fetchError = '', failedAt = '' } = {}, now = Date.now()) {
+      if (failed) {
+        const details = [t('dockStatusUnavailableDetail')]
+        if (fetchError) details.push(String(fetchError).slice(0, 200))
+        if (failedAt) details.push(activityTime(failedAt))
+        return { state: 'error', kind: 'status', label: t('dockStatusUnavailable'), details }
+      }
+      const capture = data?.activity?.capture ?? null
+      const recall = data?.activity?.recall ?? null
+      if (data && data.enabled === false) return { state: 'idle', kind: 'disabled', label: t('dockDisabled'), details: null }
+      if (capture?.status === 'saving') return { state: 'active', kind: 'busy', label: t('dockCaptureSaving'), details: null }
+      if (capture?.status === 'queued') return { state: 'active', kind: 'busy', label: t('dockCaptureQueued'), details: null }
+      if (capture?.status === 'extracting') return { state: 'active', kind: 'busy', label: t('dockCaptureExtracting'), details: null }
+      if (capture?.status === 'error' || recall?.status === 'error') {
+        const latest = Array.isArray(data?.failures) ? data.failures[0] : null
+        const details = [t('dockLatestFailure')]
+        if (latest) {
+          details.push(failureSummary(t, latest))
+          details.push(activityTime(latest.at))
+        } else {
+          const error = capture?.status === 'error' ? capture : recall
+          details.push(error?.error ? String(error.error) : t('dockNoFailureDetail'))
+          if (error?.at) details.push(activityTime(error.at))
+        }
+        return { state: 'error', kind: 'memory', label: t('dockError'), details }
+      }
+      if (recall?.status === 'searching') return { state: 'active', kind: 'busy', label: t('dockRecallSearching'), details: null }
+      const recent = (at) => {
+        const value = Date.parse(at)
+        return Number.isFinite(value) && now - value < 10 * 60 * 1000
+      }
+      const items = []
+      if (capture?.status === 'saved' && recent(capture.at)) {
+        items.push({ at: Date.parse(capture.at), label: `${t('dockCaptureSaved')}${capture.count ? ` ${capture.count}` : ''}` })
+      }
+      if (recall?.status === 'ok' && recent(recall.at)) {
+        items.push({ at: Date.parse(recall.at), label: `${t('dockRecallOk')}${recall.count !== undefined ? ` ${recall.count}` : ''}` })
+      }
+      const latest = items.sort((left, right) => right.at - left.at)[0]
+      if (latest) return { state: 'success', kind: 'ok', label: latest.label, details: null }
+      if (capture?.status === 'skipped') return { state: 'idle', kind: 'idle', label: t('dockCaptureSkipped'), details: null }
+      return { state: 'idle', kind: 'idle', label: t('dockIdle'), details: null }
+    }
+
     function MemoryDockStatus({ ctx, t }) {
       const [data, setData] = useState(null)
-      const [failed, setFailed] = useState(false)
+      const [readFailure, setReadFailure] = useState(null)
+      // Popover position (fixed, from the button's rect): the composer dock
+      // sits inside host containers with overflow hidden/auto, which clip
+      // anything positioned relative to it.
+      const [open, setOpen] = useState(null)
+      const rootRef = useRef(null)
+      const popRef = useRef(null)
+
+      // A transformed host ancestor turns `position: fixed` into a box
+      // relative to that ancestor; measure once and shift by the difference.
+      useLayoutEffect(() => {
+        const element = popRef.current
+        if (!open || !element) return
+        const rect = element.getBoundingClientRect()
+        const dx = rect.left - open.left
+        const dy = rect.bottom - (window.innerHeight - open.bottom)
+        if (Math.abs(dx) > 1) element.style.left = `${open.left - dx}px`
+        if (Math.abs(dy) > 1) element.style.bottom = `${open.bottom + dy}px`
+      }, [open])
 
       useEffect(() => {
         let live = true
@@ -1034,10 +1190,16 @@ window.__ModuleLoader__.load({
             const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(ctx)}&translate=0`)
             if (live) {
               setData(next)
-              setFailed(false)
+              setReadFailure(null)
             }
-          } catch {
-            if (live) setFailed(true)
+          } catch (error) {
+            if (live) {
+              setReadFailure((previous) => ({
+                message: error instanceof Error ? error.message : String(error),
+                // Keep the time of the first failed read in a row.
+                at: previous?.at ?? new Date().toISOString(),
+              }))
+            }
           }
         }
         void load()
@@ -1048,59 +1210,47 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
-      const capture = data?.activity?.capture ?? null
-      const recall = data?.activity?.recall ?? null
-      let state = 'idle'
-      let label = t('dockIdle')
+      const view = dockView(t, {
+        data,
+        failed: Boolean(readFailure),
+        fetchError: readFailure?.message,
+        failedAt: readFailure?.at,
+      })
+      const details = view.details
 
-      if (failed) {
-        state = 'error'
-        label = t('dockError')
-      } else if (data && data.enabled === false) {
-        label = t('dockDisabled')
-      } else if (capture?.status === 'saving') {
-        state = 'active'
-        label = t('dockCaptureSaving')
-      } else if (capture?.status === 'queued') {
-        state = 'active'
-        label = t('dockCaptureQueued')
-      } else if (capture?.status === 'extracting') {
-        state = 'active'
-        label = t('dockCaptureExtracting')
-      } else if (capture?.status === 'error' || recall?.status === 'error') {
-        state = 'error'
-        label = t('dockError')
-      } else if (recall?.status === 'searching') {
-        state = 'active'
-        label = t('dockRecallSearching')
-      } else {
-        const recent = (at) => {
-          const value = Date.parse(at)
-          return Number.isFinite(value) && Date.now() - value < 10 * 60 * 1000
-        }
-        const items = []
-        if (capture?.status === 'saved' && recent(capture.at)) {
-          items.push({
-            at: Date.parse(capture.at),
-            label: `${t('dockCaptureSaved')}${capture.count ? ` ${capture.count}` : ''}`,
-          })
-        }
-        if (recall?.status === 'ok' && recent(recall.at)) {
-          items.push({
-            at: Date.parse(recall.at),
-            label: `${t('dockRecallOk')}${recall.count !== undefined ? ` ${recall.count}` : ''}`,
-          })
-        }
-        const latest = items.sort((left, right) => right.at - left.at)[0]
-        if (latest) {
-          state = 'success'
-          label = latest.label
-        } else if (capture?.status === 'skipped') {
-          label = t('dockCaptureSkipped')
-        }
+      useEffect(() => {
+        if (!details) setOpen(null)
+      }, [Boolean(details)])
+
+      const toggle = (event) => {
+        if (open) return setOpen(null)
+        const rect = event.currentTarget.getBoundingClientRect()
+        const width = Math.min(360, window.innerWidth - 16)
+        setOpen({
+          left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+          bottom: Math.max(8, window.innerHeight - rect.top + 6),
+          width,
+        })
       }
 
+      useEffect(() => {
+        if (!open) return undefined
+        const close = (event) => {
+          if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(null)
+        }
+        const onKey = (event) => {
+          if (event.key === 'Escape') setOpen(null)
+        }
+        document.addEventListener('mousedown', close)
+        document.addEventListener('keydown', onKey)
+        return () => {
+          document.removeEventListener('mousedown', close)
+          document.removeEventListener('keydown', onKey)
+        }
+      }, [open])
+
       const openSettings = () => {
+        setOpen(null)
         try {
           ctx.get('pluginNavigation')?.openBundle?.(PKG)
         } catch {
@@ -1109,15 +1259,81 @@ window.__ModuleLoader__.load({
       }
 
       return h(
-        'button',
-        {
-          type: 'button',
-          className: 'mem0-dock',
-          title: t('dockOpen'),
-          onClick: openSettings,
-        },
-        h(GlobeStatus, { state }),
-        h('span', { className: 'mem0-dock-text' }, label),
+        'span',
+        { className: 'mem0-dock-wrap', ref: rootRef },
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'mem0-dock',
+            // Hover shows the cause; a click on a failure state opens it in place.
+            title: details ? `${view.label}\n${details.join('\n')}` : t('dockOpen'),
+            'aria-expanded': details ? Boolean(open) : undefined,
+            'data-dock-kind': view.kind,
+            onClick: details ? toggle : openSettings,
+          },
+          h(GlobeStatus, { state: view.state }),
+          h('span', { className: 'mem0-dock-text' }, view.label),
+        ),
+        details && open
+          ? h(
+              'div',
+              {
+                className: 'mem0-dock-pop',
+                role: 'dialog',
+                ref: popRef,
+                style: { left: `${open.left}px`, bottom: `${open.bottom}px`, maxWidth: `${open.width}px` },
+              },
+              h('div', { className: 'mem0-dock-pop-title' }, view.label),
+              details.map((line, index) => h('div', { className: 'mem0-dock-pop-line', key: index }, line)),
+              h(
+                'button',
+                { type: 'button', className: 'mem0-dock-pop-link', onClick: openSettings },
+                t('dockOpen'),
+              ),
+            )
+          : null,
+      )
+    }
+
+    /** "Recent failures" in the activity card (stored history, newest first). */
+    function FailureList({ t, failures }) {
+      const list = Array.isArray(failures) ? failures : []
+      return h(
+        'div',
+        { className: 'mem0-failures-block' },
+        h('div', { className: 'mem0-activity-head', style: { marginTop: '12px' } }, h('span', { className: 'mem0-activity-title' }, t('failuresTitle'))),
+        h('p', { className: 'mem0-hint' }, list.length > 0 ? t('failuresHint') : t('failuresEmpty')),
+        list.length > 0
+          ? h(
+              'div',
+              { className: 'mem0-failures' },
+              list.map((failure, index) => {
+                const meta = [activityTime(failure.at), failure.backend]
+                if (Number.isFinite(failure.durationMs)) meta.push(`${failure.durationMs} ms`)
+                if (failure.status) meta.push(`HTTP ${failure.status}`)
+                if (Number.isFinite(failure.stepElapsedMs) && failure.step) {
+                  meta.push(template(t('failureStepRunning'), { step: t(`failureStep_${failure.step}`), ms: failure.stepElapsedMs }))
+                }
+                if (failure.count > 1) {
+                  meta.push(template(t('failureRepeated'), { count: failure.count, since: activityTime(failure.firstAt) }))
+                }
+                return h(
+                  'div',
+                  { className: 'mem0-failure', key: `${failure.at}-${index}` },
+                  h(
+                    'div',
+                    { className: 'mem0-failure-head' },
+                    h('span', { className: 'mem0-chip mem0-state-error' }, t(`failureCause_${failure.cause}`)),
+                    h('strong', null, t(`failureKind_${failure.kind}`)),
+                    h('span', { className: 'mem0-chip' }, failureComponentLabel(t, failure)),
+                    h('span', { className: 'mem0-activity-meta' }, meta.filter(Boolean).join(' · ')),
+                  ),
+                  failure.message ? h('p', { className: 'mem0-failure-msg' }, failure.message) : null,
+                )
+              }),
+            )
+          : null,
       )
     }
 
@@ -1890,6 +2106,7 @@ window.__ModuleLoader__.load({
                 recentMemories.length > 0 ? t('activityScopeHint') : t('activityEmpty'),
               )
             : null,
+          h(FailureList, { t, failures: data?.failures }),
         ),
         h(
           'div',
@@ -2417,6 +2634,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, failureSummary } }
   },
 })

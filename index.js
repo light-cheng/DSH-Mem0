@@ -20,6 +20,7 @@ import { MemoryLifecycle, PROFILE_SECTION_NAME } from './lib/memory-lifecycle.js
 import { MemoryLocalizer } from './lib/memory-localizer.js'
 import { MemoryMaintenance } from './lib/memory-maintenance.js'
 import { MaintenanceState } from './lib/maintenance-state.js'
+import { FailureHistory } from './lib/failure-history.js'
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
 
@@ -81,8 +82,19 @@ export async function apply(ctx, rawConfig) {
     enabled: config.translateMemories,
     cachePath: profileDir ? path.join(profileDir, 'dsh-mem0', 'translation-cache.json') : undefined,
   })
+  // Recent failures survive restarts and later successes (failures.json,
+  // next to maintenance.json). Loaded before the enabled check so the page
+  // still shows why memory failed after it was switched off.
+  const failures = new FailureHistory({
+    filePath: profileDir
+      ? path.join(profileDir, 'dsh-mem0', 'failures.json')
+      : path.join(path.dirname(config.historyDbPath), 'failures.json'),
+    backend: config.backend,
+    logger,
+  })
   const runtime = {
     config,
+    failures,
     client: undefined,
     breaker: undefined,
     lifecycle: undefined,
@@ -140,6 +152,7 @@ export async function apply(ctx, rawConfig) {
     logger,
     activity,
     localizer,
+    failures,
   })
   const lifecycle = new MemoryLifecycle({
     client,
@@ -148,6 +161,7 @@ export async function apply(ctx, rawConfig) {
     breaker,
     activity,
     maintenance,
+    failures,
     // dsh-strata's optional `strataBudget` service (interop §2). Looked up on
     // every recall, never injected: Strata may load later or not at all.
     budget: () => ctx.get?.('strataBudget'),
