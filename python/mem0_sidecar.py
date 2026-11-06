@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import signal
+import socketserver
 import sys
 import threading
 import time
@@ -632,6 +633,17 @@ class DshMem0Server(ThreadingHTTPServer):
         super().__init__(address, handler)
         self.service = service
         self.token = token
+
+    def server_bind(self) -> None:
+        # HTTPServer.server_bind also calls socket.getfqdn(host) for
+        # `server_name`, a reverse DNS lookup of 127.0.0.1. Some resolvers
+        # (seen: Homebrew Python 3.12 on macOS behind a fake-IP proxy) take
+        # ~35 s to answer, longer than Node's startup timeout, so the sidecar
+        # never became ready. Nothing here reads server_name.
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = port
 
 
 def read_token(stream: Any) -> str:

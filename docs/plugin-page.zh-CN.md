@@ -174,6 +174,9 @@ sidecar 不继承 DSH 的全部环境变量，只拿到：`PATH`、`HOME`、语�
 
 sidecar 还在启动时（第一次使用或崩溃后），自动召回会跳过这一轮、不等待；工具调用和自动保存会等它启动完成（最多 15 秒）。
 
+**低配机器（embedding 只能用 CPU 跑）。** 让 embedding 模型常驻内存：为 Ollama 服务设置 `OLLAMA_KEEP_ALIVE=-1`（或例如 `24h`）。不设的话，空闲 5 分钟后的第一次召回要等模型冷加载（i5-13500H 上 bge-m3 约 2.5 秒，内存紧张时更久）。如果模型仍可能被卸载，把 `recallTimeoutMs` 调到 8000。抽取用云端模型时，`addTimeoutMs` 用默认的 120000 就够。用中文的话保留 bge-m3；换 embedding 模型会改变向量维度，需要换一个新的 `collectionName`。
+
+
 ### 全部配置项
 
 | 字段 | 默认值 | 说明 |
@@ -206,7 +209,7 @@ sidecar 还在启动时（第一次使用或崩溃后），自动召回会跳过
 | `translateMemories` | `false` | 用 DSH 默认模型在设置页翻译记忆（会把记忆原文发给该模型） |
 | `captureStrataFolds` | `false` | 额外保存 dsh-strata 的一级折叠摘要（需要开启 `autoCapture` 并安装 dsh-strata） |
 | `timeoutMs` | `30000` | 每次后端请求的超时（工具、列表、巡检） |
-| `recallTimeoutMs` | `3000` | 自动召回的超时，100–60000；超时后本轮不带召回记忆继续 |
+| `recallTimeoutMs` | `5000` | 自动召回的超时，100–60000；超时后本轮不带召回记忆继续 |
 | `addTimeoutMs` | `120000` | 保存记忆（自动保存和 `mem0_add`）的超时，1000–600000 |
 | `sidecarEnv` | `[]` | OSS：额外传给 sidecar 的环境变量名 |
 | `enabled` | `true` | 总开关 |

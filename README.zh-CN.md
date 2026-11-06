@@ -244,6 +244,16 @@ sidecar 不继承 DSH 的全部环境变量，只拿到：`PATH`、`HOME`、语�
 
 sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回会直接跳过这一轮、不等待，sidecar 在后台继续启动；工具调用和自动保存会等它启动完成（启动最多 15 秒）。
 
+#### 低配机器（embedding 只能用 CPU 跑）
+
+下面的数字来自混合方案的实测：记忆抽取用云端 LLM，embedding 用本地 bge-m3，Qdrant 也在本地。抽取在云端完成，所以召回快不快，主要看本地 embedding 模型。
+
+- **让 embedding 模型常驻内存。** Ollama 默认在模型空闲 5 分钟后把它卸载。停一会儿再用时，第一次召回要等模型冷加载：在 i5-13500H 上 bge-m3 大约要 2.5 秒，内存紧张时更久。在 Ollama 服务的环境变量里设置 `OLLAMA_KEEP_ALIVE=-1`（永不卸载），或一个较长的值，例如 `24h`。Windows 上把它加为用户环境变量，然后从托盘退出 Ollama 再重新打开。bge-m3 加载后约占 1.2 GB 内存。
+- **`recallTimeoutMs`：** 默认 5000。如果模型仍可能被卸载（没设 keep-alive，或内存紧张），建议设成 8000。召回超时只会让这一轮不带记忆；但 sidecar 会把这次请求做完，在它做完之前，下一次召回也可能跟着超时。
+- **`addTimeoutMs`：** 默认 120000 足够。抽取用云端模型时，测试里每次保存都在 10 秒以内完成。
+- **embedding 模型：** 用中文的话保留 bge-m3。更小的、以英文为主的模型（`nomic-embed-text`、`all-minilm`）召回中文效果差。换模型还会改变向量维度，需要换一个新的 `collectionName`，旧记忆留在旧 collection 里。
+
+
 ### 全部配置项
 
 | 字段 | 默认值 | 说明 |
@@ -276,7 +286,7 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 | `translateMemories` | `false` | 用 DSH 默认模型在设置页翻译记忆（会把记忆原文发给该模型） |
 | `captureStrataFolds` | `false` | 额外保存 dsh-strata 的一级折叠摘要（需要开启 `autoCapture` 并安装 dsh-strata）。是已保存回合的第二份、更干净的副本，见 [dsh-strata](#dsh-strata) |
 | `timeoutMs` | `30000` | 所有后端（Platform、server、OSS）每次请求的超时：工具、列表、巡检。写入和自动召回用下面两个设置 |
-| `recallTimeoutMs` | `3000` | 自动召回的超时，100–60000；超时后本轮不带召回记忆继续 |
+| `recallTimeoutMs` | `5000` | 自动召回的超时，100–60000；超时后本轮不带召回记忆继续 |
 | `addTimeoutMs` | `120000` | 保存记忆（自动保存和 `mem0_add`）的超时，写入时可能调用 LLM 抽取事实，1000–600000 |
 | `sidecarEnv` | `[]` | OSS：在内置白名单之外，额外传给 sidecar 的环境变量名 |
 | `enabled` | `true` | 总开关 |
