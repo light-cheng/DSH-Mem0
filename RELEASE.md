@@ -4,6 +4,10 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### Unreleased
+
+- **Localized plugin page in DSH.** DSH's plugin page now shows a page written for it instead of the GitHub README: `meta.detail` in `locale/en.json` and `locale/zh.json` points to `docs/plugin-page.en.md` and `docs/plugin-page.zh-CN.md`. Chinese users see Chinese, other languages fall back to English. The pages drop the GitHub-only language switch and HTML, use absolute links, and show screenshots from the package. Only these two files are added to the package. Needs a DSH version that reads `meta.detail` (0.2.2-rc.1 does); older versions keep showing the README.
+
 ### v0.3.1 — first-turn recall and dsh-strata interop
 
 **Upgrade recommended for everyone**: in 0.3.0 and earlier, automatic recall never ran on a session's first turn, and on later turns it searched with the previous turn's question.
@@ -93,6 +97,10 @@ Highlights:
 Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pack` pass.
 
 ## 简体中文
+
+### 未发布
+
+- **DSH 插件页本地化。** DSH 的插件页现在显示专门为它写的介绍，而不是 GitHub README：`locale/en.json` 和 `locale/zh.json` 的 `meta.detail` 分别指向 `docs/plugin-page.en.md` 和 `docs/plugin-page.zh-CN.md`。中文用户看到中文，其他语言回退到英文。页面去掉了只在 GitHub 上有用的语言切换行和 HTML，链接改为绝对地址，截图直接取自插件包。包里只新增这两个文件。需要支持 `meta.detail` 的 DSH 版本（0.2.2-rc.1 已支持）；更早的版本仍显示 README。
 
 ### v0.3.1 — 首轮召回修复与 dsh-strata 协同
 
