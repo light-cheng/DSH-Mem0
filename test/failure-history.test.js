@@ -582,3 +582,21 @@ test('status bar: a failed status read and a failed memory operation are differe
   assert.equal(en.dockError, 'Memory failed')
   assert.equal(en.dockStatusUnavailable, 'Status unavailable')
 })
+
+test('sidecar exits are stored with code/signal/uptime and never folded together', () => {
+  const history = new FailureHistory({ backend: 'oss' })
+  const died = (uptimeMs) => Object.assign(new Error('dsh-mem0: POST /add failed: fetch failed'), { code: 'NETWORK_ERROR', component: 'sidecar', signal: 'SIGKILL', uptimeMs })
+  history.record({ kind: 'capture', error: died(10_355) })
+  history.record({ kind: 'capture', error: died(306) })
+  const [newest, older] = history.list()
+  assert.equal(history.list().length, 2)
+  assert.equal(newest.uptimeMs, 306)
+  assert.equal(older.uptimeMs, 10_355)
+  assert.equal(newest.signal, 'SIGKILL')
+  assert.equal(newest.component, 'sidecar')
+  // Junk exit fields are dropped.
+  const bad = history.record({ kind: 'capture', error: Object.assign(new Error('x'), { exitCode: 1.5, signal: 'rm -rf', uptimeMs: -1 }) })
+  assert.equal('exitCode' in bad, false)
+  assert.equal('signal' in bad, false)
+  assert.equal('uptimeMs' in bad, false)
+})

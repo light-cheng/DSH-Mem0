@@ -53,3 +53,65 @@ test('page language comes from the host locale, not from a translated string (G8
   assert.equal(pageLanguage(ctxFor('yue', [{ id: 'yue', fallback: 'zh' }])), 'zh')
   assert.equal(pageLanguage({}), 'en')
 })
+
+// ---- Activity details, circuit state and the sidecar block ----
+
+// Arrays from the vm realm compare by value only after a copy.
+const plain = (value) => JSON.parse(JSON.stringify(value))
+
+function tFor(dict) {
+  return (key) => dict[key] ?? key
+}
+
+test('activity details: skip reasons, circuit time left and cause, extraction counts, retry', () => {
+  const { activityDetails, zh } = loadClient().exports.__test__
+  const t = tFor(zh)
+  const now = Date.parse('2026-11-06T06:00:00Z')
+  const circuit = activityDetails(t, {
+    status: 'skipped',
+    reason: 'circuit-open',
+    circuitUntil: '2026-11-06T06:01:30Z',
+    trippedBy: { at: '2026-11-06T05:59:30Z', kind: 'capture', component: 'sidecar', message: 'POST /add failed: fetch failed' },
+  }, now)
+  assert.match(circuit[0], /熔断中/)
+  assert.match(circuit[0], /1 min 30 s 后恢复/)
+  assert.match(circuit[1], /自动保存 · OSS 进程 · POST \/add failed: fetch failed/)
+  assert.deepEqual(plain(activityDetails(t, { status: 'skipped', reason: 'low-value' })), ['内容太短或不值得记（保存过滤）'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'saved', facts: 1, add: 0, update: 0, delete: 0, none: 1 })), ['抽取 1 条：新增 0，更新 0，已存在 1'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'saved', facts: 0 })), ['没有抽取到新内容（不值得记，或已经记过）'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'saved', add: 2, update: 1, delete: 0 })), ['新增 2，更新 1，删除 0'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'saved', retry: 'saved' })), ['重试后已保存'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'error', retry: 'failed' })), ['重试仍失败'])
+})
+
+test('the dock tells "paused by the breaker" from "skipped, too short"', () => {
+  const { dockView, en } = loadClient().exports.__test__
+  const t = tFor(en)
+  const now = Date.parse('2026-11-06T06:00:00Z')
+  const paused = dockView(t, { data: { activity: { capture: { status: 'skipped', reason: 'circuit-open', circuitUntil: '2026-11-06T06:02:00Z' } } } }, now)
+  assert.equal(paused.label, 'Memory paused')
+  assert.equal(paused.kind, 'circuit')
+  assert.ok(paused.details.length > 0)
+  const short = dockView(t, { data: { activity: { capture: { status: 'skipped', reason: 'low-value' } } } }, now)
+  assert.equal(short.label, 'Capture skipped (too short)')
+  // A breaker that already closed is not shown as paused.
+  const closed = dockView(t, { data: { activity: { capture: { status: 'skipped', reason: 'circuit-open', circuitUntil: '2026-11-06T05:59:00Z' } } } }, now)
+  assert.equal(closed.label, 'Capture skipped')
+})
+
+test('sidecar lines show PIDs, restarts, the last exit and the log path', () => {
+  const { sidecarLines, en } = loadClient().exports.__test__
+  const lines = sidecarLines(tFor(en), {
+    running: true,
+    pid: 14536,
+    launcherPid: 10844,
+    startedAt: '2026-11-06T06:14:32Z',
+    restarts: 2,
+    lastExit: { at: '2026-11-06T06:03:31Z', code: null, signal: 'SIGKILL', uptimeMs: 75_000, phase: 'running' },
+    logPath: '~/.dsh/profiles/desktop/dsh-mem0/sidecar.log',
+  })
+  assert.match(lines[0], /PID 14536 · launcher PID 10844/)
+  assert.equal(lines[1], '2 restarts')
+  assert.match(lines[2], /signal SIGKILL after 1 min 15 s while running/)
+  assert.equal(lines[3], 'Log: ~/.dsh/profiles/desktop/dsh-mem0/sidecar.log')
+})

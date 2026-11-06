@@ -421,3 +421,55 @@ test('profile route saves and resets editable long-term memory', async () => {
   assert.equal(rejected.status, 405)
   assert.equal(rejected.headers.allow, 'POST')
 })
+
+// ---- OSS sidecar status and log ----
+
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { GUI_SIDECAR_LOG_PATH } from '../lib/gui-routes.js'
+import { SidecarLog } from '../lib/sidecar-log.js'
+
+test('activity route reports the sidecar process, last exit and log path (home shortened)', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.homedir(), 'dsh-mem0-route-log-'))
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const sidecarLog = new SidecarLog({ filePath: path.join(dir, 'sidecar.log') })
+  const status = {
+    running: true,
+    starting: false,
+    pid: 14536,
+    launcherPid: 10844,
+    startedAt: '2026-11-06T06:14:32.000Z',
+    starts: 2,
+    restarts: 1,
+    lastExit: { at: '2026-11-06T06:03:31.989Z', code: 1, signal: null, uptimeMs: 3_600_000, phase: 'running', pid: 4242 },
+  }
+  const routes = harness({ config, activity: {}, client: { status: () => status }, sidecarLog })
+  const result = await invoke(routes.get(GUI_ACTIVITY_PATH), 'GET', '/?translate=0')
+  assert.equal(result.body.sidecar.pid, 14536)
+  assert.equal(result.body.sidecar.launcherPid, 10844)
+  assert.equal(result.body.sidecar.restarts, 1)
+  assert.equal(result.body.sidecar.lastExit.code, 1)
+  assert.equal(result.body.sidecar.logPath, `~/${path.basename(dir)}/sidecar.log`)
+  // REST backends have no sidecar.
+  const rest = harness({ config: { ...config, backend: 'platform' }, activity: {}, client: {} })
+  assert.equal((await invoke(rest.get(GUI_ACTIVITY_PATH), 'GET', '/?translate=0')).body.sidecar, null)
+})
+
+test('sidecar-log route returns the last lines, redacted', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-route-log-'))
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const sidecarLog = new SidecarLog({ filePath: path.join(dir, 'sidecar.log') })
+  for (let index = 0; index < 60; index += 1) sidecarLog.write(`line ${index}`)
+  // A line edited into the file by hand is redacted on the way out too.
+  fs.appendFileSync(sidecarLog.filePath, 'manual api_key=sk-handwritten12345 at /Users/carol/x\n')
+  const routes = harness({ config, activity: {}, client: {}, sidecarLog })
+  const result = await invoke(routes.get(GUI_SIDECAR_LOG_PATH), 'GET', '/?lines=50')
+  assert.equal(result.body.ok, true)
+  assert.equal(result.body.lines.length, 50)
+  assert.match(result.body.lines.at(-1), /^manual api_key=\[REDACTED\] at ~\/x$/)
+  assert.match(result.body.lines.at(-2), /stderr line 59$/)
+  assert.equal((await invoke(routes.get(GUI_SIDECAR_LOG_PATH), 'POST')).status, 405)
+  const none = harness({ config: { ...config, backend: 'platform' }, activity: {}, client: {} })
+  assert.equal((await invoke(none.get(GUI_SIDECAR_LOG_PATH), 'GET')).body.ok, false)
+})

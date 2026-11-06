@@ -275,3 +275,134 @@ test('CircuitBreaker lives in lib/http.js and is still exported from sidecar-cli
   const http = await import('../lib/http.js')
   assert.equal(CircuitBreaker, http.CircuitBreaker)
 })
+
+// ---- Exit information, sidecar.log and delivery (observability fixes) ----
+
+import { SidecarLog } from '../lib/sidecar-log.js'
+import { provesNotDelivered } from '../lib/sidecar-client.js'
+import { FailureHistory } from '../lib/failure-history.js'
+
+function tempLog(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-sidecar-log-'))
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  return new SidecarLog({ filePath: path.join(dir, 'sidecar.log') })
+}
+
+test('a sidecar that exits during startup: the error and status carry the exit; stderr lands redacted in sidecar.log', async (t) => {
+  const log = tempLog(t)
+  const { client } = fakeSidecar(t, { mode: 'crash', log })
+  const error = await client.ensureStarted().then(() => null, (caught) => caught)
+  assert.equal(error?.code, 'START_FAILED')
+  assert.equal(error.exitCode, 3)
+  assert.equal(error.component, 'sidecar')
+  assert.ok(Number.isFinite(error.uptimeMs))
+  const status = client.status()
+  assert.equal(status.running, false)
+  assert.equal(status.lastExit.code, 3)
+  assert.equal(status.lastExit.phase, 'startup')
+  const text = fs.readFileSync(log.filePath, 'utf8')
+  assert.match(text, /stderr Traceback: ValueError: bad config/)
+  assert.doesNotMatch(text, /sk-fakefake/)
+  assert.doesNotMatch(text, /\/Users\/alice/)
+  assert.match(text, /event sidecar exited \(code 3\)/)
+  // The failure history keeps the exit with component sidecar.
+  const history = new FailureHistory({ backend: 'oss' })
+  const entry = history.record({ kind: 'capture', error })
+  assert.equal(entry.component, 'sidecar')
+  assert.equal(entry.exitCode, 3)
+  assert.ok(Number.isFinite(entry.uptimeMs))
+})
+
+test('status() reports the interpreter PID, start time and restarts; an external kill is recorded', async (t) => {
+  const log = tempLog(t)
+  const { client } = fakeSidecar(t, { log })
+  await client.ensureStarted()
+  const first = client.status()
+  assert.equal(first.running, true)
+  assert.equal(first.pid, client.child.pid) // the fake reports its own pid
+  assert.equal(first.restarts, 0)
+  assert.ok(Date.parse(first.startedAt) > 0)
+  const exited = new Promise((resolve) => client.child.once('exit', resolve))
+  process.kill(first.pid, 'SIGKILL')
+  await exited
+  const after = client.status()
+  assert.equal(after.running, false)
+  assert.equal(after.lastExit.signal, 'SIGKILL')
+  assert.equal(after.lastExit.phase, 'running')
+  assert.equal(after.lastExit.pid, first.pid)
+  assert.equal(after.lastExit.stoppedBy, undefined)
+  await client.ensureStarted()
+  assert.equal(client.status().restarts, 1)
+  assert.match(fs.readFileSync(log.filePath, 'utf8'), /sidecar exited \(signal SIGKILL\) after \d+ ms while running; pid \d+/)
+})
+
+test('dispose marks the exit as stopped by the plugin', async (t) => {
+  const { client } = fakeSidecar(t)
+  await client.ensureStarted()
+  await client.dispose()
+  assert.equal(client.status().lastExit.stoppedBy, 'dispose')
+})
+
+test('only a refused connection proves a request was not delivered', () => {
+  const refused = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9'), { code: 'ECONNREFUSED' }) })
+  assert.equal(provesNotDelivered(refused), true)
+  const aggregate = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new AggregateError([Object.assign(new Error('x'), { code: 'ECONNREFUSED' })]), {}) })
+  assert.equal(provesNotDelivered(aggregate), true)
+  for (const code of ['ECONNRESET', 'UND_ERR_SOCKET', 'EPIPE', 'ETIMEDOUT']) {
+    assert.equal(provesNotDelivered(Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) })), false, code)
+  }
+  assert.equal(provesNotDelivered(new Error('aborted')), false)
+})
+
+localServerTest('a request to a port nobody serves fails as not delivered', async (t) => {
+  // The fake sidecar reports port 59 without listening on it.
+  const { client } = fakeSidecar(t, { env: { FAKE_SIDECAR_PORT: '59' }, extraEnv: ['FAKE_SIDECAR_PORT'], requestTimeoutMs: 2_000, exitWaitMs: 50 })
+  await client.ensureStarted()
+  const error = await client.add([{ role: 'user', content: 'x' }]).then(() => null, (caught) => caught)
+  assert.equal(error?.code, 'NETWORK_ERROR')
+  assert.equal(error.delivered, false)
+  // The sidecar is still alive: no exit to attach.
+  assert.equal(error.exitCode, undefined)
+  assert.equal(error.signal, undefined)
+})
+
+localServerTest('a sidecar killed during /add: fetch failed carries the exit signal and is not "not delivered"', async (t) => {
+  const log = tempLog(t)
+  const { client } = fakeSidecar(t, { mode: 'serve', env: { FAKE_SIDECAR_ADD: 'die' }, extraEnv: ['FAKE_SIDECAR_ADD'], log, requestTimeoutMs: 5_000 })
+  await client.ensureStarted()
+  const error = await client.add([{ role: 'user', content: 'x' }]).then(() => null, (caught) => caught)
+  assert.ok(['NETWORK_ERROR', 'ABORTED'].includes(error?.code), error?.code)
+  assert.equal(error.delivered, undefined)
+  assert.equal(error.signal, 'SIGKILL')
+  assert.equal(error.component, 'sidecar')
+  assert.ok(error.uptimeMs >= 0)
+  const entry = new FailureHistory({ backend: 'oss' }).record({ kind: 'capture', error })
+  assert.equal(entry.signal, 'SIGKILL')
+  assert.equal(entry.component, 'sidecar')
+  assert.match(fs.readFileSync(log.filePath, 'utf8'), /stderr about to die mid-request/)
+})
+
+test('sidecar.log rotates at its cap and tail() reads across the rotated copy', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-sidecar-log-'))
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const file = path.join(dir, 'sidecar.log')
+  const log = new SidecarLog({ filePath: file, maxBytes: 8192 })
+  for (let index = 0; index < 100; index += 1) log.write(`line ${index} ${'y'.repeat(80)}`)
+  assert.ok(fs.statSync(file).size <= 8192)
+  assert.ok(fs.existsSync(`${file}.1`))
+  assert.ok(fs.statSync(`${file}.1`).size <= 8192)
+  const tail = log.tail(50)
+  assert.equal(tail.length, 50)
+  assert.match(tail.at(-1), /line 99 /)
+  assert.match(tail[0], /line 50 /)
+})
+
+test('sidecar.log redacts keys and home paths; without a file it keeps lines in memory', () => {
+  const log = new SidecarLog({ home: '/home/bob' })
+  log.write('openai.AuthenticationError: Incorrect API key provided: sk-abcdefghijklmnop at /home/bob/.dsh/mem0/venv')
+  log.write('Authorization: Bearer abcdefghijklmnop1234')
+  const lines = log.tail(10)
+  assert.equal(lines.length, 2)
+  assert.doesNotMatch(lines.join('\n'), /sk-abcdefgh|abcdefghijklmnop1234|\/home\/bob/)
+  assert.match(lines[0], /~\/\.dsh\/mem0\/venv/)
+})

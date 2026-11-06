@@ -319,6 +319,114 @@ def error_payload(exc: BaseException, components: dict[str, dict[str, Any]] | No
     return payload
 
 
+# --- /add outcome ---------------------------------------------------------
+#
+# Mem0's add() returns only the memories it stored (event ADD, or UPDATE /
+# DELETE in older pipelines); facts it judged already known are dropped.
+# So "0 written" could mean "nothing worth remembering" or "already known".
+# The write path's LLM answers are recorded during one add() and the first
+# one (fact extraction) is parsed the same way Mem0 parses it.
+
+
+class ExtractionParseError(ValueError):
+    """The LLM's fact-extraction answer was not valid JSON."""
+
+    _dsh_component = "llm"
+    _dsh_step = "llm_extract"
+
+
+def _strip_code_fence(text: str) -> str:
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.S)
+    return match.group(1) if match else text
+
+
+def parse_extraction(response: Any) -> list[Any] | None:
+    """Facts in an extraction answer; [] for an empty answer, None if unparseable.
+
+    Mem0 2.2+ answers {"memory": [{"text": ...}, ...]}; earlier versions
+    {"facts": ["...", ...]}.
+    """
+    if response is None:
+        return []
+    if isinstance(response, dict):
+        value = response
+    else:
+        text = _strip_code_fence(str(response)).strip()
+        if not text:
+            return []
+        try:
+            value = json.loads(text, strict=False)
+        except json.JSONDecodeError:
+            start, end = text.find("{"), text.rfind("}")
+            if start < 0 or end <= start:
+                return None
+            try:
+                value = json.loads(text[start : end + 1], strict=False)
+            except json.JSONDecodeError:
+                return None
+    if not isinstance(value, dict):
+        return None
+    for key in ("memory", "facts"):
+        items = value.get(key)
+        if isinstance(items, list):
+            return [item for item in items if item]
+    return []
+
+
+def _count_none_actions(response: Any) -> int | None:
+    """NONE decisions in an older Mem0's memory-update answer, if it is one."""
+    if not isinstance(response, str):
+        return None
+    try:
+        value = json.loads(_strip_code_fence(response).strip(), strict=False)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    items = value.get("memory") if isinstance(value, dict) else None
+    if not isinstance(items, list) or not any(isinstance(item, dict) and "event" in item for item in items):
+        return None
+    return sum(1 for item in items if isinstance(item, dict) and str(item.get("event", "")).upper() == "NONE")
+
+
+def summarize_add(results: list[dict[str, Any]], llm_responses: list[Any] | None) -> dict[str, Any]:
+    """facts extracted and add/update/delete/none counts for one add()."""
+    counts = {"add": 0, "update": 0, "delete": 0}
+    for row in results:
+        event = str(row.get("event", "")).lower() if isinstance(row, dict) else ""
+        if event in counts:
+            counts[event] += 1
+    summary: dict[str, Any] = dict(counts)
+    if not llm_responses:
+        return summary
+    facts = parse_extraction(llm_responses[0])
+    if facts is None:
+        raise ExtractionParseError("the LLM's fact-extraction answer was not valid JSON; nothing was stored")
+    summary["facts"] = len(facts)
+    none = _count_none_actions(llm_responses[1]) if len(llm_responses) > 1 else None
+    if none is None:
+        # Extracted facts that were neither stored nor changed anything were
+        # already known (Mem0 2.2 drops exact duplicates by hash).
+        none = max(0, len(facts) - counts["add"] - counts["update"] - counts["delete"])
+    summary["none"] = none
+    return summary
+
+
+def record_llm_responses(llm: Any, sink: Any) -> None:
+    """Wrap llm.generate_response on this instance so answers reach sink()."""
+    original = getattr(llm, "generate_response", None)
+    if llm is None or not callable(original):
+        return
+
+    def recording(*args: Any, **kwargs: Any) -> Any:
+        response = original(*args, **kwargs)
+        sink(response)
+        return response
+
+    try:
+        setattr(llm, "generate_response", recording)
+    except Exception:  # noqa: BLE001 - a frozen object is left as is
+        pass
+
+
 class Mem0Service:
     """Two Memory instances over one collection: read and write paths."""
 
@@ -348,6 +456,13 @@ class Mem0Service:
         self.components = describe_components(read_config)
         instrument_memory(self.read_memory, self.steps)
         instrument_memory(self.write_memory, self.steps)
+        # LLM answers during one add(), under _write_lock (see summarize_add).
+        self._llm_responses: list[Any] | None = None
+        record_llm_responses(getattr(self.write_memory, "llm", None), self._record_llm_response)
+
+    def _record_llm_response(self, response: Any) -> None:
+        if self._llm_responses is not None:
+            self._llm_responses.append(response)
 
     @staticmethod
     def _version() -> str:
@@ -428,10 +543,16 @@ class Mem0Service:
         if isinstance(payload.get("metadata"), dict):
             kwargs["metadata"] = payload["metadata"]
         with self._write_lock:
-            result = self.write_memory.add(messages, **kwargs)
-        if isinstance(result, dict):
-            return {"results": _normalise_results(result)}
-        return {"results": _normalise_results(result)}
+            self._llm_responses = []
+            try:
+                result = self.write_memory.add(messages, **kwargs)
+                responses = self._llm_responses
+            finally:
+                self._llm_responses = None
+        results = _normalise_results(result)
+        if not kwargs["infer"]:
+            return {"results": results}
+        return {"results": results, "summary": summarize_add(results, responses)}
 
     def list(self, filters: dict[str, Any], top_k: int | None) -> dict[str, Any]:
         kwargs: dict[str, Any] = {"filters": filters}
