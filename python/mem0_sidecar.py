@@ -20,9 +20,11 @@ import importlib.metadata
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import threading
+import time
 import traceback
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -123,6 +125,199 @@ def build_memory_config(config_path: str, collection: str, history_db: str) -> d
     }
 
 
+# --- failure attribution --------------------------------------------------
+#
+# A Mem0 call crosses three components: the embedder (e.g. local Ollama), the
+# LLM that extracts facts (e.g. an OpenAI-compatible cloud endpoint) and the
+# vector store (e.g. local Qdrant). Mem0Service wraps their methods so an
+# exception is tagged with the component and step that raised it, and
+# StepTracker keeps the steps still running so Node can say which one was
+# slow when its own request timeout fires (GET /steps).
+
+COMPONENT_STEPS = {
+    "embedder": {"embed": "embed", "embed_batch": "embed"},
+    "llm": {"generate_response": "llm_extract"},
+    "vector_store": {
+        "search": "search",
+        "keyword_search": "search",
+        "list": "search",
+        "get": "search",
+        "col_info": "search",
+        "list_cols": "search",
+        "insert": "store",
+        "update": "store",
+        "delete": "store",
+        "reset": "store",
+        "create_col": "store",
+        "delete_col": "store",
+    },
+}
+
+# Innermost frame wins: mem0/<package>/ or a client library module.
+_FRAME_HINTS = (
+    ("/mem0/embeddings/", "embedder", "embed"),
+    ("/mem0/llms/", "llm", "llm_extract"),
+    ("/mem0/vector_stores/", "vector_store", None),
+    ("/qdrant_client/", "vector_store", None),
+    ("/ollama/", None, None),  # Ollama serves embeddings or an LLM; decided by the mem0 frame
+    ("/openai/", "llm", "llm_extract"),
+)
+
+_SECRET_PATTERNS = (
+    (re.compile(r"\b(?:sk-|m0sk_|mem0_sk_|psk-)[A-Za-z0-9_-]{8,}"), "[REDACTED]"),
+    (re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}"), r"\1[REDACTED]"),
+    (re.compile(r"(?i)((?:api[_-]?key|token|secret|password)\s*[:=]\s*)['\"]?[^\s'\",}]+"), r"\1[REDACTED]"),
+    (re.compile(r"(\b[a-z][a-z0-9+.-]*://[^\s:/@]+:)[^\s@/]+(@)", re.I), r"\1[REDACTED]\2"),
+)
+
+
+def redact_error(text: Any, limit: int = 500) -> str:
+    """Strip credential shapes and home-directory paths from an error text."""
+    value = str(text)
+    home = os.path.expanduser("~")
+    if home and home not in ("/", "~"):
+        value = value.replace(home, "~")
+    value = re.sub(r"/(?:Users|home)/[^/\s'\":]+", "~", value)
+    for pattern, replacement in _SECRET_PATTERNS:
+        value = pattern.sub(replacement, value)
+    value = " ".join(value.split())
+    return value if len(value) <= limit else value[: limit - 1] + "…"
+
+
+def _endpoint_of(block: Any) -> str | None:
+    """host:port of a provider config block, without scheme, path or credentials."""
+    if not isinstance(block, dict):
+        return None
+    config = block.get("config") if isinstance(block.get("config"), dict) else {}
+    for key in ("ollama_base_url", "openai_base_url", "base_url", "url", "api_base", "lmstudio_base_url", "vllm_base_url"):
+        value = config.get(key)
+        if isinstance(value, str) and value:
+            parsed = urlparse(value if "://" in value else f"http://{value}")
+            if parsed.hostname:
+                return f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
+    host = config.get("host")
+    if isinstance(host, str) and host:
+        port = config.get("port")
+        return f"{host}:{port}" if port else host
+    if isinstance(config.get("path"), str):
+        return "local path"
+    return None
+
+
+def describe_components(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Provider name and endpoint per component, for error payloads."""
+    out: dict[str, dict[str, Any]] = {}
+    for component, section in (("llm", "llm"), ("embedder", "embedder"), ("vector_store", "vector_store")):
+        block = config.get(section)
+        if isinstance(block, dict):
+            out[component] = {"provider": str(block.get("provider") or "unknown"), "endpoint": _endpoint_of(block)}
+    return out
+
+
+def attribute_exception(exc: BaseException) -> dict[str, str]:
+    """Component and step for an exception: the wrapper's tag, else the traceback."""
+    current: BaseException | None = exc
+    for _ in range(5):
+        if current is None:
+            break
+        component = getattr(current, "_dsh_component", None)
+        if component:
+            result = {"component": component}
+            step = getattr(current, "_dsh_step", None)
+            if step:
+                result["step"] = step
+            return result
+        current = current.__cause__ or current.__context__
+    found: dict[str, str] = {}
+    tb = exc.__traceback__
+    while tb is not None:
+        filename = tb.tb_frame.f_code.co_filename.replace("\\", "/")
+        for marker, component, step in _FRAME_HINTS:
+            if marker in filename and component:
+                found = {"component": component}
+                if step:
+                    found["step"] = step
+        tb = tb.tb_next
+    return found
+
+
+class StepTracker:
+    """Component steps currently running, for GET /steps."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._active: dict[int, dict[str, Any]] = {}
+        self._next = 0
+
+    def start(self, component: str, step: str) -> int:
+        with self._lock:
+            self._next += 1
+            self._active[self._next] = {"component": component, "step": step, "started": time.monotonic()}
+            return self._next
+
+    def finish(self, token: int) -> None:
+        with self._lock:
+            self._active.pop(token, None)
+
+    def snapshot(self) -> list[dict[str, Any]]:
+        now = time.monotonic()
+        with self._lock:
+            rows = [
+                {"component": row["component"], "step": row["step"], "elapsedMs": int((now - row["started"]) * 1000)}
+                for row in self._active.values()
+            ]
+        return sorted(rows, key=lambda row: -row["elapsedMs"])
+
+
+def instrument_component(target: Any, component: str, tracker: StepTracker) -> None:
+    """Wrap a component's known methods on this instance (not its class)."""
+    if target is None:
+        return
+    for method_name, step in COMPONENT_STEPS[component].items():
+        original = getattr(target, method_name, None)
+        if not callable(original) or getattr(original, "_dsh_wrapped", False):
+            continue
+
+        def wrapper(*args: Any, __original=original, __step=step, **kwargs: Any) -> Any:
+            token = tracker.start(component, __step)
+            try:
+                return __original(*args, **kwargs)
+            except BaseException as exc:
+                if getattr(exc, "_dsh_component", None) is None:
+                    try:
+                        exc._dsh_component = component  # type: ignore[attr-defined]
+                        exc._dsh_step = __step  # type: ignore[attr-defined]
+                    except Exception:  # noqa: BLE001 - some exception types refuse attributes
+                        pass
+                raise
+            finally:
+                tracker.finish(token)
+
+        wrapper._dsh_wrapped = True  # type: ignore[attr-defined]
+        try:
+            setattr(target, method_name, wrapper)
+        except Exception:  # noqa: BLE001 - a frozen object stays unwrapped
+            pass
+
+
+def instrument_memory(memory: Any, tracker: StepTracker) -> None:
+    instrument_component(getattr(memory, "embedding_model", None), "embedder", tracker)
+    instrument_component(getattr(memory, "llm", None), "llm", tracker)
+    instrument_component(getattr(memory, "vector_store", None), "vector_store", tracker)
+
+
+def error_payload(exc: BaseException, components: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Redacted error body for a failed request, with the failing component."""
+    payload: dict[str, Any] = {"error": redact_error(exc)}
+    payload.update(attribute_exception(exc))
+    details = (components or {}).get(payload.get("component", ""))
+    if details:
+        payload["provider"] = details.get("provider")
+        if details.get("endpoint"):
+            payload["endpoint"] = details["endpoint"]
+    return payload
+
+
 class Mem0Service:
     """Two Memory instances over one collection: read and write paths."""
 
@@ -148,6 +343,10 @@ class Mem0Service:
         # SQLiteManager expects a filename; both paths are distinct files.
         self.read_memory = Memory.from_config(read_config)
         self.write_memory = Memory.from_config(write_config)
+        self.steps = StepTracker()
+        self.components = describe_components(read_config)
+        instrument_memory(self.read_memory, self.steps)
+        instrument_memory(self.write_memory, self.steps)
 
     @staticmethod
     def _version() -> str:
@@ -339,6 +538,13 @@ class SidecarHandler(BaseHTTPRequestHandler):
             if method == "GET" and path == "/health":
                 self._send(200, self.service.health())
                 return
+            if method == "GET" and path == "/steps":
+                steps = getattr(self.service, "steps", None)
+                self._send(200, {
+                    "steps": steps.snapshot() if steps else [],
+                    "components": getattr(self.service, "components", {}),
+                })
+                return
             if method == "POST" and path == "/search":
                 body = self._read_json()
                 search_query = body.get("query")
@@ -384,11 +590,19 @@ class SidecarHandler(BaseHTTPRequestHandler):
                     return
             self._reply_error(404, {"error": "not found"})
         except ValueError as exc:
-            status = 404 if "not found" in str(exc).lower() else 400
-            self._reply_error(status, {"error": str(exc)})
+            # Our own validation errors are plain 400/404; a ValueError raised
+            # inside a component (e.g. a missing Qdrant collection) is a 500
+            # with attribution.
+            attribution = attribute_exception(exc)
+            if not attribution:
+                status = 404 if "not found" in str(exc).lower() else 400
+                self._reply_error(status, {"error": redact_error(exc)})
+            else:
+                logger.error("request failed: %s", traceback.format_exc())
+                self._reply_error(500, error_payload(exc, getattr(self.service, "components", None)))
         except Exception as exc:  # noqa: BLE001 - one request must not kill the server
             logger.error("request failed: %s", traceback.format_exc())
-            self._reply_error(500, {"error": str(exc)})
+            self._reply_error(500, error_payload(exc, getattr(self.service, "components", None)))
 
     def _reply_error(self, status: int, payload: Any) -> None:
         declared = self.headers.get("content-length", "0").strip()

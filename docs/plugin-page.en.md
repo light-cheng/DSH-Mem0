@@ -42,7 +42,7 @@ Each backend has its own fields and guidance:
 
 ![Editable memory summary](/assets/screenshots/en/12-memory-summary.png)
 
-**Memory activity** records the latest automatic capture and recall; **Recent memories** reads the backend directly, so you can see whether capture actually worked. **Recent failures** keeps the last 20 failures with their cause (timeout, connection, auth or quota, circuit-breaker skip, other), across restarts. Under the chat input, **Memory failed** means a capture or recall failed and **Status unavailable** means DSH could not read the plugin's status; hover or click either to see the cause.
+**Memory activity** records the latest automatic capture and recall; **Recent memories** reads the backend directly, so you can see whether capture actually worked. **Recent failures** keeps the last 20 failures with their cause (timeout, connection, auth or quota, circuit-breaker skip, other) and the component that failed (LLM, embedder, vector store, OSS sidecar, Mem0 API), across restarts. Under the chat input, **Memory failed** means a capture or recall failed and **Status unavailable** means DSH could not read the plugin's status; hover or click either to see the cause.
 
 ![Memory activity and recent memories](/assets/screenshots/en/06-activity.png)
 

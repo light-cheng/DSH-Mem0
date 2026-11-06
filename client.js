@@ -228,6 +228,17 @@ window.__ModuleLoader__.load({
       failureCause_circuit: 'Circuit breaker skip',
       failureCause_other: 'Other error',
       failureRepeated: '{count} times since {since}',
+      failureComponent_llm: 'LLM',
+      failureComponent_embedder: 'Embedder',
+      failureComponent_vector_store: 'Vector store',
+      failureComponent_sidecar: 'OSS sidecar',
+      failureComponent_mem0_api: 'Mem0 API',
+      failureComponent_unknown: 'Unknown component',
+      failureStep_embed: 'embedding',
+      failureStep_search: 'vector search',
+      failureStep_llm_extract: 'fact extraction',
+      failureStep_store: 'storing',
+      failureStepRunning: '{step} still running after {ms} ms',
       dockOpen: 'Open Mem0 settings',
 
       activityAsyncHint: 'Platform extraction runs in the background. Queued memories can take a few seconds before they appear in the list below.',
@@ -473,6 +484,17 @@ window.__ModuleLoader__.load({
       failureCause_circuit: '熔断跳过',
       failureCause_other: '其他错误',
       failureRepeated: '自 {since} 起共 {count} 次',
+      failureComponent_llm: 'LLM',
+      failureComponent_embedder: '向量模型',
+      failureComponent_vector_store: '向量库',
+      failureComponent_sidecar: 'OSS 进程',
+      failureComponent_mem0_api: 'Mem0 API',
+      failureComponent_unknown: '未知组件',
+      failureStep_embed: '向量化',
+      failureStep_search: '向量检索',
+      failureStep_llm_extract: '事实抽取',
+      failureStep_store: '写入',
+      failureStepRunning: '{step}已运行 {ms} ms 仍未完成',
       dockOpen: '打开 Mem0 设置',
 
       activityAsyncHint: 'Platform 的事实抽取在后台进行；显示“后台抽取中”时，稍等几秒再刷新最近记忆。',
@@ -1067,9 +1089,22 @@ window.__ModuleLoader__.load({
     }
 
     /** One-line description of a stored failure: kind · cause · message. */
+    /** "Embedder (ollama @ 127.0.0.1:11434, embedding)" for a stored failure. */
+    function failureComponentLabel(t, failure) {
+      const component = failure?.component || 'unknown'
+      const extra = []
+      if (failure?.provider) extra.push(failure.endpoint ? `${failure.provider} @ ${failure.endpoint}` : failure.provider)
+      if (failure?.step) extra.push(t(`failureStep_${failure.step}`))
+      return `${t(`failureComponent_${component}`)}${extra.length ? ` (${extra.join(', ')})` : ''}`
+    }
+
+    /** One-line description of a stored failure: kind · component · cause · message. */
     function failureSummary(t, failure) {
       if (!failure) return ''
-      const parts = [t(`failureKind_${failure.kind}`), t(`failureCause_${failure.cause}`)]
+      const parts = [t(`failureKind_${failure.kind}`), failureComponentLabel(t, failure), t(`failureCause_${failure.cause}`)]
+      if (Number.isFinite(failure.stepElapsedMs) && failure.step) {
+        parts.push(template(t('failureStepRunning'), { step: t(`failureStep_${failure.step}`), ms: failure.stepElapsedMs }))
+      }
       if (failure.message) parts.push(failure.message)
       return parts.join(' · ')
     }
@@ -1277,6 +1312,9 @@ window.__ModuleLoader__.load({
                 const meta = [activityTime(failure.at), failure.backend]
                 if (Number.isFinite(failure.durationMs)) meta.push(`${failure.durationMs} ms`)
                 if (failure.status) meta.push(`HTTP ${failure.status}`)
+                if (Number.isFinite(failure.stepElapsedMs) && failure.step) {
+                  meta.push(template(t('failureStepRunning'), { step: t(`failureStep_${failure.step}`), ms: failure.stepElapsedMs }))
+                }
                 if (failure.count > 1) {
                   meta.push(template(t('failureRepeated'), { count: failure.count, since: activityTime(failure.firstAt) }))
                 }
@@ -1288,6 +1326,7 @@ window.__ModuleLoader__.load({
                     { className: 'mem0-failure-head' },
                     h('span', { className: 'mem0-chip mem0-state-error' }, t(`failureCause_${failure.cause}`)),
                     h('strong', null, t(`failureKind_${failure.kind}`)),
+                    h('span', { className: 'mem0-chip' }, failureComponentLabel(t, failure)),
                     h('span', { className: 'mem0-activity-meta' }, meta.filter(Boolean).join(' · ')),
                   ),
                   failure.message ? h('p', { className: 'mem0-failure-msg' }, failure.message) : null,

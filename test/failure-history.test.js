@@ -6,7 +6,9 @@ import path from 'node:path'
 import vm from 'node:vm'
 import { spawn } from 'node:child_process'
 import { localServerTest } from './fixtures/local-listen.js'
+import http from 'node:http'
 import {
+  attributeFailure,
   classifyFailure,
   FailureHistory,
   sanitizeFailureMessage,
@@ -16,6 +18,8 @@ import { CircuitBreaker } from '../lib/http.js'
 import { MemoryLifecycle } from '../lib/memory-lifecycle.js'
 import { MemoryMaintenance } from '../lib/memory-maintenance.js'
 import { Mem0RestClient, Mem0RestError } from '../lib/rest-client.js'
+import { Mem0SidecarClient, Mem0SidecarError, attributeRunningStep } from '../lib/sidecar-client.js'
+import { failureAttribution } from '../lib/http.js'
 
 function tempFile() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-failures-'))
@@ -371,6 +375,162 @@ test('maintenance failures record summary vs maintenance kind', async () => {
   )
 })
 
+// --- component attribution ---------------------------------------------------
+
+/** A sidecar 500 as lib/http.js builds it from the body. */
+function sidecarFailure(body, path = '/search') {
+  const error = new Mem0SidecarError(`dsh-mem0: POST ${path} failed: ${body.error}`, {
+    code: 'BACKEND_ERROR',
+    status: 500,
+    path,
+  })
+  return Object.assign(error, failureAttribution(body))
+}
+
+test('OSS hybrid: Ollama cold start is an embedder timeout (step still running)', () => {
+  const error = new Mem0SidecarError('dsh-mem0: POST /search aborted', {
+    code: 'ABORTED',
+    cause: new Error('request timed out after 3000ms'),
+  })
+  Object.assign(
+    error,
+    attributeRunningStep({
+      steps: [
+        { component: 'vector_store', step: 'search', elapsedMs: 10 },
+        { component: 'embedder', step: 'embed', elapsedMs: 2990 },
+      ],
+      components: { embedder: { provider: 'ollama', endpoint: '127.0.0.1:11434' } },
+    }),
+  )
+  assert.equal(classifyFailure(error), 'timeout')
+  assert.deepEqual(attributeFailure(error, { backend: 'oss' }), {
+    component: 'embedder',
+    step: 'embed',
+    provider: 'ollama',
+    endpoint: '127.0.0.1:11434',
+    stepElapsedMs: 2990,
+  })
+  const history = new FailureHistory({ backend: 'oss' })
+  const entry = history.record({ kind: 'recall', error, durationMs: 3001 })
+  assert.equal(entry.component, 'embedder')
+  assert.equal(entry.cause, 'timeout')
+  assert.equal(entry.stepElapsedMs, 2990)
+})
+
+test('OSS hybrid: cloud LLM latency, 429 and 5xx are llm failures', () => {
+  const rateLimited = sidecarFailure(
+    { error: "Error code: 429 - {'error': {'message': 'Rate limit reached'}}", component: 'llm', step: 'llm_extract', provider: 'openai', endpoint: '127.0.0.1:3425' },
+    '/add',
+  )
+  assert.equal(classifyFailure(rateLimited), 'auth')
+  assert.equal(attributeFailure(rateLimited, { backend: 'oss' }).component, 'llm')
+
+  const upstream = sidecarFailure({ error: 'Error code: 503 - upstream unavailable', component: 'llm', step: 'llm_extract' }, '/add')
+  assert.equal(classifyFailure(upstream), 'other')
+  assert.equal(attributeFailure(upstream, { backend: 'oss' }).step, 'llm_extract')
+
+  const slow = sidecarFailure({ error: 'Request timed out.', component: 'llm', step: 'llm_extract' }, '/add')
+  assert.equal(classifyFailure(slow), 'timeout')
+
+  // Our own timeout during extraction (the sidecar still working).
+  const aborted = Object.assign(
+    new Mem0SidecarError('dsh-mem0: POST /add aborted', { code: 'ABORTED', cause: new Error('request timed out after 120000ms') }),
+    attributeRunningStep({ steps: [{ component: 'llm', step: 'llm_extract', elapsedMs: 119_000 }], components: {} }),
+  )
+  assert.equal(classifyFailure(aborted), 'timeout')
+  assert.equal(attributeFailure(aborted, { backend: 'oss' }).component, 'llm')
+})
+
+test('OSS hybrid: Qdrant refused or a missing collection is a vector_store failure', () => {
+  const refused = sidecarFailure({ error: '[Errno 61] Connection refused', component: 'vector_store', step: 'search', provider: 'qdrant', endpoint: '127.0.0.1:6333' })
+  assert.equal(classifyFailure(refused), 'connection')
+  assert.deepEqual(attributeFailure(refused, { backend: 'oss' }), {
+    component: 'vector_store',
+    step: 'search',
+    provider: 'qdrant',
+    endpoint: '127.0.0.1:6333',
+  })
+  const missing = sidecarFailure({ error: "Collection `dsh_mem0` doesn't exist!", component: 'vector_store', step: 'search' })
+  assert.equal(classifyFailure(missing), 'other')
+  assert.equal(attributeFailure(missing, { backend: 'oss' }).component, 'vector_store')
+})
+
+test('attribution without a component tag: hints, sidecar process, Mem0 API', () => {
+  // Older sidecar or a self-hosted server passing its dependency's error through.
+  assert.equal(attributeFailure(new Error('Mem0 POST /search failed: Collection mem0 not found'), { backend: 'server' }).component, 'vector_store')
+  assert.equal(attributeFailure(new Error('could not connect to qdrant at localhost:6333'), { backend: 'server' }).component, 'vector_store')
+  assert.equal(attributeFailure(new Error('dsh-mem0: POST /search failed: HTTPConnectionPool(host=127.0.0.1, port=11434)'), { backend: 'oss' }).component, 'embedder')
+  assert.equal(attributeFailure(new Error('openai.RateLimitError: 429'), { backend: 'oss' }).component, 'llm')
+  // The sidecar process itself.
+  for (const code of ['STARTING', 'START_FAILED', 'SPAWN_FAILED', 'STARTUP_TIMEOUT', 'NETWORK_ERROR']) {
+    assert.equal(attributeFailure(withCode('dsh-mem0: x', code), { backend: 'oss' }).component, 'sidecar', code)
+  }
+  assert.equal(attributeFailure(new Error('dsh-mem0: POST /search aborted'), { backend: 'oss' }).component, 'unknown')
+  // Platform and self-hosted server without hints: the Mem0 API.
+  const unauthorized = new Mem0RestError('Mem0 POST /v3/memories/search/ failed: HTTP 401', { code: 'BACKEND_ERROR', status: 401 })
+  assert.equal(attributeFailure(unauthorized, { backend: 'platform' }).component, 'mem0_api')
+  assert.equal(classifyFailure(unauthorized), 'auth')
+  assert.equal(attributeFailure(withCode('fetch failed', 'NETWORK_ERROR'), { backend: 'server' }).component, 'mem0_api')
+  // A tag that is not a known component is ignored.
+  assert.deepEqual(failureAttribution({ component: 'rm -rf', step: 'x', endpoint: 'a/b?c' }), {})
+})
+
+test('a circuit-breaker skip inherits the component of the failure that opened it', () => {
+  const history = new FailureHistory({ backend: 'oss' })
+  history.record({ kind: 'capture', error: sidecarFailure({ error: 'Connection refused', component: 'vector_store', step: 'store' }, '/add') })
+  const skip = history.record({ kind: 'recall', circuit: true, message: 'skipped: circuit open' })
+  assert.equal(skip.cause, 'circuit')
+  assert.equal(skip.component, 'vector_store')
+  assert.equal(skip.step, 'store')
+})
+
+test('stored entries keep the component across a reload; old entries read as unknown', () => {
+  const file = tempFile()
+  new FailureHistory({ filePath: file, backend: 'oss' }).record({
+    kind: 'recall',
+    error: sidecarFailure({ error: 'refused', component: 'embedder', step: 'embed', provider: 'ollama', endpoint: '127.0.0.1:11434' }),
+  })
+  const [entry] = new FailureHistory({ filePath: file }).list()
+  assert.equal(entry.component, 'embedder')
+  assert.equal(entry.endpoint, '127.0.0.1:11434')
+  fs.writeFileSync(file, JSON.stringify({ entries: [{ at: '2026-11-06T00:00:00Z', kind: 'capture', cause: 'timeout', message: 'old' }] }))
+  assert.equal(new FailureHistory({ filePath: file }).list()[0].component, 'unknown')
+})
+
+localServerTest('sidecar client asks GET /steps which step was running when its timeout fired', async () => {
+  const seen = []
+  const server = http.createServer((req, res) => {
+    seen.push(req.url)
+    if (req.url === '/steps') {
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({
+        steps: [{ component: 'embedder', step: 'embed', elapsedMs: 410 }],
+        components: { embedder: { provider: 'ollama', endpoint: '127.0.0.1:11434' } },
+      }))
+      return
+    }
+    // /search: never answer in time (a cold Ollama model load).
+    setTimeout(() => res.end('{}'), 2_000)
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const client = new Mem0SidecarClient({ pythonPath: 'python3', userId: 'u', agentId: 'dsh', collectionName: 'c', historyDbPath: '/tmp/x.db' })
+    client.ready = true
+    client.child = {}
+    client.port = server.address().port
+    const error = await client.search('tea', { user_id: 'u' }, { timeoutMs: 150 }).catch((value) => value)
+    assert.equal(error.code, 'ABORTED')
+    assert.equal(error.component, 'embedder')
+    assert.equal(error.provider, 'ollama')
+    assert.equal(error.stepElapsedMs, 410)
+    assert.deepEqual(seen, ['/search', '/steps'])
+    assert.equal(classifyFailure(error), 'timeout')
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 // --- status bar --------------------------------------------------------------
 
 function loadClient() {
@@ -398,7 +558,7 @@ test('status bar: a failed status read and a failed memory operation are differe
       enabled: true,
       activity: { capture: { status: 'error', error: 'raw', at: '2026-11-06T01:00:00Z' }, recall: null },
       failures: [
-        { at: '2026-11-06T01:00:00Z', kind: 'capture', cause: 'timeout', backend: 'oss', message: 'Mem0 POST /memories aborted', count: 1 },
+        { at: '2026-11-06T01:00:00Z', kind: 'capture', cause: 'timeout', backend: 'oss', component: 'embedder', step: 'embed', provider: 'ollama', endpoint: '127.0.0.1:11434', message: 'Mem0 POST /memories aborted', count: 1 },
       ],
     }
     const memory = dockView(t, { data })
@@ -409,6 +569,8 @@ test('status bar: a failed status read and a failed memory operation are differe
     const detail = memory.details.join('\n')
     assert.ok(detail.includes(dict.failureKind_capture))
     assert.ok(detail.includes(dict.failureCause_timeout))
+    assert.ok(detail.includes(dict.failureComponent_embedder))
+    assert.ok(detail.includes('ollama @ 127.0.0.1:11434'))
     assert.ok(detail.includes('Mem0 POST /memories aborted'))
 
     const healthy = dockView(t, { data: { enabled: true, activity: { capture: null, recall: null }, failures: data.failures } })
