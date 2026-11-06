@@ -723,7 +723,7 @@ window.__ModuleLoader__.load({
         captureMaxChars: Number(value?.captureMaxChars ?? 450),
         recallTopK: Number(value?.recallTopK ?? 5),
         timeoutMs: Number(value?.timeoutMs ?? 30000),
-        recallTimeoutMs: Number(value?.recallTimeoutMs ?? 3000),
+        recallTimeoutMs: Number(value?.recallTimeoutMs ?? 5000),
         addTimeoutMs: Number(value?.addTimeoutMs ?? 120000),
         captureFilter: value?.captureFilter === 'off' ? 'off' : 'heuristic',
         profileEnabled: value?.profileEnabled !== false,

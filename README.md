@@ -244,6 +244,16 @@ The sidecar does not inherit DSH's whole environment. It gets `PATH`, `HOME`, lo
 
 When the sidecar is still starting (first use, or after it crashed), automatic recall skips that turn instead of waiting and the sidecar keeps starting in the background; tools and capture wait for it (startup is bounded at 15 s).
 
+#### Low-spec machines (CPU-only embeddings)
+
+Measured on a hybrid setup (cloud LLM for extraction, local bge-m3 embeddings, local Qdrant). Extraction runs in the cloud, so the local embedding model is what decides whether recall stays fast.
+
+- **Keep the embedding model loaded.** Ollama unloads a model after 5 idle minutes by default. The first recall after a break then waits for a cold load: about 2.5 s for bge-m3 on an i5-13500H, longer when memory is tight. Set `OLLAMA_KEEP_ALIVE=-1` (never unload) or a long value such as `24h` in the environment of the Ollama service. On Windows, add it as a user environment variable, then quit Ollama from the tray and start it again. bge-m3 needs about 1.2 GB of RAM while loaded.
+- **`recallTimeoutMs`:** the default is 5000. If the model can still be unloaded (no keep-alive, or memory pressure), use 8000. A recall that times out only skips memories for that turn. Until it finishes, though, the sidecar keeps working on it, so the next recall can time out too.
+- **`addTimeoutMs`:** the default 120000 is plenty. With a cloud extraction model, captures took under 10 s in our tests.
+- **Embedding model:** keep bge-m3 if you write in Chinese. Smaller English-centric models (`nomic-embed-text`, `all-minilm`) recall Chinese poorly. Switching models also changes the vector size, so it needs a new `collectionName`, and the old memories stay in the old collection.
+
+
 ### All options
 
 | Field | Default | Description |
@@ -276,7 +286,7 @@ When the sidecar is still starting (first use, or after it crashed), automatic r
 | `translateMemories` | `false` | Translate memory text on the settings page with the DSH default model (sends memory text to that model) |
 | `captureStrataFolds` | `false` | Also save dsh-strata's tier-1 fold summaries (needs `autoCapture` and dsh-strata). A second, cleaner copy of turns already captured; see [dsh-strata](#dsh-strata) |
 | `timeoutMs` | `30000` | Timeout for each backend request on every backend (Platform, server and OSS): tools, listing, hygiene. Writes and automatic recall use the two settings below |
-| `recallTimeoutMs` | `3000` | Timeout for automatic recall, 100–60000; on timeout the turn continues without recalled memories |
+| `recallTimeoutMs` | `5000` | Timeout for automatic recall, 100–60000; on timeout the turn continues without recalled memories |
 | `addTimeoutMs` | `120000` | Timeout for storing memories (capture and `mem0_add`), which may run LLM fact extraction, 1000–600000 |
 | `sidecarEnv` | `[]` | OSS: names of extra environment variables passed to the sidecar, on top of the built-in allowlist |
 | `enabled` | `true` | Master switch |

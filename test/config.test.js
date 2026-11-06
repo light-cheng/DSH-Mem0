@@ -130,7 +130,7 @@ test('memory translation is off unless enabled', () => {
 test('timeouts and sidecar env have defaults and are validated (G2, G3)', () => {
   const defaults = resolveConfig({})
   assert.equal(defaults.timeoutMs, 30000)
-  assert.equal(defaults.recallTimeoutMs, 3000)
+  assert.equal(defaults.recallTimeoutMs, 5000)
   assert.equal(defaults.addTimeoutMs, 120000)
   assert.deepEqual(defaults.sidecarEnv, [])
   const custom = resolveConfig({ recallTimeoutMs: 1500, addTimeoutMs: 60000, sidecarEnv: [' MY_KEY ', 'MY_KEY', 'OTHER'] })

@@ -87,5 +87,30 @@ class TokenTests(unittest.TestCase):
                           "--history-db", "h", "--token", "secret"])
 
 
+class ServerBindTests(unittest.TestCase):
+    def test_bind_skips_reverse_dns(self):
+        # A slow resolver made socket.getfqdn() block for ~35 s on startup.
+        import socket
+
+        original = socket.getfqdn
+
+        def fail(*_args, **_kwargs):
+            raise AssertionError("server_bind must not resolve the host name")
+
+        socket.getfqdn = fail
+        try:
+            try:
+                server = sidecar.DshMem0Server(("127.0.0.1", 0), sidecar.SidecarHandler, object(), "token")
+            except PermissionError:
+                self.skipTest("binding a local port is not allowed here")
+            try:
+                self.assertEqual(server.server_name, "127.0.0.1")
+                self.assertGreater(server.server_port, 0)
+            finally:
+                server.server_close()
+        finally:
+            socket.getfqdn = original
+
+
 if __name__ == "__main__":
     unittest.main()
