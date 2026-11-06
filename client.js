@@ -190,6 +190,7 @@ window.__ModuleLoader__.load({
       activityQueued: 'Queued',
       activitySaving: 'Saving',
       activitySaved: 'Saved',
+      activityNothingNew: 'Nothing new',
       activityExtracting: 'Extracting',
       activitySkipped: 'Skipped',
       activityStarting: 'Sidecar starting',
@@ -246,6 +247,7 @@ window.__ModuleLoader__.load({
       dockCaptureQueued: 'Memory queued',
       dockCaptureExtracting: 'Extracting memory',
       dockCaptureSaved: 'Memory saved',
+      dockCaptureNothingNew: 'Nothing new to remember',
       dockCaptureSkipped: 'Capture skipped',
       dockRecallSearching: 'Recalling memory',
       dockRecallOk: 'Memory recalled',
@@ -295,6 +297,14 @@ window.__ModuleLoader__.load({
       memoryCount: '{count} memories',
       memoryCountFiltered: '{shown} of {total} memories',
       memoryBrowserError: 'Could not read memories',
+      memoryDelete: 'Delete',
+      memoryDeleting: 'Deleting…',
+      memoryDeleteConfirm: 'Permanently delete this memory? This cannot be undone.\n\nID: {id}\n\n{memory}',
+      memoryDeleted: 'Deleted',
+      memoryDeleteError: 'Could not delete the memory',
+      memoryDeleteReason_foreign_source: 'it was written by another app, and only memories written by DSH-Mem0 can be deleted here',
+      memoryDeleteReason_other_user: 'it belongs to another Mem0 user',
+      memoryDeleteReason_not_found: 'it no longer exists',
       recallPreviewTitle: 'Last recalled memories',
       profileSummaryTitle: 'Memory summary',
       profileSummaryHint: 'Editable memory summary, injected before relevant memories during recall.',
@@ -484,6 +494,7 @@ window.__ModuleLoader__.load({
       activityQueued: '排队中',
       activitySaving: '保存中',
       activitySaved: '已保存',
+      activityNothingNew: '无新内容',
       activityExtracting: '后台抽取中',
       activitySkipped: '已跳过',
       activityStarting: 'sidecar 启动中',
@@ -540,6 +551,7 @@ window.__ModuleLoader__.load({
       dockCaptureQueued: '记忆排队中',
       dockCaptureExtracting: '后台抽取中',
       dockCaptureSaved: '已保存记忆',
+      dockCaptureNothingNew: '无新内容可记',
       dockCaptureSkipped: '保存已跳过',
       dockRecallSearching: '召回记忆中',
       dockRecallOk: '已召回记忆',
@@ -589,6 +601,14 @@ window.__ModuleLoader__.load({
       memoryCount: '共 {count} 条记忆',
       memoryCountFiltered: '显示 {shown} / 共 {total} 条',
       memoryBrowserError: '读取记忆失败',
+      memoryDelete: '删除',
+      memoryDeleting: '正在删除…',
+      memoryDeleteConfirm: '永久删除这条记忆吗？删除后无法恢复。\n\nID：{id}\n\n{memory}',
+      memoryDeleted: '已删除',
+      memoryDeleteError: '删除记忆失败',
+      memoryDeleteReason_foreign_source: '这条记忆由其他应用写入，这里只能删除 DSH-Mem0 写入的记忆',
+      memoryDeleteReason_other_user: '这条记忆属于另一个 Mem0 用户',
+      memoryDeleteReason_not_found: '这条记忆已不存在',
       recallPreviewTitle: '上次召回的记忆',
       profileSummaryTitle: '记忆摘要',
       profileSummaryHint: '可编辑的记忆摘要，召回时优先注入。',
@@ -692,6 +712,8 @@ window.__ModuleLoader__.load({
       .mem0-memory:first-child{border-top:0;padding-top:0}
       .mem0-memory-text{font-size:12px;color:var(--dsw-alias-label-primary);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
       .mem0-memory-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
+      .mem0-memory-delete{margin-left:auto;padding:2px 10px;font-size:11px}
+      .mem0-memory-delete:hover:not(:disabled){color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}
       .mem0-section-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
       .mem0-search-row{display:flex;align-items:center;gap:8px;margin:10px 0}
       .mem0-search-row .mem0-input{flex:1;min-width:0}
@@ -827,15 +849,17 @@ window.__ModuleLoader__.load({
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
     async function fetchJson(path, options, attempt = 0) {
+      // `retry: false` (deletes): never resend; a 404 there is an answer.
+      const { retry = true, ...fetchOptions } = options ?? {}
       let response
       try {
         response = await fetch(route(path), {
           credentials: 'same-origin',
-          headers: { accept: 'application/json', ...(options?.headers ?? {}) },
-          ...options,
+          headers: { accept: 'application/json', ...(fetchOptions.headers ?? {}) },
+          ...fetchOptions,
         })
       } catch (error) {
-        if (attempt < 5) {
+        if (retry && attempt < 5) {
           await delay(250)
           return fetchJson(path, options, attempt + 1)
         }
@@ -848,12 +872,13 @@ window.__ModuleLoader__.load({
         payload = null
       }
       if (!response.ok) {
-        if (attempt < 5 && [404, 502, 503].includes(response.status)) {
+        if (retry && attempt < 5 && [404, 502, 503].includes(response.status)) {
           await delay(300)
           return fetchJson(path, options, attempt + 1)
         }
         const error = new Error(payload?.error ?? `HTTP ${response.status}`)
         error.status = response.status
+        if (payload?.reason) error.reason = payload.reason
         throw error
       }
       return payload
@@ -939,11 +964,33 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function activityChip(t, state) {
+    /**
+     * Memories a saved capture actually wrote (add + update + delete), or
+     * null when the backend did not report counts (Platform/server answers
+     * without events): those keep the plain "Saved" badge.
+     */
+    function captureWritten(record) {
+      if (!record || record.status !== 'saved') return null
+      if (record.facts === 0) return 0
+      const keys = ['add', 'update', 'delete']
+      if (!keys.some((key) => Number.isInteger(record[key]))) return null
+      return keys.reduce((sum, key) => sum + (Number.isInteger(record[key]) ? record[key] : 0), 0)
+    }
+
+    /** Badge state for an activity record: a saved capture that wrote nothing is "nothing_new". */
+    function chipState(record) {
+      if (!record) return undefined
+      if (record.status === 'saved' && !record.retry && captureWritten(record) === 0) return 'nothing_new'
+      return record.status
+    }
+
+    /** [dictionary key, class] for a badge state. Pure, for tests. */
+    function activityChipSpec(state) {
       const map = {
         queued: ['activityQueued', 'mem0-state-warn'],
         saving: ['activitySaving', 'mem0-state-warn'],
         saved: ['activitySaved', 'mem0-state-ok'],
+        nothing_new: ['activityNothingNew', ''],
         extracting: ['activityExtracting', 'mem0-state-warn'],
         skipped: ['activitySkipped', ''],
         starting: ['activityStarting', 'mem0-state-warn'],
@@ -951,7 +998,11 @@ window.__ModuleLoader__.load({
         ok: ['activityOk', 'mem0-state-ok'],
         error: ['activityError', 'mem0-state-error'],
       }
-      const [key, className] = map[state] ?? ['activityNever', '']
+      return map[state] ?? ['activityNever', '']
+    }
+
+    function activityChip(t, record) {
+      const [key, className] = activityChipSpec(chipState(record))
       return h('span', { className: ['mem0-chip', className].filter(Boolean).join(' ') }, t(key))
     }
 
@@ -1029,6 +1080,42 @@ window.__ModuleLoader__.load({
       if (record.retry === 'saved') lines.push(t('retrySaved'))
       if (record.retry === 'failed') lines.push(t('retryFailed'))
       return lines
+    }
+
+    const DELETE_REASONS = ['foreign-source', 'other-user', 'not-found']
+
+    function deleteErrorText(t, error) {
+      const reason = DELETE_REASONS.includes(error?.reason)
+        ? t(`memoryDeleteReason_${error.reason.replace(/-/g, '_')}`)
+        : String(error?.message ?? error)
+      return `${t('memoryDeleteError')}: ${reason}`
+    }
+
+    /**
+     * Delete one memory from the library: ask the server for its full text
+     * (which also checks owner and source), show both in a confirmation,
+     * delete only on yes, then reload the list. `request` is fetchJson,
+     * `confirm` window.confirm; injected so tests drive it. Pure otherwise.
+     */
+    async function deleteMemoryFlow({ t, id, request, confirm, reload }) {
+      const path = `${MEMORIES_PATH}?id=${encodeURIComponent(id)}`
+      let info
+      try {
+        info = await request(path, { retry: false })
+      } catch (error) {
+        return { outcome: 'error', message: deleteErrorText(t, error) }
+      }
+      const memory = info?.memory ?? {}
+      if (!confirm(template(t('memoryDeleteConfirm'), { id: memory.id ?? id, memory: memory.memory || '—' }))) {
+        return { outcome: 'cancelled', message: '' }
+      }
+      try {
+        await request(path, { method: 'DELETE', retry: false })
+      } catch (error) {
+        return { outcome: 'error', message: deleteErrorText(t, error) }
+      }
+      await reload?.()
+      return { outcome: 'deleted', message: t('memoryDeleted') }
     }
 
     /** Lines for the OSS sidecar block: process, restarts, last exit, log. */
@@ -1330,13 +1417,18 @@ window.__ModuleLoader__.load({
       }
       const items = []
       if (capture?.status === 'saved' && recent(capture.at)) {
-        items.push({ at: Date.parse(capture.at), label: `${t('dockCaptureSaved')}${capture.count ? ` ${capture.count}` : ''}` })
+        // Wrote nothing: neutral, not the success colour.
+        if (chipState(capture) === 'nothing_new') {
+          items.push({ at: Date.parse(capture.at), state: 'idle', kind: 'idle', label: t('dockCaptureNothingNew') })
+        } else {
+          items.push({ at: Date.parse(capture.at), label: `${t('dockCaptureSaved')}${capture.count ? ` ${capture.count}` : ''}` })
+        }
       }
       if (recall?.status === 'ok' && recent(recall.at)) {
         items.push({ at: Date.parse(recall.at), label: `${t('dockRecallOk')}${recall.count !== undefined ? ` ${recall.count}` : ''}` })
       }
       const latest = items.sort((left, right) => right.at - left.at)[0]
-      if (latest) return { state: 'success', kind: 'ok', label: latest.label, details: null }
+      if (latest) return { state: latest.state ?? 'success', kind: latest.kind ?? 'ok', label: latest.label, details: null }
       if (capture?.status === 'skipped') {
         const label = capture.reason === 'low-value' ? t('dockCaptureSkippedShort') : t('dockCaptureSkipped')
         return { state: 'idle', kind: 'idle', label, details: null }
@@ -1569,6 +1661,7 @@ window.__ModuleLoader__.load({
       const [browserOpen, setBrowserOpen] = useState(false)
       const [memoryQuery, setMemoryQuery] = useState('')
       const [memoryState, setMemoryState] = useState({ phase: 'idle', data: null, message: '' })
+      const [deleteState, setDeleteState] = useState({ id: null, outcome: 'idle', message: '' })
       const [profileDraft, setProfileDraft] = useState(null)
       const [profileEditing, setProfileEditing] = useState(false)
       const [profileState, setProfileState] = useState('idle')
@@ -1641,6 +1734,21 @@ window.__ModuleLoader__.load({
           setMemoryState({ phase: 'error', data: null, message: error.message })
         }
       }, [])
+
+      const deleteMemory = async (id) => {
+        setDeleteState({ id, outcome: 'deleting', message: '' })
+        const result = await deleteMemoryFlow({
+          t,
+          id,
+          request: fetchJson,
+          confirm: (text) => window.confirm(text),
+          reload: async () => {
+            await loadMemories(memoryQuery)
+            void refreshStatus({ translate: false })
+          },
+        })
+        setDeleteState({ id: null, outcome: result.outcome, message: result.message })
+      }
 
       const toggleBrowser = () => {
         if (!browserOpen) void loadMemories(memoryQuery)
@@ -2264,7 +2372,7 @@ window.__ModuleLoader__.load({
                 'div',
                 { className: 'mem0-activity-head' },
                 h('span', { className: 'mem0-activity-title' }, t('activityCapture')),
-                capture ? activityChip(t, capture.status) : null,
+                capture ? activityChip(t, capture) : null,
               ),
               h(
                 'p',
@@ -2282,7 +2390,7 @@ window.__ModuleLoader__.load({
                 'div',
                 { className: 'mem0-activity-head' },
                 h('span', { className: 'mem0-activity-title' }, t('activityRecall')),
-                recall ? activityChip(t, recall.status) : null,
+                recall ? activityChip(t, recall) : null,
               ),
               h(
                 'p',
@@ -2428,6 +2536,13 @@ window.__ModuleLoader__.load({
                   t('memorySearch'),
                 ),
               ),
+              deleteState.message
+                ? h(
+                    'p',
+                    { className: deleteState.outcome === 'error' ? 'mem0-error' : 'mem0-saved', role: 'status' },
+                    deleteState.message,
+                  )
+                : null,
               memoryState.phase === 'loading'
                 ? h('p', { className: 'mem0-hint' }, t('memoryLoading'))
                 : memoryState.phase === 'error'
@@ -2468,6 +2583,21 @@ window.__ModuleLoader__.load({
                                         : null,
                                       typeof memory.score === 'number'
                                         ? h('span', { className: 'mem0-hint' }, `${t('memoryScore')} ${memory.score.toFixed(3)}`)
+                                        : null,
+                                      // Only memories this plugin wrote; the server checks again.
+                                      memory.id && memory.deletable
+                                        ? h(
+                                            'button',
+                                            {
+                                              type: 'button',
+                                              className: 'mem0-secondary mem0-memory-delete',
+                                              disabled: deleteState.outcome === 'deleting',
+                                              onClick: () => void deleteMemory(memory.id),
+                                            },
+                                            deleteState.outcome === 'deleting' && deleteState.id === memory.id
+                                              ? t('memoryDeleting')
+                                              : t('memoryDelete'),
+                                          )
                                         : null,
                                     ),
                                   ),
@@ -2851,6 +2981,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, failureSummary, activityDetails, sidecarLines, formatDuration } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, sidecarLines, formatDuration } }
   },
 })

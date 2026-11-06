@@ -45,9 +45,9 @@ The **Test connection** button calls the same read-only health check as `mem0_st
 
 **Memory summary** is the editable summary injected before relevant memories. It is shown as structured sections; use **Edit summary** to edit it and **Rebuild from memories** to regenerate it from the store. Manual edits survive weekly hygiene.
 
-**Memory activity** records the latest automatic capture and recall results; **Recent memories** reads the backend directly and shows real memory text, ID and time. This makes it clear whether automatic capture actually worked.
+**Memory activity** records the latest automatic capture and recall results; **Recent memories** reads the backend directly and shows real memory text, ID and time. This makes it clear whether automatic capture actually worked. A capture that ran but wrote nothing (no memory added, updated or deleted) shows a grey **Nothing new** badge instead of the green **Saved**, and the composer status says **Nothing new to remember**. Platform and server answers that report no counts keep the **Saved** badge.
 
-**View all memories** opens the **Memory library**, where every memory stored for the current user can be searched by content or ID. **Last recalled memories** shows the texts, IDs, count and latency of the most recent automatic recall:
+**View all memories** opens the **Memory library**, where every memory stored for the current user can be searched by content or ID. Memories this plugin wrote (`metadata.source = "dsh"`) have a **Delete** button. It first shows the memory's full text and ID and asks for confirmation; only then is that one memory deleted, its cached translation dropped and the list reloaded. Memories written by other apps or for another Mem0 user have no button, and the plugin's route (`DELETE /dsh-mem0/gui/memories?id=…`) refuses them with HTTP 403 and the reason. There is no bulk delete, clear-all or delete-by-filter. **Last recalled memories** shows the texts, IDs, count and latency of the most recent automatic recall:
 
 ![Memory library](assets/screenshots/en/10-memory-library.png)
 
