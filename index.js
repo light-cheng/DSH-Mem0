@@ -21,6 +21,7 @@ import { MemoryLocalizer } from './lib/memory-localizer.js'
 import { MemoryMaintenance } from './lib/memory-maintenance.js'
 import { MaintenanceState } from './lib/maintenance-state.js'
 import { FailureHistory } from './lib/failure-history.js'
+import { SidecarLog } from './lib/sidecar-log.js'
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
 
@@ -33,7 +34,7 @@ export const MEM0_GUIDANCE =
   'Use mem0_search for targeted recall, mem0_add to store a lasting fact, mem0_get to read by id, mem0_update to correct a memory, and mem0_delete to forget one. ' +
   'Automatic capture stores completed turns in the configured Mem0 store; do not store secrets, transient chatter, or duplicates.'
 
-function createClient(config, logger, resolveApiKey) {
+function createClient(config, logger, resolveApiKey, sidecarLog) {
   if (config.backend === 'oss') {
     return new Mem0SidecarClient({
       pythonPath: config.pythonPath,
@@ -47,6 +48,7 @@ function createClient(config, logger, resolveApiKey) {
       requestTimeoutMs: config.timeoutMs,
       addTimeoutMs: config.addTimeoutMs,
       extraEnv: config.sidecarEnv,
+      log: sidecarLog,
       logger,
     })
   }
@@ -85,13 +87,22 @@ export async function apply(ctx, rawConfig) {
   // Recent failures survive restarts and later successes (failures.json,
   // next to maintenance.json). Loaded before the enabled check so the page
   // still shows why memory failed after it was switched off.
+  //
+  // Derived files live only in the profile directory. Without one they stay
+  // in memory: the old fallback, the folder of historyDbPath, is the shared
+  // `~/.dsh/mem0`, where every profile (and every test run) would write the
+  // same file.
+  const dataDir = profileDir ? path.join(profileDir, 'dsh-mem0') : undefined
+  if (!dataDir) logger?.debug?.('dsh-mem0: no profile directory; failure history, maintenance state and sidecar.log stay in memory')
   const failures = new FailureHistory({
-    filePath: profileDir
-      ? path.join(profileDir, 'dsh-mem0', 'failures.json')
-      : path.join(path.dirname(config.historyDbPath), 'failures.json'),
+    filePath: dataDir ? path.join(dataDir, 'failures.json') : undefined,
     backend: config.backend,
     logger,
   })
+  // The OSS sidecar's stderr and start/exit events, redacted (sidecar.log).
+  const sidecarLog = config.backend === 'oss'
+    ? new SidecarLog({ filePath: dataDir ? path.join(dataDir, 'sidecar.log') : undefined, logger })
+    : undefined
   const runtime = {
     config,
     failures,
@@ -101,6 +112,7 @@ export async function apply(ctx, rawConfig) {
     maintenance: undefined,
     localizer,
     activity,
+    sidecarLog,
   }
   ctx.inject?.(['llm', 'agentDefaultModel'], (sub) => localizer.setServices(sub))
 
@@ -137,14 +149,9 @@ export async function apply(ctx, rawConfig) {
     config.apiKeySource === 'config'
       ? undefined
       : async () => (await lookupApiKey(ctx, rawConfig, { logger }))?.value ?? process.env[config.apiKeyEnv]
-  const client = createClient(config, logger, resolveApiKey)
+  const client = createClient(config, logger, resolveApiKey, sidecarLog)
   const breaker = new CircuitBreaker()
-  const maintenanceState = new MaintenanceState(
-    profileDir
-      ? path.join(profileDir, 'dsh-mem0', 'maintenance.json')
-      : path.join(path.dirname(config.historyDbPath), 'maintenance.json'),
-    logger,
-  )
+  const maintenanceState = new MaintenanceState(dataDir ? path.join(dataDir, 'maintenance.json') : undefined, logger)
   const maintenance = new MemoryMaintenance({
     client,
     config,

@@ -14,6 +14,7 @@ window.__ModuleLoader__.load({
     const STATUS_PATH = 'dsh-mem0/gui/status'
     const TEST_PATH = 'dsh-mem0/gui/test'
     const ACTIVITY_PATH = 'dsh-mem0/gui/activity'
+    const SIDECAR_LOG_PATH = 'dsh-mem0/gui/sidecar-log'
     const HYGIENE_PATH = 'dsh-mem0/gui/hygiene'
     const MEMORIES_PATH = 'dsh-mem0/gui/memories'
     const PROFILE_PATH = 'dsh-mem0/gui/profile'
@@ -191,6 +192,44 @@ window.__ModuleLoader__.load({
       activitySaved: 'Saved',
       activityExtracting: 'Extracting',
       activitySkipped: 'Skipped',
+      activityStarting: 'Sidecar starting',
+      skipReason_low_value: 'Too short or not worth remembering (capture filter)',
+      skipReason_empty: 'Nothing left to save after redaction',
+      skipReason_queue_full: 'Capture queue full (3 waiting)',
+      skipReason_budget: 'No recall budget left this turn (dsh-strata)',
+      skipReason_circuit_open: 'Paused after repeated failures (circuit breaker)',
+      circuitRemaining: 'resumes in {time}',
+      circuitTrippedBy: 'Tripped by: {kind} · {component} · {message} ({at})',
+      captureFacts: 'Extracted {facts}: added {add}, updated {update}, already known {none}',
+      captureFactsDeleted: ', deleted {delete}',
+      captureNoFacts: 'No new facts extracted (nothing worth keeping, or already known)',
+      captureEvents: 'added {add}, updated {update}, deleted {delete}',
+      retryPending: 'Not delivered (sidecar gone); retrying once',
+      retrySaved: 'Saved after one retry',
+      retryFailed: 'Retry failed too',
+      dockCircuitOpen: 'Memory paused',
+      dockCaptureSkippedShort: 'Capture skipped (too short)',
+      sidecarTitle: 'OSS sidecar',
+      sidecarRunning: 'Running · PID {pid}',
+      sidecarLauncher: 'launcher PID {pid}',
+      sidecarStopped: 'Not running (starts with the next memory call)',
+      sidecarStartingNow: 'Starting…',
+      sidecarStartedAt: 'started {at}',
+      sidecarRestarts: '{count} restarts',
+      sidecarLastExit: 'Last exit: {how} after {uptime} while {phase} ({at})',
+      sidecarExitCode: 'code {code}',
+      sidecarExitSignal: 'signal {signal}',
+      sidecarPhase_running: 'running',
+      sidecarPhase_startup: 'starting',
+      sidecarStoppedBy_dispose: 'stopped by the plugin',
+      sidecarStoppedBy_startup_timeout: 'killed: startup timeout',
+      sidecarLog: 'Log: {path}',
+      sidecarLogMemory: 'Log: in memory only (no profile directory)',
+      sidecarCopyLog: 'Copy last 50 log lines',
+      sidecarCopied: 'Copied {count} lines',
+      sidecarCopyFailed: 'Could not copy: {error}',
+      failureExit: 'sidecar exit {how}, up {uptime}',
+      failureRetryFailed: 'retry failed',
       activitySearching: 'Searching',
       activityOk: 'Recalled',
       activityError: 'Failed',
@@ -447,6 +486,44 @@ window.__ModuleLoader__.load({
       activitySaved: '已保存',
       activityExtracting: '后台抽取中',
       activitySkipped: '已跳过',
+      activityStarting: 'sidecar 启动中',
+      skipReason_low_value: '内容太短或不值得记（保存过滤）',
+      skipReason_empty: '脱敏后没有可保存的内容',
+      skipReason_queue_full: '保存队列已满（已有 3 条在等）',
+      skipReason_budget: '本轮召回预算为 0（dsh-strata）',
+      skipReason_circuit_open: '连续失败后暂停（熔断中）',
+      circuitRemaining: '{time} 后恢复',
+      circuitTrippedBy: '触发熔断的失败：{kind} · {component} · {message}（{at}）',
+      captureFacts: '抽取 {facts} 条：新增 {add}，更新 {update}，已存在 {none}',
+      captureFactsDeleted: '，删除 {delete}',
+      captureNoFacts: '没有抽取到新内容（不值得记，或已经记过）',
+      captureEvents: '新增 {add}，更新 {update}，删除 {delete}',
+      retryPending: '未送达（sidecar 已退出），正在重试一次',
+      retrySaved: '重试后已保存',
+      retryFailed: '重试仍失败',
+      dockCircuitOpen: '记忆已暂停',
+      dockCaptureSkippedShort: '保存已跳过（内容太短）',
+      sidecarTitle: 'OSS sidecar',
+      sidecarRunning: '运行中 · PID {pid}',
+      sidecarLauncher: '启动器 PID {pid}',
+      sidecarStopped: '未运行（下次读写记忆时启动）',
+      sidecarStartingNow: '启动中…',
+      sidecarStartedAt: '启动于 {at}',
+      sidecarRestarts: '重启 {count} 次',
+      sidecarLastExit: '最近一次退出：{how}，运行 {uptime}，退出时处于{phase}（{at}）',
+      sidecarExitCode: '退出码 {code}',
+      sidecarExitSignal: '信号 {signal}',
+      sidecarPhase_running: '运行阶段',
+      sidecarPhase_startup: '启动阶段',
+      sidecarStoppedBy_dispose: '由插件停止',
+      sidecarStoppedBy_startup_timeout: '启动超时被结束',
+      sidecarLog: '日志：{path}',
+      sidecarLogMemory: '日志：仅在内存中（没有 profile 目录）',
+      sidecarCopyLog: '复制最近 50 行日志',
+      sidecarCopied: '已复制 {count} 行',
+      sidecarCopyFailed: '复制失败：{error}',
+      failureExit: 'sidecar 退出（{how}），运行了 {uptime}',
+      failureRetryFailed: '重试仍失败',
       activitySearching: '召回中',
       activityOk: '已召回',
       activityError: '失败',
@@ -869,6 +946,7 @@ window.__ModuleLoader__.load({
         saved: ['activitySaved', 'mem0-state-ok'],
         extracting: ['activityExtracting', 'mem0-state-warn'],
         skipped: ['activitySkipped', ''],
+        starting: ['activityStarting', 'mem0-state-warn'],
         searching: ['activitySearching', 'mem0-state-warn'],
         ok: ['activityOk', 'mem0-state-ok'],
         error: ['activityError', 'mem0-state-error'],
@@ -886,6 +964,99 @@ window.__ModuleLoader__.load({
 
     function template(text, values) {
       return String(text).replace(/\{(\w+)\}/g, (_, key) => String(values?.[key] ?? ''))
+    }
+
+    /** 950 ms → "950 ms", 75 s → "1 min 15 s", 3 h → "3 h 0 min". */
+    function formatDuration(ms) {
+      const value = Math.max(0, Math.round(Number(ms) || 0))
+      if (value < 1000) return `${value} ms`
+      const seconds = Math.round(value / 1000)
+      if (seconds < 60) return `${seconds} s`
+      const minutes = Math.floor(seconds / 60)
+      if (minutes < 60) return `${minutes} min ${seconds % 60} s`
+      return `${Math.floor(minutes / 60)} h ${minutes % 60} min`
+    }
+
+    /** "code 1" / "signal SIGKILL" for a sidecar exit or stored failure. */
+    function exitHow(t, exit) {
+      if (exit?.signal) return template(t('sidecarExitSignal'), { signal: exit.signal })
+      return template(t('sidecarExitCode'), { code: exit?.exitCode ?? exit?.code ?? '?' })
+    }
+
+    /**
+     * Lines explaining a capture/recall activity record beyond its chip: why
+     * it was skipped (circuit: time left and the failure that tripped it),
+     * what /add extracted, and the retry outcome. Pure, for tests.
+     */
+    function activityDetails(t, record, now = Date.now()) {
+      const lines = []
+      if (!record) return lines
+      if (record.status === 'skipped' && record.reason) {
+        let line = t(`skipReason_${String(record.reason).replace(/-/g, '_')}`)
+        if (record.reason === 'circuit-open') {
+          const left = Date.parse(record.circuitUntil) - now
+          if (Number.isFinite(left) && left > 0) line += ` · ${template(t('circuitRemaining'), { time: formatDuration(left) })}`
+        }
+        lines.push(line)
+        const trip = record.trippedBy
+        if (record.reason === 'circuit-open' && trip) {
+          lines.push(template(t('circuitTrippedBy'), {
+            kind: trip.kind ? t(`failureKind_${trip.kind}`) : '?',
+            component: t(`failureComponent_${trip.component || 'unknown'}`),
+            message: trip.message || '—',
+            at: activityTime(trip.at),
+          }))
+        }
+      }
+      if (record.status === 'saved') {
+        if (Number.isInteger(record.facts)) {
+          if (record.facts === 0) lines.push(t('captureNoFacts'))
+          else {
+            let line = template(t('captureFacts'), {
+              facts: record.facts,
+              add: record.add ?? 0,
+              update: record.update ?? 0,
+              none: record.none ?? 0,
+            })
+            if (record.delete > 0) line += template(t('captureFactsDeleted'), { delete: record.delete })
+            lines.push(line)
+          }
+        } else if (Number.isInteger(record.add)) {
+          lines.push(template(t('captureEvents'), { add: record.add, update: record.update ?? 0, delete: record.delete ?? 0 }))
+        }
+      }
+      if (record.retry === 'pending') lines.push(t('retryPending'))
+      if (record.retry === 'saved') lines.push(t('retrySaved'))
+      if (record.retry === 'failed') lines.push(t('retryFailed'))
+      return lines
+    }
+
+    /** Lines for the OSS sidecar block: process, restarts, last exit, log. */
+    function sidecarLines(t, sidecar) {
+      if (!sidecar) return []
+      const lines = []
+      if (sidecar.running && sidecar.pid) {
+        const parts = [template(t('sidecarRunning'), { pid: sidecar.pid })]
+        if (sidecar.launcherPid) parts.push(template(t('sidecarLauncher'), { pid: sidecar.launcherPid }))
+        if (sidecar.startedAt) parts.push(template(t('sidecarStartedAt'), { at: activityTime(sidecar.startedAt) }))
+        lines.push(parts.join(' · '))
+      } else {
+        lines.push(sidecar.starting ? t('sidecarStartingNow') : t('sidecarStopped'))
+      }
+      if (sidecar.restarts > 0) lines.push(template(t('sidecarRestarts'), { count: sidecar.restarts }))
+      const exit = sidecar.lastExit
+      if (exit) {
+        let line = template(t('sidecarLastExit'), {
+          how: exitHow(t, exit),
+          uptime: formatDuration(exit.uptimeMs),
+          phase: t(`sidecarPhase_${exit.phase === 'startup' ? 'startup' : 'running'}`),
+          at: activityTime(exit.at),
+        })
+        if (exit.stoppedBy) line += ` · ${t(`sidecarStoppedBy_${String(exit.stoppedBy).replace(/-/g, '_')}`)}`
+        lines.push(line)
+      }
+      lines.push(sidecar.logPath ? template(t('sidecarLog'), { path: sidecar.logPath }) : t('sidecarLogMemory'))
+      return lines
     }
 
     function formatHygieneReport(t, report) {
@@ -1105,6 +1276,10 @@ window.__ModuleLoader__.load({
       if (Number.isFinite(failure.stepElapsedMs) && failure.step) {
         parts.push(template(t('failureStepRunning'), { step: t(`failureStep_${failure.step}`), ms: failure.stepElapsedMs }))
       }
+      if (Number.isInteger(failure.exitCode) || failure.signal) {
+        parts.push(template(t('failureExit'), { how: exitHow(t, failure), uptime: formatDuration(failure.uptimeMs) }))
+      }
+      if (failure.retry === 'failed') parts.push(t('failureRetryFailed'))
       if (failure.message) parts.push(failure.message)
       return parts.join(' · ')
     }
@@ -1144,6 +1319,11 @@ window.__ModuleLoader__.load({
         return { state: 'error', kind: 'memory', label: t('dockError'), details }
       }
       if (recall?.status === 'searching') return { state: 'active', kind: 'busy', label: t('dockRecallSearching'), details: null }
+      // Paused by the breaker is not "skipped because short": say which.
+      const paused = [capture, recall].find(
+        (record) => record?.status === 'skipped' && record.reason === 'circuit-open' && Date.parse(record.circuitUntil) > now,
+      )
+      if (paused) return { state: 'error', kind: 'circuit', label: t('dockCircuitOpen'), details: activityDetails(t, paused, now) }
       const recent = (at) => {
         const value = Date.parse(at)
         return Number.isFinite(value) && now - value < 10 * 60 * 1000
@@ -1157,7 +1337,10 @@ window.__ModuleLoader__.load({
       }
       const latest = items.sort((left, right) => right.at - left.at)[0]
       if (latest) return { state: 'success', kind: 'ok', label: latest.label, details: null }
-      if (capture?.status === 'skipped') return { state: 'idle', kind: 'idle', label: t('dockCaptureSkipped'), details: null }
+      if (capture?.status === 'skipped') {
+        const label = capture.reason === 'low-value' ? t('dockCaptureSkippedShort') : t('dockCaptureSkipped')
+        return { state: 'idle', kind: 'idle', label, details: null }
+      }
       return { state: 'idle', kind: 'idle', label: t('dockIdle'), details: null }
     }
 
@@ -1296,6 +1479,33 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** OSS sidecar process, restarts, last exit and its log (activity card). */
+    function SidecarStatus({ t, sidecar }) {
+      const [copyState, setCopyState] = useState('')
+      const copy = async () => {
+        try {
+          const data = await fetchJson(`${SIDECAR_LOG_PATH}?lines=50`)
+          const lines = Array.isArray(data?.lines) ? data.lines : []
+          await navigator.clipboard.writeText(lines.join('\n'))
+          setCopyState(template(t('sidecarCopied'), { count: lines.length }))
+        } catch (error) {
+          setCopyState(template(t('sidecarCopyFailed'), { error: error?.message ?? String(error) }))
+        }
+      }
+      return h(
+        'div',
+        { className: 'mem0-failures-block' },
+        h('div', { className: 'mem0-activity-head', style: { marginTop: '12px' } }, h('span', { className: 'mem0-activity-title' }, t('sidecarTitle'))),
+        ...sidecarLines(t, sidecar).map((line, index) => h('p', { className: 'mem0-activity-meta', key: `s${index}` }, line)),
+        h(
+          'div',
+          { style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' } },
+          h('button', { type: 'button', className: 'mem0-secondary', onClick: copy }, t('sidecarCopyLog')),
+          copyState ? h('span', { className: 'mem0-hint' }, copyState) : null,
+        ),
+      )
+    }
+
     /** "Recent failures" in the activity card (stored history, newest first). */
     function FailureList({ t, failures }) {
       const list = Array.isArray(failures) ? failures : []
@@ -1318,6 +1528,10 @@ window.__ModuleLoader__.load({
                 if (failure.count > 1) {
                   meta.push(template(t('failureRepeated'), { count: failure.count, since: activityTime(failure.firstAt) }))
                 }
+                if (Number.isInteger(failure.exitCode) || failure.signal) {
+                  meta.push(template(t('failureExit'), { how: exitHow(t, failure), uptime: formatDuration(failure.uptimeMs) }))
+                }
+                if (failure.retry === 'failed') meta.push(t('failureRetryFailed'))
                 return h(
                   'div',
                   { className: 'mem0-failure', key: `${failure.at}-${index}` },
@@ -2058,6 +2272,7 @@ window.__ModuleLoader__.load({
                 capture ? t('activityCapture') : t('activityNever'),
               ),
               capture?.error ? h('p', { className: 'mem0-error' }, capture.error) : null,
+              ...activityDetails(t, capture).map((line, index) => h('p', { className: 'mem0-activity-meta', key: `cd${index}` }, line)),
               captureMeta.length > 0 ? h('p', { className: 'mem0-activity-meta' }, captureMeta.join(' · ')) : null,
             ),
             h(
@@ -2075,6 +2290,7 @@ window.__ModuleLoader__.load({
                 recall ? t('activityRecall') : t('activityNever'),
               ),
               recall?.error ? h('p', { className: 'mem0-error' }, recall.error) : null,
+              ...activityDetails(t, recall).map((line, index) => h('p', { className: 'mem0-activity-meta', key: `rd${index}` }, line)),
               recall?.query ? h('p', { className: 'mem0-activity-meta' }, recall.query) : null,
               recallMeta.length > 0 ? h('p', { className: 'mem0-activity-meta' }, recallMeta.join(' · ')) : null,
               recall?.preview?.length
@@ -2106,6 +2322,7 @@ window.__ModuleLoader__.load({
                 recentMemories.length > 0 ? t('activityScopeHint') : t('activityEmpty'),
               )
             : null,
+          data?.sidecar ? h(SidecarStatus, { t, sidecar: data.sidecar }) : null,
           h(FailureList, { t, failures: data?.failures }),
         ),
         h(
@@ -2634,6 +2851,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, failureSummary } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, failureSummary, activityDetails, sidecarLines, formatDuration } }
   },
 })

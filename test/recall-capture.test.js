@@ -565,3 +565,189 @@ test('claimed non-user input does not become the recall query', async () => {
   assert.deepEqual(result, base)
   assert.equal(client.calls.length, 0)
 })
+
+// ---- Activity replaces instead of merging; skip reasons; retry; /add counts ----
+
+import { CircuitBreaker } from '../lib/http.js'
+import { FailureHistory } from '../lib/failure-history.js'
+import { summarizeAddResult } from '../lib/memory-lifecycle.js'
+
+const DURABLE_TURN = [
+  'Please remember: I always write release notes in English and Chinese, every single time.',
+  'Noted. I will write release notes in both English and Chinese from now on.',
+]
+
+function completeTurn(engine, session, [user, assistant] = DURABLE_TURN) {
+  engine.onSessionEvent(session, { type: 'turn/start', data: { turn: 1 } })
+  engine.onSessionEvent(session, { type: 'user/message', data: { ...userMessage(user) } })
+  engine.onSessionEvent(session, {
+    type: 'assistant/message',
+    data: { message: { role: 'assistant', content: [{ type: 'text', text: assistant } ] } },
+  })
+  engine.onSessionEvent(session, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
+
+function engineWith(client, { breaker, failures, activity = { recall: null, capture: null }, overrides = {} } = {}) {
+  return new MemoryLifecycle({
+    client,
+    config: config({ captureFilter: 'heuristic', ...overrides }),
+    logger: { debug() {}, warn() {} },
+    breaker: breaker ?? new CircuitBreaker(),
+    activity,
+    failures,
+  })
+}
+
+function refused() {
+  return Object.assign(new Error('dsh-mem0: POST /add failed: fetch failed'), { code: 'NETWORK_ERROR', delivered: false })
+}
+
+test('a later skipped capture does not carry the previous error (records replace, not merge)', async () => {
+  const activity = { recall: null, capture: null }
+  const engine = engineWith(fakeClient({ async add() { throw new Error('dsh-mem0: POST /add failed: fetch failed') } }), { activity })
+  const session = fakeSession()
+  completeTurn(engine, session)
+  await settle()
+  assert.equal(activity.capture.status, 'error')
+  assert.match(activity.capture.error, /fetch failed/)
+  completeTurn(engine, session, ['ok', 'thanks'])
+  await settle()
+  assert.equal(activity.capture.status, 'skipped')
+  assert.equal(activity.capture.reason, 'low-value')
+  assert.equal('error' in activity.capture, false)
+})
+
+test('a later successful recall does not carry the previous error', async () => {
+  const activity = { recall: null, capture: null }
+  let fail = true
+  const engine = engineWith(fakeClient({
+    async search() {
+      if (fail) throw new Error('dsh-mem0: POST /search aborted')
+      return { results: [] }
+    },
+  }), { activity })
+  await engine.onSystemPromptAssemble(assembly(), { agent: { session: fakeSession({ messages: [userMessage('first?')] }) } }, async () => assembly())
+  assert.equal(activity.recall.status, 'error')
+  fail = false
+  await engine.onSystemPromptAssemble(assembly(), { agent: { session: fakeSession({ messages: [userMessage('second?')] }) } }, async () => assembly())
+  assert.equal(activity.recall.status, 'ok')
+  assert.equal('error' in activity.recall, false)
+})
+
+test('circuit-open skips say when the breaker closes and which failure opened it', async () => {
+  let now = 1_000_000
+  const breaker = new CircuitBreaker({ threshold: 1, cooldownMs: 120_000, now: () => now })
+  const failures = new FailureHistory({ backend: 'oss' })
+  const activity = { recall: null, capture: null }
+  const engine = engineWith(fakeClient({
+    async add() {
+      throw Object.assign(new Error('dsh-mem0: POST /add failed: Error code: 502'), { status: 500, component: 'embedder', step: 'embed' })
+    },
+  }), { breaker, failures, activity })
+  const session = fakeSession()
+  completeTurn(engine, session)
+  await settle()
+  assert.equal(breaker.isOpen(), true)
+  completeTurn(engine, session)
+  await settle()
+  assert.equal(activity.capture.status, 'skipped')
+  assert.equal(activity.capture.reason, 'circuit-open')
+  assert.equal(activity.capture.circuitUntil, new Date(1_000_000 + 120_000).toISOString())
+  assert.equal(activity.capture.trippedBy.kind, 'capture')
+  assert.equal(activity.capture.trippedBy.component, 'embedder')
+  assert.match(activity.capture.trippedBy.message, /502/)
+  assert.equal('error' in activity.capture, false)
+  // Recall is skipped too, with the same explanation.
+  await engine.onSystemPromptAssemble(assembly(), { agent: { session: fakeSession({ messages: [userMessage('q?')] }) } }, async () => assembly())
+  assert.equal(activity.recall.status, 'skipped')
+  assert.equal(activity.recall.reason, 'circuit-open')
+  assert.equal(activity.recall.trippedBy.component, 'embedder')
+})
+
+test('an undelivered capture (connection refused) is retried once and saved', async () => {
+  const failures = new FailureHistory({ backend: 'oss' })
+  const activity = { recall: null, capture: null }
+  let calls = 0
+  const breaker = new CircuitBreaker({ threshold: 2 })
+  const engine = engineWith(fakeClient({
+    async add() {
+      calls += 1
+      if (calls === 1) throw refused()
+      return { results: [{ id: 'n1', memory: 'x', event: 'ADD' }], summary: { facts: 1, add: 1, update: 0, delete: 0, none: 0 } }
+    },
+  }), { failures, activity, breaker })
+  completeTurn(engine, fakeSession())
+  await settle()
+  assert.equal(calls, 2)
+  assert.equal(activity.capture.status, 'saved')
+  assert.equal(activity.capture.retry, 'saved')
+  assert.equal(activity.capture.facts, 1)
+  assert.equal(activity.capture.add, 1)
+  // The first failure is kept (it explains the restart), and the breaker
+  // does not count a capture that was saved in the end.
+  assert.equal(failures.list().length, 1)
+  assert.equal(breaker.failures, 0)
+})
+
+test('a capture whose retry fails too is reported as "retry failed"', async () => {
+  const failures = new FailureHistory({ backend: 'oss' })
+  const activity = { recall: null, capture: null }
+  let calls = 0
+  const engine = engineWith(fakeClient({
+    async add() {
+      calls += 1
+      throw refused()
+    },
+  }), { failures, activity })
+  completeTurn(engine, fakeSession())
+  await settle()
+  assert.equal(calls, 2)
+  assert.equal(activity.capture.status, 'error')
+  assert.equal(activity.capture.retry, 'failed')
+  assert.equal(failures.latest().retry, 'failed')
+})
+
+test('a capture that may have been delivered (reset, abort, timeout) is never retried', async () => {
+  for (const error of [
+    Object.assign(new Error('dsh-mem0: POST /add failed: fetch failed'), { code: 'NETWORK_ERROR' }), // reset: delivery unknown
+    Object.assign(new Error('dsh-mem0: POST /add aborted'), { code: 'ABORTED' }),
+    Object.assign(new Error('dsh-mem0: POST /add failed: boom'), { code: 'BACKEND_ERROR', status: 500 }),
+  ]) {
+    const activity = { recall: null, capture: null }
+    let calls = 0
+    const engine = engineWith(fakeClient({
+      async add() {
+        calls += 1
+        throw error
+      },
+    }), { activity })
+    completeTurn(engine, fakeSession())
+    await settle()
+    assert.equal(calls, 1, error.message)
+    assert.equal(activity.capture.status, 'error')
+    assert.equal('retry' in activity.capture, false)
+  }
+})
+
+test('saved captures tell "already known" from "nothing extracted"', async () => {
+  for (const [summary, expected] of [
+    [{ facts: 1, add: 0, update: 0, delete: 0, none: 1 }, { facts: 1, none: 1, add: 0 }],
+    [{ facts: 0, add: 0, update: 0, delete: 0, none: 0 }, { facts: 0 }],
+  ]) {
+    const activity = { recall: null, capture: null }
+    const engine = engineWith(fakeClient({ async add() { return { results: [], summary } } }), { activity })
+    completeTurn(engine, fakeSession())
+    await settle()
+    assert.equal(activity.capture.status, 'saved')
+    for (const [key, value] of Object.entries(expected)) assert.equal(activity.capture[key], value, key)
+  }
+})
+
+test('summarizeAddResult: sidecar summary, Platform/server events, nothing known', () => {
+  assert.deepEqual(summarizeAddResult({ results: [], summary: { facts: 2, add: 1, update: 0, delete: 0, none: 1 } }), { facts: 2, add: 1, update: 0, delete: 0, none: 1 })
+  assert.deepEqual(summarizeAddResult({ results: [{ event: 'ADD' }, { event: 'UPDATE' }] }), { add: 1, update: 1, delete: 0 })
+  assert.deepEqual(summarizeAddResult({ results: [{ id: 'x' }] }), {})
+  assert.deepEqual(summarizeAddResult({ queued: true }), {})
+})

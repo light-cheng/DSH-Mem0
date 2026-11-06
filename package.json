@@ -32,7 +32,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test",
+    "test": "node --import ./test/fixtures/isolate-home.mjs --test",
     "check": "node scripts/check-syntax.mjs",
     "smoke": "node scripts/smoke-sidecar.mjs"
   },
