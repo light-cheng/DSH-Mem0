@@ -21,6 +21,8 @@
 //                     {"mode":"drop"}            destroy the socket without answering (connection reset)
 //                     optional "paths": ["/search"] limits the fault to those paths
 //   GET  /__fault     the current fault
+//   POST /__seed      add one memory as given, e.g. another app's or another user's:
+//                     {"memory":"…","user_id":"…","metadata":{"source":"other-app"}}
 // MOCK_MEM0_FAULT may set the startup fault as the same JSON.
 // MOCK_MEM0_PORT=0 picks a free port; the listen line prints the real one.
 import http from 'node:http'
@@ -115,6 +117,26 @@ const server = http.createServer(async (req, res) => {
     reset()
     fault = { mode: 'none' }
     return json(res, 200, { ok: true })
+  }
+  if (url.pathname === '/__seed' && req.method === 'POST') {
+    let seed
+    try {
+      seed = raw ? JSON.parse(raw) : {}
+    } catch {
+      return json(res, 400, { detail: 'invalid json' })
+    }
+    const id = String(seed.id ?? randomUUID())
+    const at = new Date().toISOString()
+    store.set(id, {
+      id,
+      memory: String(seed.memory ?? ''),
+      user_id: seed.user_id ?? USER,
+      agent_id: seed.agent_id ?? 'dsh',
+      metadata: seed.metadata ?? {},
+      created_at: at,
+      updated_at: at,
+    })
+    return json(res, 200, { id })
   }
   if (url.pathname === '/__fault') {
     if (req.method === 'POST') {

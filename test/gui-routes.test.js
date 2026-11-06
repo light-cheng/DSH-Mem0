@@ -387,7 +387,7 @@ test('memories route lists, filters and sanitizes the memory library', async () 
   assert.deepEqual(activity.body.activity.recall.preview, [{ id: 'm1', memory: 'Likes tea' }])
   const rejected = await invoke(routes.get(GUI_MEMORIES_PATH), 'POST')
   assert.equal(rejected.status, 405)
-  assert.equal(rejected.headers.allow, 'GET')
+  assert.equal(rejected.headers.allow, 'GET, DELETE')
 })
 
 test('profile route saves and resets editable long-term memory', async () => {
