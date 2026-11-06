@@ -22,6 +22,8 @@
     "screenshots.json",
     "cordis.patch.yml",
     "locale/*.json",
+    "docs/plugin-page.en.md",
+    "docs/plugin-page.zh-CN.md",
     "icon.svg",
     "README.md",
     "README.zh-CN.md",

@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Mem0 Memory",
-    "description": "Long-term Mem0 memory for DSH: Platform, self-hosted server or local OSS, with automatic recall, automatic capture and memory tools."
+    "description": "Long-term Mem0 memory for DSH: Platform, self-hosted server or local OSS, with automatic recall, automatic capture and memory tools.",
+    "detail": "docs/plugin-page.en.md"
   }
 }
