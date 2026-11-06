@@ -174,6 +174,9 @@ When `mem0ConfigPath` or `pythonPath` is not set, the plugin looks in `~/.dsh/me
 
 While the sidecar is starting (first use, or after a crash), automatic recall skips that turn instead of waiting; tools and capture wait for it (up to 15 s).
 
+**Low-spec machines (CPU-only embeddings).** Keep the embedding model loaded: set `OLLAMA_KEEP_ALIVE=-1` (or e.g. `24h`) for the Ollama service. Otherwise the first recall after 5 idle minutes waits for a cold load (about 2.5 s for bge-m3 on an i5-13500H, longer under memory pressure). If the model can still be unloaded, raise `recallTimeoutMs` to 8000. `addTimeoutMs` 120000 is plenty with a cloud extraction model. Keep bge-m3 for Chinese; switching embedding models changes the vector size and needs a new `collectionName`.
+
+
 ### All options
 
 | Field | Default | Description |
@@ -206,7 +209,7 @@ While the sidecar is starting (first use, or after a crash), automatic recall sk
 | `translateMemories` | `false` | Translate memory text on the settings page with the DSH default model (sends memory text to that model) |
 | `captureStrataFolds` | `false` | Also save dsh-strata's tier-1 fold summaries (needs `autoCapture` and dsh-strata) |
 | `timeoutMs` | `30000` | Timeout for each backend request (tools, listing, hygiene) |
-| `recallTimeoutMs` | `3000` | Timeout for automatic recall, 100–60000; on timeout the turn continues without recalled memories |
+| `recallTimeoutMs` | `5000` | Timeout for automatic recall, 100–60000; on timeout the turn continues without recalled memories |
 | `addTimeoutMs` | `120000` | Timeout for storing memories (capture and `mem0_add`), 1000–600000 |
 | `sidecarEnv` | `[]` | OSS: extra environment variable names passed to the sidecar |
 | `enabled` | `true` | Master switch |

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Stand-in for python/mem0_sidecar.py in tests. Behaviour comes from env:
-//   FAKE_SIDECAR_MODE  ready | crash | silent   (default ready)
+//   FAKE_SIDECAR_MODE  ready | crash | silent | chatty   (default ready)
+//     chatty: after the ready line, write 1 MB to stderr, then append
+//     {"stderrDone": true} to FAKE_SIDECAR_RECORD once it is all written
 //   FAKE_SIDECAR_DELAY_MS  delay before the ready line
 //   FAKE_SIDECAR_RECORD  file to append one JSON line per spawn to
 // It never listens on a port (the sandbox may forbid it); the ready line
@@ -26,7 +28,25 @@ process.stdin.on('end', () => {
   }
   if (mode === 'crash') process.exit(1)
   setTimeout(() => {
-    if (mode === 'ready') console.log(JSON.stringify({ port: 9, pid: process.pid }))
+    if (mode === 'ready' || mode === 'chatty') console.log(JSON.stringify({ port: 9, pid: process.pid }))
+    if (mode === 'chatty') {
+      const line = `${'x'.repeat(1023)}\n`
+      let left = 1024
+      const writeMore = () => {
+        while (left > 0) {
+          left -= 1
+          if (left === 0) {
+            process.stderr.write(line, () => fs.appendFileSync(process.env.FAKE_SIDECAR_RECORD, `${JSON.stringify({ stderrDone: true })}\n`))
+            return
+          }
+          if (!process.stderr.write(line)) {
+            process.stderr.once('drain', writeMore)
+            return
+          }
+        }
+      }
+      writeMore()
+    }
   }, delay)
 })
 setInterval(() => {}, 1_000)

@@ -89,7 +89,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildSidecarEnv } from '../lib/sidecar-client.js'
+import { buildSidecarEnv, pythonNoProxy } from '../lib/sidecar-client.js'
 
 const FAKE_SIDECAR = fileURLToPath(new URL('./fixtures/fake-sidecar.mjs', import.meta.url))
 
@@ -232,6 +232,22 @@ test('the token goes over stdin and the child gets an allowlisted environment', 
   assert.equal(spawn.env.GITHUB_TOKEN, undefined)
   assert.equal(spawn.env.MEM0_API_KEY, undefined)
   assert.equal(spawn.env.OPENROUTER_API_KEY, undefined)
+})
+
+test('stderr is still read after ready, so a chatty sidecar never blocks on a full pipe', async (t) => {
+  const { client, spawns } = fakeSidecar(t, { mode: 'chatty' })
+  await client.ensureStarted()
+  await waitFor(() => spawns().some((row) => row.stderrDone), 5_000)
+})
+
+test('pythonNoProxy unbrackets IPv6 entries that Python httpx rejects', () => {
+  assert.equal(pythonNoProxy('localhost,127.0.0.1,::1,[::1]'), 'localhost,127.0.0.1,::1')
+  assert.equal(pythonNoProxy('[::1]:8080, example.com'), '::1,example.com')
+  assert.equal(pythonNoProxy('*'), '*')
+  const env = buildSidecarEnv({ NO_PROXY: 'localhost,[::1]', no_proxy: '[::1]', HTTPS_PROXY: 'http://127.0.0.1:1082' })
+  assert.equal(env.NO_PROXY, 'localhost,::1')
+  assert.equal(env.no_proxy, '::1')
+  assert.equal(env.HTTPS_PROXY, 'http://127.0.0.1:1082')
 })
 
 test('buildSidecarEnv keeps basics, Python and provider variables only', () => {
