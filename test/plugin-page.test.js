@@ -21,6 +21,14 @@ for (const [locale, expected] of [['en', 'docs/plugin-page.en.md'], ['zh', 'docs
     assert.ok(pkg.files.includes(detail), `${detail} is listed in package.json files`)
   })
 
+  test(`${expected} stays a short intro`, () => {
+    // A long page pushes DSH's settings area down; the full documentation lives in the READMEs.
+    const text = read(expected)
+    assert.doesNotMatch(text, /^##\s/m, 'no sections beyond the intro')
+    assert.doesNotMatch(text, /!\[/, 'no screenshots')
+    assert.match(text, /https:\/\/github\.com\/light-cheng\/DSH-Mem0/, 'links to the repository')
+  })
+
   test(`${expected} has no GitHub-only markup`, () => {
     const text = read(expected)
     assert.doesNotMatch(text, /README(\.zh-CN)?\.md/, 'no link to the GitHub READMEs')
