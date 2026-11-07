@@ -195,5 +195,31 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual((status, body), (500, {"error": "backend down"}))
 
 
+class ExtractionFailureTests(unittest.TestCase):
+    def test_extraction_failure_is_a_502_with_reason(self):
+        class Failing(FakeService):
+            def add(self, payload):
+                raise sidecar.LLMExtractionError("truncated")
+
+        service = Failing()
+        service.components = {"llm": {"provider": "openai", "endpoint": "127.0.0.1:64451"}}
+        status, body = request(service, "POST", "/add", {"messages": "hi"})
+        self.assertEqual(status, 502)
+        self.assertEqual(body["code"], "LLM_EXTRACT_FAILED")
+        self.assertEqual(body["reason"], "truncated")
+        self.assertIs(body["retryable"], True)
+        self.assertEqual((body["component"], body["step"]), ("llm", "llm_extract"))
+        self.assertEqual((body["provider"], body["endpoint"]), ("openai", "127.0.0.1:64451"))
+        self.assertIn("nothing was stored", body["error"])
+
+    def test_refusal_is_not_retryable(self):
+        class Failing(FakeService):
+            def add(self, payload):
+                raise sidecar.LLMExtractionError("refusal")
+
+        status, body = request(Failing(), "POST", "/add", {"messages": "hi"})
+        self.assertEqual((status, body["reason"], body["retryable"]), (502, "refusal", False))
+
+
 if __name__ == "__main__":
     unittest.main()

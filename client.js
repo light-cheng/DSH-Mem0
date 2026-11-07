@@ -206,6 +206,7 @@ window.__ModuleLoader__.load({
       captureNoFacts: 'No new facts extracted (nothing worth keeping, or already known)',
       captureEvents: 'added {add}, updated {update}, deleted {delete}',
       retryPending: 'Not delivered (sidecar gone); retrying once',
+      retryPendingExtraction: 'LLM answer unusable ({reason}); retrying once',
       retrySaved: 'Saved after one retry',
       retryFailed: 'Retry failed too',
       dockCircuitOpen: 'Memory paused',
@@ -267,6 +268,11 @@ window.__ModuleLoader__.load({
       failureCause_connection: 'Connection failed',
       failureCause_auth: 'Auth or quota',
       failureCause_circuit: 'Circuit breaker skip',
+      failureCause_extraction: 'LLM extraction failed',
+      extractReason_not_json: 'answer was not JSON',
+      extractReason_empty: 'empty answer',
+      extractReason_truncated: 'answer cut off (truncated JSON)',
+      extractReason_refusal: 'model refused',
       failureCause_other: 'Other error',
       failureRepeated: '{count} times since {since}',
       failureComponent_llm: 'LLM',
@@ -510,6 +516,7 @@ window.__ModuleLoader__.load({
       captureNoFacts: '没有抽取到新内容（不值得记，或已经记过）',
       captureEvents: '新增 {add}，更新 {update}，删除 {delete}',
       retryPending: '未送达（sidecar 已退出），正在重试一次',
+      retryPendingExtraction: 'LLM 回复不可用（{reason}），正在重试一次',
       retrySaved: '重试后已保存',
       retryFailed: '重试仍失败',
       dockCircuitOpen: '记忆已暂停',
@@ -571,6 +578,11 @@ window.__ModuleLoader__.load({
       failureCause_connection: '连接失败',
       failureCause_auth: '认证或额度',
       failureCause_circuit: '熔断跳过',
+      failureCause_extraction: 'LLM 抽取失败',
+      extractReason_not_json: '回复不是 JSON',
+      extractReason_empty: '回复为空',
+      extractReason_truncated: '回复被截断（JSON 不完整）',
+      extractReason_refusal: '模型拒答',
       failureCause_other: '其他错误',
       failureRepeated: '自 {since} 起共 {count} 次',
       failureComponent_llm: 'LLM',
@@ -1076,7 +1088,12 @@ window.__ModuleLoader__.load({
           lines.push(template(t('captureEvents'), { add: record.add, update: record.update ?? 0, delete: record.delete ?? 0 }))
         }
       }
-      if (record.retry === 'pending') lines.push(t('retryPending'))
+      if (record.status === 'error' && record.extractReason) lines.push(failureCauseLabel(t, { cause: 'extraction', reason: record.extractReason }))
+      if (record.retry === 'pending') {
+        lines.push(record.retryReason === 'extraction'
+          ? template(t('retryPendingExtraction'), { reason: t(`extractReason_${record.extractReason || 'not_json'}`) })
+          : t('retryPending'))
+      }
       if (record.retry === 'saved') lines.push(t('retrySaved'))
       if (record.retry === 'failed') lines.push(t('retryFailed'))
       return lines
@@ -1346,7 +1363,12 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /** One-line description of a stored failure: kind · cause · message. */
+    /** "LLM extraction failed: answer was not JSON"; other causes as is. */
+    function failureCauseLabel(t, failure) {
+      const label = t(`failureCause_${failure?.cause}`)
+      return failure?.cause === 'extraction' && failure.reason ? `${label}: ${t(`extractReason_${failure.reason}`)}` : label
+    }
+
     /** "Embedder (ollama @ 127.0.0.1:11434, embedding)" for a stored failure. */
     function failureComponentLabel(t, failure) {
       const component = failure?.component || 'unknown'
@@ -1359,7 +1381,7 @@ window.__ModuleLoader__.load({
     /** One-line description of a stored failure: kind · component · cause · message. */
     function failureSummary(t, failure) {
       if (!failure) return ''
-      const parts = [t(`failureKind_${failure.kind}`), failureComponentLabel(t, failure), t(`failureCause_${failure.cause}`)]
+      const parts = [t(`failureKind_${failure.kind}`), failureComponentLabel(t, failure), failureCauseLabel(t, failure)]
       if (Number.isFinite(failure.stepElapsedMs) && failure.step) {
         parts.push(template(t('failureStepRunning'), { step: t(`failureStep_${failure.step}`), ms: failure.stepElapsedMs }))
       }
@@ -1630,7 +1652,7 @@ window.__ModuleLoader__.load({
                   h(
                     'div',
                     { className: 'mem0-failure-head' },
-                    h('span', { className: 'mem0-chip mem0-state-error' }, t(`failureCause_${failure.cause}`)),
+                    h('span', { className: 'mem0-chip mem0-state-error' }, failureCauseLabel(t, failure)),
                     h('strong', null, t(`failureKind_${failure.kind}`)),
                     h('span', { className: 'mem0-chip' }, failureComponentLabel(t, failure)),
                     h('span', { className: 'mem0-activity-meta' }, meta.filter(Boolean).join(' · ')),

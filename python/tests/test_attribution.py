@@ -221,5 +221,36 @@ class HandlerAttributionTests(unittest.TestCase):
         self.assertEqual(body["components"]["vector_store"]["provider"], "qdrant")
 
 
+
+class LogScrubTests(unittest.TestCase):
+    def test_quoted_memory_text_is_removed(self):
+        cases = {
+            "Entity upsert failed for 'Alice from Lisbon': timeout": "Entity upsert failed for '[…]': timeout",
+            "Entity upsert failed for 'it's Bob' (async): boom": "Entity upsert failed for '[…]' (async): boom",
+            "Skipping invalid message format: {'role': 'user', 'content': 'secret plans'}": "Skipping invalid message format: […]",
+            "Skipping duplicate memory (hash match): User likes tea": "Skipping duplicate memory (hash match): […]",
+            "1 validation error\n  Input should be a valid string [type=string_type, input_value='my diary text', input_type=str]":
+                "1 validation error\n  Input should be a valid string [type=string_type, input_value=[…], input_type=str]",
+            "Error parsing extraction response: Expecting value: line 1 column 1 (char 0)":
+                "Error parsing extraction response: Expecting value: line 1 column 1 (char 0)",
+        }
+        for raw, expected in cases.items():
+            self.assertEqual(sidecar.scrub_log_text(raw), expected)
+
+    def test_filter_rewrites_records_and_caps_other_libraries(self):
+        import logging
+
+        scrubber = sidecar.LogScrubber()
+        record = logging.LogRecord("mem0.memory.main", logging.WARNING, __file__, 1, "Entity upsert failed for '%s': %s", ("Alice", "x"), None)
+        scrubber.filter(record)
+        self.assertEqual(record.getMessage(), "Entity upsert failed for '[…]': x")
+        long = logging.LogRecord("openai", logging.ERROR, __file__, 1, "y" * 2000, None, None)
+        scrubber.filter(long)
+        self.assertEqual(len(long.getMessage()), sidecar.THIRD_PARTY_LOG_LIMIT)
+        own = logging.LogRecord(sidecar.logger.name, logging.ERROR, __file__, 1, "z" * 2000, None, None)
+        scrubber.filter(own)
+        self.assertEqual(len(own.getMessage()), 2000)
+
+
 if __name__ == "__main__":
     unittest.main()

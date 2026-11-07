@@ -570,7 +570,7 @@ test('claimed non-user input does not become the recall query', async () => {
 
 import { CircuitBreaker } from '../lib/http.js'
 import { FailureHistory } from '../lib/failure-history.js'
-import { summarizeAddResult } from '../lib/memory-lifecycle.js'
+import { captureRetryReason, summarizeAddResult } from '../lib/memory-lifecycle.js'
 
 const DURABLE_TURN = [
   'Please remember: I always write release notes in English and Chinese, every single time.',
@@ -729,6 +729,99 @@ test('a capture that may have been delivered (reset, abort, timeout) is never re
     assert.equal(activity.capture.status, 'error')
     assert.equal('retry' in activity.capture, false)
   }
+})
+
+function unusableAnswer(reason) {
+  return Object.assign(new Error(`dsh-mem0: POST /add failed: the LLM's fact-extraction answer (${reason}); nothing was stored`), {
+    code: 'LLM_EXTRACT_FAILED',
+    status: 502,
+    component: 'llm',
+    step: 'llm_extract',
+    extractReason: reason,
+  })
+}
+
+test('captureRetryReason: refused connection or an unusable (not refused) extraction answer only', () => {
+  assert.equal(captureRetryReason(refused()), 'not-delivered')
+  for (const reason of ['not_json', 'empty', 'truncated']) assert.equal(captureRetryReason(unusableAnswer(reason)), 'extraction')
+  assert.equal(captureRetryReason(unusableAnswer('refusal')), undefined)
+  assert.equal(captureRetryReason(Object.assign(new Error('boom'), { code: 'BACKEND_ERROR', status: 500, component: 'llm' })), undefined)
+  assert.equal(captureRetryReason(undefined), undefined)
+})
+
+test('an unusable extraction answer is retried once; saved on the retry, the breaker never counts it', async () => {
+  for (const reason of ['not_json', 'empty', 'truncated']) {
+    const failures = new FailureHistory({ backend: 'oss' })
+    const activity = { recall: null, capture: null }
+    const breaker = new CircuitBreaker({ threshold: 1 })
+    let calls = 0
+    let pending
+    const engine = engineWith(fakeClient({
+      async add() {
+        calls += 1
+        if (calls === 1) throw unusableAnswer(reason)
+        pending = { ...activity.capture }
+        return { results: [{ id: 'n1', memory: 'x', event: 'ADD' }], summary: { facts: 1, add: 1, update: 0, delete: 0, none: 0 } }
+      },
+    }), { failures, activity, breaker })
+    completeTurn(engine, fakeSession())
+    await settle()
+    assert.equal(calls, 2, reason)
+    assert.equal(pending.retry, 'pending')
+    assert.equal(pending.retryReason, 'extraction')
+    assert.equal(pending.extractReason, reason)
+    assert.equal(activity.capture.status, 'saved')
+    assert.equal(activity.capture.retry, 'saved')
+    assert.equal(activity.capture.add, 1)
+    // The first failure stays in the history; the breaker is untouched.
+    assert.equal(failures.list().length, 1)
+    assert.equal(failures.latest().cause, 'extraction')
+    assert.equal(failures.latest().reason, reason)
+    assert.equal(breaker.failures, 0)
+    assert.equal(breaker.isOpen(), false)
+  }
+})
+
+test('an extraction retry that fails too: two history entries, one breaker failure, "retry failed"', async () => {
+  const failures = new FailureHistory({ backend: 'oss' })
+  const activity = { recall: null, capture: null }
+  const breaker = new CircuitBreaker({ threshold: 5 })
+  let calls = 0
+  const engine = engineWith(fakeClient({
+    async add() {
+      calls += 1
+      throw unusableAnswer('truncated')
+    },
+  }), { failures, activity, breaker })
+  completeTurn(engine, fakeSession())
+  await settle()
+  assert.equal(calls, 2)
+  assert.equal(activity.capture.status, 'error')
+  assert.equal(activity.capture.retry, 'failed')
+  assert.equal(activity.capture.extractReason, 'truncated')
+  assert.equal(failures.list().length, 2)
+  assert.equal(failures.latest().retry, 'failed')
+  assert.equal(failures.latest().cause, 'extraction')
+  assert.equal(breaker.failures, 1)
+})
+
+test('a refusal is not retried', async () => {
+  const failures = new FailureHistory({ backend: 'oss' })
+  const activity = { recall: null, capture: null }
+  let calls = 0
+  const engine = engineWith(fakeClient({
+    async add() {
+      calls += 1
+      throw unusableAnswer('refusal')
+    },
+  }), { failures, activity })
+  completeTurn(engine, fakeSession())
+  await settle()
+  assert.equal(calls, 1)
+  assert.equal(activity.capture.status, 'error')
+  assert.equal(activity.capture.extractReason, 'refusal')
+  assert.equal('retry' in activity.capture, false)
+  assert.equal(failures.latest().reason, 'refusal')
 })
 
 test('saved captures tell "already known" from "nothing extracted"', async () => {
