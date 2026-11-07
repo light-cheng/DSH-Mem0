@@ -185,6 +185,52 @@ def redact_error(text: Any, limit: int = 500) -> str:
     return value if len(value) <= limit else value[: limit - 1] + "…"
 
 
+# --- sidecar.log hygiene -------------------------------------------------
+#
+# stderr becomes sidecar.log, and the settings page can copy its last lines.
+# Mem0 logs a few warnings that quote memory or message text (entity names,
+# a rejected message, a pydantic input value); those quotes are replaced and
+# other libraries' messages are capped. LLM answers are never logged here:
+# Mem0Service.add logs only their length and shape.
+
+THIRD_PARTY_LOG_LIMIT = 500
+_LOG_SCRUBS = (
+    (re.compile(r"(Entity (?:upsert|link|re-embed) failed for )'.*?'(?=(?: \(async\))?: )", re.S), r"\1'[…]'"),
+    (re.compile(r"(Skipping invalid message format(?: \(async\))?: ).*", re.S), r"\1[…]"),
+    (re.compile(r"(Skipping duplicate memory \(hash match\): ).*", re.S), r"\1[…]"),
+    (re.compile(r"(input_value=)(?:'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|\{.*?\}(?=, input_type)|\S+)", re.S), r"\1[…]"),
+)
+
+
+def scrub_log_text(text: str) -> str:
+    """Remove memory / message text that Mem0 quotes in its log messages."""
+    for pattern, replacement in _LOG_SCRUBS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+class LogScrubber(logging.Filter):
+    """Handler filter: scrub every record, cap other libraries' messages."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001 - a broken record is logged as is
+            return True
+        cleaned = scrub_log_text(message)
+        if record.name != logger.name and len(cleaned) > THIRD_PARTY_LOG_LIMIT:
+            cleaned = cleaned[: THIRD_PARTY_LOG_LIMIT - 1] + "…"
+        if cleaned != message:
+            record.msg, record.args = cleaned, None
+        return True
+
+
+def install_log_scrubber() -> None:
+    for handler in logging.getLogger().handlers:
+        if not any(isinstance(item, LogScrubber) for item in handler.filters):
+            handler.addFilter(LogScrubber())
+
+
 def _endpoint_of(block: Any) -> str | None:
     """host:port of a provider config block, without scheme, path or credentials."""
     if not isinstance(block, dict):
@@ -325,61 +371,187 @@ def error_payload(exc: BaseException, components: dict[str, dict[str, Any]] | No
 # DELETE in older pipelines); facts it judged already known are dropped.
 # So "0 written" could mean "nothing worth remembering" or "already known".
 # The write path's LLM answers are recorded during one add() and the first
-# one (fact extraction) is parsed the same way Mem0 parses it.
+# one (fact extraction) is parsed exactly the way Mem0 parses it.
+#
+# Mem0 never fails add() on an unusable extraction answer: it logs
+# "Error parsing extraction response" and stores nothing. The summary is for
+# display only and must never fail an add() that Mem0 completed. Only when
+# Mem0 itself could not use the answer (same parse) and nothing was stored
+# does /add report an LLM extraction failure, with a readable reason.
+
+EXTRACT_REASONS = ("not_json", "empty", "truncated", "refusal")
+# Nothing was stored, so asking the LLM again cannot duplicate a memory.
+# A refusal is not retried: the same text gets the same answer.
+RETRYABLE_EXTRACT_REASONS = frozenset({"not_json", "empty", "truncated"})
+
+_EXTRACT_MESSAGES = {
+    "not_json": "the LLM's fact-extraction answer was not JSON",
+    "empty": "the LLM's fact-extraction answer was empty",
+    "truncated": "the LLM's fact-extraction answer was cut off (truncated JSON)",
+    "refusal": "the LLM refused to extract facts",
+}
+
+_REFUSAL = re.compile(
+    r"(?i)\b(?:i\s*(?:'m|am)\s+(?:sorry|unable|not able)|i\s+(?:can(?:'|no)t|cannot|won't|will not)|"
+    r"sorry\b|as an ai\b|unable to (?:help|assist|comply)|not able to (?:help|assist))|"
+    r"抱歉|对不起|无法(?:帮助|协助|提供|完成|处理)|不能(?:帮助|协助|提供)"
+)
 
 
-class ExtractionParseError(ValueError):
-    """The LLM's fact-extraction answer was not valid JSON."""
+class LLMExtractionError(RuntimeError):
+    """Mem0 could not use the LLM's fact-extraction answer; nothing was stored."""
 
     _dsh_component = "llm"
     _dsh_step = "llm_extract"
+    code = "LLM_EXTRACT_FAILED"
+
+    def __init__(self, reason: str):
+        self.reason = reason if reason in EXTRACT_REASONS else "not_json"
+        self.retryable = self.reason in RETRYABLE_EXTRACT_REASONS
+        super().__init__(f"{_EXTRACT_MESSAGES[self.reason]}; nothing was stored")
 
 
-def _strip_code_fence(text: str) -> str:
-    match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.S)
-    return match.group(1) if match else text
+# Fallback copies of mem0ai 2.2.1 mem0/memory/utils.py, used only when Mem0
+# cannot be imported (unit tests without mem0ai installed).
+def _remove_code_blocks(content: Any) -> str:
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                parts.append(block.get("text", ""))
+        content = "".join(parts)
+    if not isinstance(content, str):
+        return ""
+    match = re.match(r"^```[a-zA-Z0-9]*\n([\s\S]*?)\n```$", content.strip())
+    match_res = match.group(1).strip() if match else content.strip()
+    return re.sub(r"<think>.*?</think>", "", match_res, flags=re.DOTALL).strip()
 
 
-def parse_extraction(response: Any) -> list[Any] | None:
-    """Facts in an extraction answer; [] for an empty answer, None if unparseable.
+def _extract_json(text: str) -> str:
+    text = text.strip()
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    if match:
+        return match.group(1)
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return text[start : end + 1]
+    return text
 
-    Mem0 2.2+ answers {"memory": [{"text": ...}, ...]}; earlier versions
-    {"facts": ["...", ...]}.
+
+def _mem0_parse_helpers() -> tuple[Any, Any]:
+    """Mem0's own remove_code_blocks / extract_json, else the copies above."""
+    try:
+        from mem0.memory.utils import extract_json, remove_code_blocks
+
+        return remove_code_blocks, extract_json
+    except Exception:  # noqa: BLE001 - mem0ai missing or reorganised
+        return _remove_code_blocks, _extract_json
+
+
+def _looks_truncated(text: str) -> bool:
+    """JSON that starts but never closes: an open string, object or array."""
+    start = min((i for i in (text.find("{"), text.find("[")) if i >= 0), default=-1)
+    if start < 0:
+        return False
+    depth = 0
+    in_string = escaped = False
+    for char in text[start:]:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth -= 1
+    return in_string or depth > 0
+
+
+def _failure_reason(text: str) -> str:
+    if _looks_truncated(text):
+        return "truncated"
+    if "{" not in text and _REFUSAL.search(text):
+        return "refusal"
+    return "not_json"
+
+
+def inspect_extraction(response: Any) -> tuple[list[Any] | None, str | None]:
+    """(facts, failure reason) for a fact-extraction answer, parsed like Mem0.
+
+    Mirrors mem0ai 2.2.1 Memory._add_to_vector_store: remove_code_blocks
+    (a whole-answer fence and <think> sections), json.loads, then
+    extract_json (a fence anywhere, else first '{' to last '}'). Mem0 2.2+
+    answers {"memory": [{"text": ...}]}; earlier versions {"facts": [...]}.
+    facts is None when Mem0 could not use the answer. An empty answer is
+    no facts for Mem0, but a JSON-mode LLM answers {"memory": []} when there
+    is nothing to remember, so it is reported as reason "empty".
     """
-    if response is None:
-        return []
     if isinstance(response, dict):
-        value = response
+        value: Any = response
     else:
-        text = _strip_code_fence(str(response)).strip()
-        if not text:
-            return []
+        remove_code_blocks, extract_json = _mem0_parse_helpers()
         try:
-            value = json.loads(text, strict=False)
-        except json.JSONDecodeError:
-            start, end = text.find("{"), text.rfind("}")
-            if start < 0 or end <= start:
-                return None
+            text = remove_code_blocks(response)
+        except Exception:  # noqa: BLE001 - Mem0 would log and store nothing
+            return None, "not_json"
+        if not text or not text.strip():
+            return [], "empty"
+        try:
             try:
-                value = json.loads(text[start : end + 1], strict=False)
+                value = json.loads(text, strict=False)
             except json.JSONDecodeError:
-                return None
+                value = json.loads(extract_json(text), strict=False)
+        except Exception:  # noqa: BLE001 - same catch-all as Mem0
+            return None, _failure_reason(text)
     if not isinstance(value, dict):
-        return None
+        return None, "not_json"
     for key in ("memory", "facts"):
         items = value.get(key)
         if isinstance(items, list):
-            return [item for item in items if item]
-    return []
+            return [item for item in items if item], None
+    return [], None
+
+
+def parse_extraction(response: Any) -> list[Any] | None:
+    """Facts in an extraction answer; [] for none or empty, None if unusable."""
+    facts, _reason = inspect_extraction(response)
+    return facts
+
+
+def describe_answer(response: Any) -> str:
+    """Length and shape of an LLM answer for the log, never its text."""
+    if response is None:
+        return "no answer"
+    text = response if isinstance(response, str) else str(response)
+    stripped = text.lstrip()
+    if not stripped:
+        kind = "blank"
+    elif stripped.startswith("```"):
+        kind = "code fence"
+    elif stripped.lower().startswith("<think>"):
+        kind = "<think> section"
+    elif stripped[0] in "{[":
+        kind = "JSON-like"
+    else:
+        kind = "text"
+    return f"{len(text)} chars, starts with {kind}"
 
 
 def _count_none_actions(response: Any) -> int | None:
     """NONE decisions in an older Mem0's memory-update answer, if it is one."""
     if not isinstance(response, str):
         return None
+    remove_code_blocks, _extract = _mem0_parse_helpers()
     try:
-        value = json.loads(_strip_code_fence(response).strip(), strict=False)
-    except (json.JSONDecodeError, ValueError):
+        value = json.loads(remove_code_blocks(response), strict=False)
+    except Exception:  # noqa: BLE001
         return None
     items = value.get("memory") if isinstance(value, dict) else None
     if not isinstance(items, list) or not any(isinstance(item, dict) and "event" in item for item in items):
@@ -388,7 +560,11 @@ def _count_none_actions(response: Any) -> int | None:
 
 
 def summarize_add(results: list[dict[str, Any]], llm_responses: list[Any] | None) -> dict[str, Any]:
-    """facts extracted and add/update/delete/none counts for one add()."""
+    """facts extracted and add/update/delete/none counts for one add().
+
+    Display only, never raises: when the extraction answer cannot be parsed
+    the summary has no facts / none, only the counts from results.
+    """
     counts = {"add": 0, "update": 0, "delete": 0}
     for row in results:
         event = str(row.get("event", "")).lower() if isinstance(row, dict) else ""
@@ -397,17 +573,32 @@ def summarize_add(results: list[dict[str, Any]], llm_responses: list[Any] | None
     summary: dict[str, Any] = dict(counts)
     if not llm_responses:
         return summary
-    facts = parse_extraction(llm_responses[0])
-    if facts is None:
-        raise ExtractionParseError("the LLM's fact-extraction answer was not valid JSON; nothing was stored")
-    summary["facts"] = len(facts)
-    none = _count_none_actions(llm_responses[1]) if len(llm_responses) > 1 else None
-    if none is None:
-        # Extracted facts that were neither stored nor changed anything were
-        # already known (Mem0 2.2 drops exact duplicates by hash).
-        none = max(0, len(facts) - counts["add"] - counts["update"] - counts["delete"])
-    summary["none"] = none
+    try:
+        facts, reason = inspect_extraction(llm_responses[0])
+        if facts is None or reason:
+            return summary
+        summary["facts"] = len(facts)
+        none = _count_none_actions(llm_responses[1]) if len(llm_responses) > 1 else None
+        if none is None:
+            # Extracted facts that were neither stored nor changed anything were
+            # already known (Mem0 2.2 drops exact duplicates by hash).
+            none = max(0, len(facts) - counts["add"] - counts["update"] - counts["delete"])
+        summary["none"] = none
+    except Exception:  # noqa: BLE001 - a display summary never fails /add
+        return dict(counts)
     return summary
+
+
+def extraction_failure(results: list[dict[str, Any]], llm_responses: list[Any] | None) -> LLMExtractionError | None:
+    """The failure to report for one add(): only if Mem0 stored nothing and
+    could not use the extraction answer either."""
+    if results or not llm_responses:
+        return None
+    try:
+        _facts, reason = inspect_extraction(llm_responses[0])
+    except Exception:  # noqa: BLE001
+        return None
+    return LLMExtractionError(reason) if reason else None
 
 
 def record_llm_responses(llm: Any, sink: Any) -> None:
@@ -552,6 +743,15 @@ class Mem0Service:
         results = _normalise_results(result)
         if not kwargs["infer"]:
             return {"results": results}
+        failure = extraction_failure(results, responses)
+        if failure is not None:
+            # Length and shape only: the answer may quote the conversation.
+            logger.warning(
+                "add: LLM extraction failed (%s; answer %s); nothing was stored",
+                failure.reason,
+                describe_answer(responses[0] if responses else None),
+            )
+            raise failure
         return {"results": results, "summary": summarize_add(results, responses)}
 
     def list(self, filters: dict[str, Any], top_k: int | None) -> dict[str, Any]:
@@ -711,6 +911,12 @@ class SidecarHandler(BaseHTTPRequestHandler):
                     self._send(200, self.service.delete(memory_id))
                     return
             self._reply_error(404, {"error": "not found"})
+        except LLMExtractionError as exc:
+            # Logged by Mem0Service.add without a traceback. 502: the upstream
+            # LLM answered, but with nothing Mem0 could use.
+            payload = error_payload(exc, getattr(self.service, "components", None))
+            payload.update({"code": exc.code, "reason": exc.reason, "retryable": exc.retryable})
+            self._reply_error(502, payload)
         except ValueError as exc:
             # Our own validation errors are plain 400/404; a ValueError raised
             # inside a component (e.g. a missing Qdrant collection) is a 500
@@ -791,6 +997,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    install_log_scrubber()
 
     try:
         token = read_token(sys.stdin)

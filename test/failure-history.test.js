@@ -600,3 +600,80 @@ test('sidecar exits are stored with code/signal/uptime and never folded together
   assert.equal('signal' in bad, false)
   assert.equal('uptimeMs' in bad, false)
 })
+
+// --- LLM extraction failures (sidecar 502 LLM_EXTRACT_FAILED) ----------------
+
+test('an unusable extraction answer is cause "extraction" with a readable reason', () => {
+  for (const reason of ['not_json', 'empty', 'truncated', 'refusal']) {
+    const body = {
+      error: 'the LLM\'s fact-extraction answer was cut off (truncated JSON); nothing was stored',
+      code: 'LLM_EXTRACT_FAILED',
+      reason,
+      retryable: reason !== 'refusal',
+      component: 'llm',
+      step: 'llm_extract',
+      provider: 'openai',
+      endpoint: '127.0.0.1:64451',
+    }
+    const error = Object.assign(sidecarFailure(body, '/add'), { status: 502, code: 'LLM_EXTRACT_FAILED' })
+    assert.equal(error.extractReason, reason)
+    assert.equal(classifyFailure(error), 'extraction')
+    const entry = new FailureHistory({ backend: 'oss' }).record({ kind: 'capture', error, durationMs: 27_102 })
+    assert.equal(entry.cause, 'extraction')
+    assert.equal(entry.reason, reason)
+    assert.equal(entry.component, 'llm')
+    assert.equal(entry.step, 'llm_extract')
+    assert.equal(entry.code, 'LLM_EXTRACT_FAILED')
+    assert.equal(entry.status, 502)
+  }
+  // An unknown reason from a newer sidecar still reads as an extraction failure.
+  assert.equal(failureAttribution({ code: 'LLM_EXTRACT_FAILED', reason: 'weird' }).extractReason, 'not_json')
+  // Other sidecar errors carry no reason.
+  assert.equal('extractReason' in failureAttribution({ error: 'boom', component: 'llm' }), false)
+  // A stored reason is kept only for extraction entries.
+  const file = tempFile()
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, JSON.stringify({ entries: [
+    { at: '2026-11-07T00:00:00Z', kind: 'capture', cause: 'extraction', reason: 'empty', message: 'a' },
+    { at: '2026-11-07T00:00:00Z', kind: 'capture', cause: 'other', reason: 'empty', message: 'b' },
+    { at: '2026-11-07T00:00:00Z', kind: 'capture', cause: 'extraction', reason: '<script>', message: 'c' },
+  ] }))
+  const [first, second, third] = new FailureHistory({ filePath: file }).list()
+  assert.equal(first.reason, 'empty')
+  assert.equal('reason' in second, false)
+  assert.equal('reason' in third, false)
+})
+
+localServerTest('the sidecar client turns a 502 LLM_EXTRACT_FAILED body into code, reason and attribution', async () => {
+  const server = http.createServer((req, res) => {
+    res.statusCode = 502
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({
+      error: 'the LLM\'s fact-extraction answer was empty; nothing was stored',
+      code: 'LLM_EXTRACT_FAILED',
+      reason: 'empty',
+      retryable: true,
+      component: 'llm',
+      step: 'llm_extract',
+      provider: 'openai',
+      endpoint: '127.0.0.1:64451',
+    }))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const client = new Mem0SidecarClient({ pythonPath: 'python3', userId: 'u', agentId: 'dsh', collectionName: 'c', historyDbPath: '/tmp/x.db' })
+    client.ready = true
+    client.child = {}
+    client.port = server.address().port
+    const error = await client.add([{ role: 'user', content: 'hi' }], { infer: true }).catch((value) => value)
+    assert.equal(error.code, 'LLM_EXTRACT_FAILED')
+    assert.equal(error.status, 502)
+    assert.equal(error.extractReason, 'empty')
+    assert.equal(error.component, 'llm')
+    assert.equal('delivered' in error, false)
+    assert.match(error.message, /answer was empty; nothing was stored/)
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})

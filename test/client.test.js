@@ -82,6 +82,21 @@ test('activity details: skip reasons, circuit time left and cause, extraction co
   assert.deepEqual(plain(activityDetails(t, { status: 'saved', add: 2, update: 1, delete: 0 })), ['新增 2，更新 1，删除 0'])
   assert.deepEqual(plain(activityDetails(t, { status: 'saved', retry: 'saved' })), ['重试后已保存'])
   assert.deepEqual(plain(activityDetails(t, { status: 'error', retry: 'failed' })), ['重试仍失败'])
+  // LLM extraction failures: the reason, and which retry is pending.
+  assert.deepEqual(plain(activityDetails(t, { status: 'saving', retry: 'pending', retryReason: 'extraction', extractReason: 'truncated' })), ['LLM 回复不可用（回复被截断（JSON 不完整）），正在重试一次'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'saving', retry: 'pending' })), ['未送达（sidecar 已退出），正在重试一次'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'error', extractReason: 'refusal' })), ['LLM 抽取失败: 模型拒答'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'error', extractReason: 'empty', retry: 'failed' })), ['LLM 抽取失败: 回复为空', '重试仍失败'])
+})
+
+test('a stored extraction failure names its reason (zh and en)', () => {
+  const { failureSummary, zh, en } = loadClient().exports.__test__
+  const failure = { kind: 'capture', component: 'llm', provider: 'openai', endpoint: '127.0.0.1:64451', step: 'llm_extract', cause: 'extraction', reason: 'not_json', message: 'm' }
+  assert.match(failureSummary(tFor(zh), failure), /LLM 抽取失败: 回复不是 JSON/)
+  assert.match(failureSummary(tFor(en), failure), /LLM extraction failed: answer was not JSON/)
+  for (const reason of ['not_json', 'empty', 'truncated', 'refusal']) {
+    assert.ok(zh[`extractReason_${reason}`] && en[`extractReason_${reason}`], reason)
+  }
 })
 
 test('the dock tells "paused by the breaker" from "skipped, too short"', () => {
