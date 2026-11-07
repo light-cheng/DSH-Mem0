@@ -6,6 +6,13 @@ English is the default; the Chinese version follows below.
 
 ### Unreleased
 
+- **Fact extraction is no longer cut off by a reasoning model's thinking.** With the OSS backend and a hybrid reasoning model, saves failed with "LLM extraction failed: answer cut off (truncated JSON); retry failed too". Mem0's default output budget of 2000 tokens is shared with the model's thinking: through magpie with `workbuddy/deepseek-v4.1-flash`, 2 of 3 extractions of a 1.4K-character fold summary stopped at `finish_reason=length` after 1.4–1.7K reasoning tokens. Now:
+  - The sidecar uses `max_tokens: 8000` for fact extraction when `oss.llm.config` sets none (a value you set always wins). With 8000, 6 of 6 extractions finished; the largest used 2541 output tokens.
+  - `oss.llm.config.reasoning_effort` is sent to every model, not only the ones Mem0 knows as reasoning models. `"none"` turns thinking off where the gateway supports it (6 of 6 finished with 0 reasoning tokens and about 850 output tokens even at 2000). `"low"` did not help (3 of 3 still cut off at 2000). It is not sent unless you set it.
+  - An answer cut off at `finish_reason=length` is retried once with twice the output budget (capped at 65536), not with the same one. Activity says so while the retry runs.
+  - A failed extraction records the call's `finish_reason`, output budget and prompt / output / reasoning token counts in the 502 body, the failure history, the Memory activity card and `sidecar.log`. Numbers only, never text.
+  - Extraction failures (cut off, refusal, not JSON, empty) no longer count toward the circuit breaker: the LLM answered, so pausing memory would not help. Connection, timeout, auth and server failures still do.
+  - The input side is unchanged: captures stay capped at `captureMaxChars` (2000 characters for dsh-strata folds), and a 2000-character fold summary extracted fine with the larger budget, so no input chunking was added.
 - **A save that worked is no longer reported as "not valid JSON; nothing was stored".** After Mem0 had already processed a save, the OSS sidecar parsed the LLM's fact-extraction answer a second time, with a stricter parser than Mem0's, only to count facts for the activity card. When that parse failed, `/add` returned HTTP 500 even though Mem0 had stored the memories. A model that answers with a `<think>…</think>` section containing braces before its JSON triggered it every time. Now:
   - The fact count is for display only and never fails a save. If it cannot be read, Activity shows only the added / updated / deleted counts.
   - The answer is parsed exactly like Mem0 2.2.1 parses it, with Mem0's own `remove_code_blocks` and `extract_json`: a whole-answer code fence, `<think>` sections, a fence anywhere, then the first `{` to the last `}`.
@@ -116,6 +123,13 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 ### 未发布
 
+- **事实抽取不再被推理模型的思考挤到截断。** 使用 OSS 后端和 hybrid 推理模型时，保存会失败并显示「LLM 抽取失败: 回复被截断 (JSON 不完整) — 重试仍失败」。原因是 Mem0 默认 2000 token 的输出上限要和模型的思考共用：经 magpie 调用 `workbuddy/deepseek-v4.1-flash`，一段 1.4K 字的 fold 摘要抽取 3 次，有 2 次在思考用掉 1.4K–1.7K token 后以 `finish_reason=length` 截断。现在：
+  - `oss.llm.config` 没有写 `max_tokens` 时，sidecar 抽取用 `max_tokens: 8000`（你自己写的值始终优先）。用 8000 抽取 6 次全部正常结束，最多用了 2541 个输出 token。
+  - `oss.llm.config.reasoning_effort` 会发给所有模型，不再只发给 Mem0 认得的推理模型。在支持的网关上 `"none"` 会关闭思考（即使上限是 2000，6 次也全部正常结束，思考 0 token，输出约 850 token）。`"low"` 没有用（2000 时 3 次全部截断）。不设置就不发送。
+  - 回复以 `finish_reason=length` 截断时，用加倍的输出上限重试一次（最多 65536），而不是用原参数再试。重试期间活动记录会说明这一点。
+  - 抽取失败时，502 返回体、失败记录、记忆活动卡片和 `sidecar.log` 都会记下这次调用的 `finish_reason`、输出上限，以及输入、输出、思考的 token 数。只有数字，不含文本。
+  - 抽取失败（被截断、拒答、不是 JSON、为空）不再计入熔断：LLM 已经回复了，暂停记忆也没有用。连接、超时、鉴权和服务端错误照常计入。
+  - 输入端不变：捕获仍按 `captureMaxChars` 截断（dsh-strata 的 fold 为 2000 字）。2000 字的 fold 摘要在更大的上限下能正常抽取，所以没有加输入分块。
 - **已经保存成功的记忆，不再被误报为「不是合法 JSON，没有存任何东西」。** Mem0 处理完一次保存后，OSS sidecar 为了在活动卡片上显示抽取数，会再解析一遍 LLM 的事实抽取回复，而且用的解析规则比 Mem0 自己的更严格。这一步解析失败时，`/add` 会返回 HTTP 500，即使 Mem0 已经把记忆存了。模型如果先输出带花括号的 `<think>…</think>` 段再给 JSON，每次都会触发。现在：
   - 抽取数只用于显示，永远不会让保存失败。读不出来时，活动记录只显示新增、更新、删除条数。
   - 解析方式和 Mem0 2.2.1 完全一致，直接调用 Mem0 自己的 `remove_code_blocks` 和 `extract_json`：先去掉包住整个回复的代码围栏和 `<think>` 段，再找任意位置的代码围栏，最后取第一个 `{` 到最后一个 `}`。

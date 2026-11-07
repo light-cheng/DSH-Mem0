@@ -36,6 +36,12 @@ from urllib.parse import parse_qs, urlparse
 logger = logging.getLogger("dsh-mem0-sidecar")
 MAX_BODY_BYTES = 4 * 1024 * 1024
 PROBE_TEXT = "dsh-mem0 health probe"
+# Output budget of the write path's LLM calls (fact extraction) when the
+# Mem0 config sets no max_tokens. A per-request override (the retry after
+# finish_reason=length) is clamped to MAX_EXTRACT_MAX_TOKENS.
+DEFAULT_EXTRACT_MAX_TOKENS = 8000
+MIN_EXTRACT_MAX_TOKENS = 256
+MAX_EXTRACT_MAX_TOKENS = 65536
 
 
 def _json_default(value: Any) -> Any:
@@ -113,11 +119,20 @@ def build_memory_config(config_path: str, collection: str, history_db: str) -> d
         if "bge-m3" in embedder_model.lower():
             vector_config["embedding_model_dims"] = 1024
 
+    llm = deepcopy(oss["llm"])
+    # Mem0's default output budget (2000 tokens) is shared with a hybrid
+    # reasoning model's thinking: measured through magpie with
+    # deepseek-v4.1-flash, 2 of 3 extractions of a 1.4K-char fold summary
+    # stopped at finish_reason=length after 1.4-1.7K reasoning tokens. An
+    # explicit max_tokens in the user's config always wins.
+    if llm["config"].get("max_tokens") is None:
+        llm["config"]["max_tokens"] = DEFAULT_EXTRACT_MAX_TOKENS
+
     read_history, write_history = _history_paths(history_db)
     # The first two entries are the same base config; Mem0Service clones this
     # per instance with a distinct SQLite history file.
     return {
-        "llm": deepcopy(oss["llm"]),
+        "llm": llm,
         "embedder": deepcopy(oss["embedder"]),
         "vector_store": vector_store,
         "history_db_path": read_history,
@@ -405,9 +420,12 @@ class LLMExtractionError(RuntimeError):
     _dsh_step = "llm_extract"
     code = "LLM_EXTRACT_FAILED"
 
-    def __init__(self, reason: str):
+    def __init__(self, reason: str, stats: dict[str, Any] | None = None):
         self.reason = reason if reason in EXTRACT_REASONS else "not_json"
         self.retryable = self.reason in RETRYABLE_EXTRACT_REASONS
+        # finish_reason, max_tokens and token counts of the extraction call
+        # (numbers and a short enum only, never text).
+        self.stats = dict(stats or {})
         super().__init__(f"{_EXTRACT_MESSAGES[self.reason]}; nothing was stored")
 
 
@@ -589,16 +607,124 @@ def summarize_add(results: list[dict[str, Any]], llm_responses: list[Any] | None
     return summary
 
 
-def extraction_failure(results: list[dict[str, Any]], llm_responses: list[Any] | None) -> LLMExtractionError | None:
+def extraction_failure(
+    results: list[dict[str, Any]],
+    llm_responses: list[Any] | None,
+    stats: dict[str, Any] | None = None,
+) -> LLMExtractionError | None:
     """The failure to report for one add(): only if Mem0 stored nothing and
-    could not use the extraction answer either."""
+    could not use the extraction answer either. `stats` are the extraction
+    call's finish_reason and token counts, when the client exposed them."""
     if results or not llm_responses:
         return None
     try:
         _facts, reason = inspect_extraction(llm_responses[0])
     except Exception:  # noqa: BLE001
         return None
-    return LLMExtractionError(reason) if reason else None
+    if not reason:
+        return None
+    # The output budget ran out (often spent on thinking): whatever is left,
+    # an empty answer or a JSON prefix, is a cut-off answer.
+    if (stats or {}).get("finishReason") == "length" and reason in ("not_json", "empty"):
+        reason = "truncated"
+    return LLMExtractionError(reason, stats)
+
+
+def _field(value: Any, name: str) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value.get(name)
+    found = getattr(value, name, None)
+    if found is None:
+        extra = getattr(value, "model_extra", None)
+        if isinstance(extra, dict):
+            found = extra.get(name)
+    return found
+
+
+def _count(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def completion_stats(response: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """finish_reason, the output budget sent and token counts of one chat
+    completion, from an OpenAI-style response object or dict. Never text."""
+    stats: dict[str, Any] = {}
+    budget = _count(params.get("max_tokens")) or _count(params.get("max_completion_tokens"))
+    if budget is not None:
+        stats["maxTokens"] = budget
+    effort = params.get("reasoning_effort")
+    if isinstance(effort, str) and re.fullmatch(r"[a-z]{1,12}", effort):
+        stats["reasoningEffort"] = effort
+    choices = _field(response, "choices")
+    if isinstance(choices, (list, tuple)) and choices:
+        finish = _field(choices[0], "finish_reason")
+        if isinstance(finish, str) and re.fullmatch(r"[a-z_]{1,24}", finish):
+            stats["finishReason"] = finish
+    usage = _field(response, "usage")
+    for name, key in (("prompt_tokens", "promptTokens"), ("completion_tokens", "completionTokens")):
+        count = _count(_field(usage, name))
+        if count is not None:
+            stats[key] = count
+    reasoning = _count(_field(_field(usage, "completion_tokens_details"), "reasoning_tokens"))
+    if reasoning is None:
+        reasoning = _count(_field(usage, "reasoning_tokens"))
+    if reasoning is not None:
+        stats["reasoningTokens"] = reasoning
+    return stats
+
+
+def describe_stats(stats: dict[str, Any] | None) -> str:
+    """'finish_reason=length, 2000/2000 output tokens (1697 reasoning)'."""
+    if not stats:
+        return "no finish_reason or usage from the client"
+    parts = [f"finish_reason={stats.get('finishReason', '?')}"]
+    if "completionTokens" in stats or "maxTokens" in stats:
+        parts.append(f"{stats.get('completionTokens', '?')}/{stats.get('maxTokens', '?')} output tokens")
+    if "reasoningTokens" in stats:
+        parts[-1] += f" ({stats['reasoningTokens']} reasoning)"
+    if "promptTokens" in stats:
+        parts.append(f"{stats['promptTokens']} prompt tokens")
+    if "reasoningEffort" in stats:
+        parts.append(f"reasoning_effort={stats['reasoningEffort']}")
+    return ", ".join(parts)
+
+
+def instrument_llm_client(llm: Any, controls: Any) -> bool:
+    """Wrap the OpenAI-style `llm.client.chat.completions.create` on this
+    instance. Before the call: apply controls.max_tokens_override() to the
+    output budget Mem0 already sends, and add controls.reasoning_effort when
+    Mem0 did not send one (Mem0 sends it only for models it knows as
+    reasoning models). After: controls.record_stats(completion_stats(...)).
+    Providers without an OpenAI-style client (e.g. Ollama) are left as is."""
+    completions = _field(_field(getattr(llm, "client", None), "chat"), "completions")
+    original = getattr(completions, "create", None)
+    if not callable(original) or getattr(original, "_dsh_wrapped", False):
+        return False
+
+    def create(*args: Any, **params: Any) -> Any:
+        override = controls.max_tokens_override()
+        if override:
+            for key in ("max_tokens", "max_completion_tokens"):
+                if key in params:
+                    params[key] = override
+        effort = controls.reasoning_effort
+        if effort and "reasoning_effort" not in params:
+            params["reasoning_effort"] = effort
+        response = original(*args, **params)
+        try:
+            controls.record_stats(completion_stats(response, params))
+        except Exception:  # noqa: BLE001 - diagnostics never fail a call
+            pass
+        return response
+
+    create._dsh_wrapped = True  # type: ignore[attr-defined]
+    try:
+        setattr(completions, "create", create)
+    except Exception:  # noqa: BLE001
+        return False
+    return True
 
 
 def record_llm_responses(llm: Any, sink: Any) -> None:
@@ -616,6 +742,13 @@ def record_llm_responses(llm: Any, sink: Any) -> None:
         setattr(llm, "generate_response", recording)
     except Exception:  # noqa: BLE001 - a frozen object is left as is
         pass
+
+
+def clamp_max_tokens(value: Any) -> int | None:
+    """A per-request output budget (Node's retry after finish_reason=length)."""
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        return None
+    return max(MIN_EXTRACT_MAX_TOKENS, min(MAX_EXTRACT_MAX_TOKENS, value))
 
 
 class Mem0Service:
@@ -649,11 +782,24 @@ class Mem0Service:
         instrument_memory(self.write_memory, self.steps)
         # LLM answers during one add(), under _write_lock (see summarize_add).
         self._llm_responses: list[Any] | None = None
+        self._llm_stats: list[dict[str, Any]] | None = None
+        self._max_tokens_override: int | None = None
+        effort = read_config.get("llm", {}).get("config", {}).get("reasoning_effort")
+        self.reasoning_effort = effort if isinstance(effort, str) and effort.strip() else None
         record_llm_responses(getattr(self.write_memory, "llm", None), self._record_llm_response)
+        instrument_llm_client(getattr(self.write_memory, "llm", None), self)
 
     def _record_llm_response(self, response: Any) -> None:
         if self._llm_responses is not None:
             self._llm_responses.append(response)
+
+    # Controls for instrument_llm_client (write path only).
+    def max_tokens_override(self) -> int | None:
+        return getattr(self, "_max_tokens_override", None)
+
+    def record_stats(self, stats: dict[str, Any]) -> None:
+        if getattr(self, "_llm_stats", None) is not None:
+            self._llm_stats.append(stats)
 
     @staticmethod
     def _version() -> str:
@@ -733,25 +879,36 @@ class Mem0Service:
             kwargs["run_id"] = payload["run_id"]
         if isinstance(payload.get("metadata"), dict):
             kwargs["metadata"] = payload["metadata"]
+        max_tokens = clamp_max_tokens(payload.get("llm_max_tokens"))
         with self._write_lock:
             self._llm_responses = []
+            self._llm_stats = []
+            self._max_tokens_override = max_tokens
             try:
                 result = self.write_memory.add(messages, **kwargs)
                 responses = self._llm_responses
+                stats = self._llm_stats
             finally:
                 self._llm_responses = None
+                self._llm_stats = None
+                self._max_tokens_override = None
         results = _normalise_results(result)
         if not kwargs["infer"]:
             return {"results": results}
-        failure = extraction_failure(results, responses)
+        first_stats = stats[0] if stats else None
+        failure = extraction_failure(results, responses, first_stats)
         if failure is not None:
-            # Length and shape only: the answer may quote the conversation.
+            # Length, shape and token counts only: the answer may quote the
+            # conversation.
             logger.warning(
-                "add: LLM extraction failed (%s; answer %s); nothing was stored",
+                "add: LLM extraction failed (%s; answer %s; %s); nothing was stored",
                 failure.reason,
                 describe_answer(responses[0] if responses else None),
+                describe_stats(first_stats),
             )
             raise failure
+        if first_stats and first_stats.get("finishReason") == "length":
+            logger.warning("add: LLM extraction hit its output budget (%s) but Mem0 used the answer", describe_stats(first_stats))
         return {"results": results, "summary": summarize_add(results, responses)}
 
     def list(self, filters: dict[str, Any], top_k: int | None) -> dict[str, Any]:
@@ -916,6 +1073,7 @@ class SidecarHandler(BaseHTTPRequestHandler):
             # LLM answered, but with nothing Mem0 could use.
             payload = error_payload(exc, getattr(self.service, "components", None))
             payload.update({"code": exc.code, "reason": exc.reason, "retryable": exc.retryable})
+            payload.update(exc.stats)
             self._reply_error(502, payload)
         except ValueError as exc:
             # Our own validation errors are plain 400/404; a ValueError raised

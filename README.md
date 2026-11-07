@@ -238,6 +238,24 @@ This version **does not silently install** Python or Qdrant when the plugin load
 
 The sidecar reads `oss.llm`, `oss.embedder` and `oss.vector_store` from `mem0ConfigPath` and overrides the collection name with `collectionName`; other Mem0 clients can keep using their own collections.
 
+**Fact-extraction output budget.** Two keys in `oss.llm.config` control Mem0's fact-extraction call:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `max_tokens` | `8000` (when unset) | Output budget of each extraction call. Mem0's own default is 2000, but a hybrid reasoning model (e.g. DeepSeek V4.1 Flash) spends part of that budget on thinking; measured through magpie, 2 of 3 extractions of a 1.4K-character fold summary stopped at `finish_reason=length` with 2000. A value you set is always used. |
+| `reasoning_effort` | not sent | Sent with every extraction call when set. Mem0 itself sends it only to models it knows as reasoning models (o1/o3/gpt-5), so for other models the sidecar adds it. `"none"` turns thinking off on gateways that support it (magpie's `workbuddy/deepseek-v4.1-flash`: no reasoning tokens, about 850 output tokens, roughly twice as fast). Leave it unset if your endpoint rejects the parameter. |
+
+```json
+{ "oss": { "llm": { "provider": "openai", "config": {
+  "model": "workbuddy/deepseek-v4.1-flash",
+  "openai_base_url": "http://127.0.0.1:3425/v1",
+  "max_tokens": 8000,
+  "reasoning_effort": "none"
+} } } }
+```
+
+When an extraction answer is still cut off (`finish_reason=length`), the capture is retried once with twice the output budget (up to 65536). A failed extraction records its `finish_reason`, output budget and prompt / output / reasoning token counts in the failure history, the Memory activity card and `sidecar.log` (numbers only, never text). Extraction failures (cut off, refusal, not JSON, empty) do not count toward the circuit breaker: the LLM answered, so pausing memory would not help. Only connection, timeout, auth and server failures do.
+
 The sidecar does not inherit DSH's whole environment. It gets `PATH`, `HOME`, locale, proxy and CA-bundle variables, Python/virtualenv/Conda variables, model-cache variables (`HF_*`, `TRANSFORMERS_*`, `TORCH_*` …) and the provider prefixes Mem0 OSS falls back to when `oss.json` has no `api_key` (`OPENAI_*`, `AZURE_*`, `ANTHROPIC_*`, `GOOGLE_*`, `GEMINI_*`, `AWS_*`, `OLLAMA_*`, `DEEPSEEK_*`, `GROQ_*`, `TOGETHER_*`, `MISTRAL_*`, `LITELLM_*`, `QDRANT_*` and similar). `MEM0_API_KEY` and `OPENROUTER_API_KEY` are not passed. If your providers read a variable with another name, list it in `sidecarEnv`. The per-process token is sent on the sidecar's stdin, never as a command-line argument.
 
 **Legacy config locations.** When `mem0ConfigPath` or `pythonPath` is not set, the plugin looks in `~/.dsh/mem0/` first. For setups that predate that folder it then also checks `~/.hermes/mem0.json` and `~/.hermes/hermes-agent/venv/bin/python` (read-only). New installs never need these; set the two options, or move the files into `~/.dsh/mem0/`, to stop using them. The list lives in [lib/legacy-paths.js](lib/legacy-paths.js).

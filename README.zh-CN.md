@@ -238,6 +238,24 @@ python3 -m venv ~/.dsh/mem0/venv
 
 sidecar 会读取 `mem0ConfigPath` 中的 `oss.llm`、`oss.embedder`、`oss.vector_store`，并把集合名覆盖为 `collectionName`；其他 Mem0 客户端可以继续使用自己的集合。
 
+**事实抽取的输出预算。** `oss.llm.config` 里有两个键控制 Mem0 的事实抽取调用：
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `max_tokens` | 没写时为 `8000` | 每次抽取调用的输出上限。Mem0 自己的默认值是 2000，但 hybrid 推理模型（例如 DeepSeek V4.1 Flash）的思考也占用这份预算；经 magpie 实测，一段 1.4K 字的 fold 摘要抽取 3 次，有 2 次在 2000 时以 `finish_reason=length` 截断。你自己写的值始终优先。 |
+| `reasoning_effort` | 不发送 | 设置后每次抽取调用都会带上。Mem0 自己只对它认得的推理模型（o1/o3/gpt-5）发送这个参数，其他模型由 sidecar 补上。在支持的网关上 `"none"` 会关闭思考（magpie 的 `workbuddy/deepseek-v4.1-flash`：思考 token 为 0，输出约 850 token，速度约快一倍）。如果你的端点不接受这个参数，就不要设置。 |
+
+```json
+{ "oss": { "llm": { "provider": "openai", "config": {
+  "model": "workbuddy/deepseek-v4.1-flash",
+  "openai_base_url": "http://127.0.0.1:3425/v1",
+  "max_tokens": 8000,
+  "reasoning_effort": "none"
+} } } }
+```
+
+如果抽取回复仍然被截断（`finish_reason=length`），这次保存会用加倍的输出上限重试一次（最多 65536）。抽取失败时，失败记录、记忆活动卡片和 `sidecar.log` 会记下 `finish_reason`、输出上限，以及输入、输出、思考的 token 数（只有数字，不含文本）。抽取失败（被截断、拒答、不是 JSON、为空）不计入熔断：LLM 已经回复了，暂停记忆也没有用。只有连接、超时、鉴权和服务端错误才计入。
+
 sidecar 不继承 DSH 的全部环境变量，只拿到：`PATH`、`HOME`、语言区域、代理和 CA 证书相关变量，Python/virtualenv/Conda 变量，模型缓存变量（`HF_*`、`TRANSFORMERS_*`、`TORCH_*` 等），以及 `oss.json` 没写 `api_key` 时 Mem0 OSS 会去读的各家服务商前缀（`OPENAI_*`、`AZURE_*`、`ANTHROPIC_*`、`GOOGLE_*`、`GEMINI_*`、`AWS_*`、`OLLAMA_*`、`DEEPSEEK_*`、`GROQ_*`、`TOGETHER_*`、`MISTRAL_*`、`LITELLM_*`、`QDRANT_*` 等）。`MEM0_API_KEY` 和 `OPENROUTER_API_KEY` 不会传过去。如果你的服务商读取别的变量名，把它写进 `sidecarEnv`。每个进程的 token 通过 sidecar 的 stdin 传入，不出现在命令行参数里。
 
 **旧版配置位置。** 没有设置 `mem0ConfigPath` 或 `pythonPath` 时，插件先找 `~/.dsh/mem0/`；为了兼容早于这个目录的旧环境，接着还会（只读地）检查 `~/.hermes/mem0.json` 和 `~/.hermes/hermes-agent/venv/bin/python`。新安装用不到这些路径；设置这两个配置项，或把文件移到 `~/.dsh/mem0/`，就不会再用它们。完整列表在 [lib/legacy-paths.js](lib/legacy-paths.js)。
