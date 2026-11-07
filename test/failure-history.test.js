@@ -677,3 +677,38 @@ localServerTest('the sidecar client turns a 502 LLM_EXTRACT_FAILED body into cod
     await new Promise((resolve) => server.close(resolve))
   }
 })
+
+test('extraction stats (finish_reason, token counts) reach the error and the stored failure, numbers only', () => {
+  const body = {
+    error: 'the LLM\'s fact-extraction answer was cut off (truncated JSON); nothing was stored',
+    code: 'LLM_EXTRACT_FAILED',
+    reason: 'truncated',
+    component: 'llm',
+    step: 'llm_extract',
+    finishReason: 'length',
+    maxTokens: 2000,
+    promptTokens: 9191,
+    completionTokens: 2000,
+    reasoningTokens: 1697,
+    reasoningEffort: 'none',
+  }
+  const attribution = failureAttribution(body)
+  assert.deepEqual(attribution.extractStats, { finishReason: 'length', reasoningEffort: 'none', maxTokens: 2000, promptTokens: 9191, completionTokens: 2000, reasoningTokens: 1697 })
+  const error = Object.assign(sidecarFailure(body, '/add'), { status: 502, code: 'LLM_EXTRACT_FAILED' })
+  const entry = new FailureHistory({ backend: 'oss' }).record({ kind: 'capture', error })
+  assert.equal(entry.extract.finishReason, 'length')
+  assert.equal(entry.extract.reasoningTokens, 1697)
+  // Junk is dropped; other errors carry no stats.
+  assert.equal(failureAttribution({ ...body, finishReason: 'x'.repeat(40), maxTokens: -1, promptTokens: 1.5, completionTokens: '2000', reasoningTokens: undefined, reasoningEffort: 'NONE!' }).extractStats, undefined)
+  assert.equal('extractStats' in failureAttribution({ error: 'boom', component: 'llm', finishReason: 'length' }), false)
+  // A stored entry keeps stats only for extraction failures.
+  const file = tempFile()
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, JSON.stringify({ entries: [
+    { at: '2026-11-07T00:00:00Z', kind: 'capture', cause: 'extraction', reason: 'truncated', message: 'a', extract: { finishReason: 'length', maxTokens: 2000, text: 'secret' } },
+    { at: '2026-11-07T00:00:00Z', kind: 'capture', cause: 'other', message: 'b', extract: { finishReason: 'length' } },
+  ] }))
+  const [first, second] = new FailureHistory({ filePath: file }).list()
+  assert.deepEqual(first.extract, { finishReason: 'length', maxTokens: 2000 })
+  assert.equal('extract' in second, false)
+})

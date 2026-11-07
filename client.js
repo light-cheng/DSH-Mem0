@@ -207,6 +207,9 @@ window.__ModuleLoader__.load({
       captureEvents: 'added {add}, updated {update}, deleted {delete}',
       retryPending: 'Not delivered (sidecar gone); retrying once',
       retryPendingExtraction: 'LLM answer unusable ({reason}); retrying once',
+      retryPendingBudget: 'LLM answer cut off at its output limit; retrying once with max_tokens {tokens}',
+      extractStatsOutput: 'output {completion}/{max} tokens',
+      extractStatsReasoning: '{reasoning} thinking',
       retrySaved: 'Saved after one retry',
       retryFailed: 'Retry failed too',
       dockCircuitOpen: 'Memory paused',
@@ -517,6 +520,9 @@ window.__ModuleLoader__.load({
       captureEvents: '新增 {add}，更新 {update}，删除 {delete}',
       retryPending: '未送达（sidecar 已退出），正在重试一次',
       retryPendingExtraction: 'LLM 回复不可用（{reason}），正在重试一次',
+      retryPendingBudget: 'LLM 回复达到输出上限被截断，正在以 max_tokens {tokens} 重试一次',
+      extractStatsOutput: '输出 {completion}/{max} token',
+      extractStatsReasoning: '其中思考 {reasoning}',
       retrySaved: '重试后已保存',
       retryFailed: '重试仍失败',
       dockCircuitOpen: '记忆已暂停',
@@ -1088,11 +1094,15 @@ window.__ModuleLoader__.load({
           lines.push(template(t('captureEvents'), { add: record.add, update: record.update ?? 0, delete: record.delete ?? 0 }))
         }
       }
-      if (record.status === 'error' && record.extractReason) lines.push(failureCauseLabel(t, { cause: 'extraction', reason: record.extractReason }))
+      if (record.status === 'error' && record.extractReason) {
+        lines.push(failureCauseLabel(t, { cause: 'extraction', reason: record.extractReason, extract: record.extractStats }))
+      }
       if (record.retry === 'pending') {
-        lines.push(record.retryReason === 'extraction'
-          ? template(t('retryPendingExtraction'), { reason: t(`extractReason_${record.extractReason || 'not_json'}`) })
-          : t('retryPending'))
+        lines.push(record.retryReason !== 'extraction'
+          ? t('retryPending')
+          : Number.isInteger(record.retryMaxTokens)
+            ? template(t('retryPendingBudget'), { tokens: record.retryMaxTokens })
+            : template(t('retryPendingExtraction'), { reason: t(`extractReason_${record.extractReason || 'not_json'}`) }))
       }
       if (record.retry === 'saved') lines.push(t('retrySaved'))
       if (record.retry === 'failed') lines.push(t('retryFailed'))
@@ -1366,7 +1376,26 @@ window.__ModuleLoader__.load({
     /** "LLM extraction failed: answer was not JSON"; other causes as is. */
     function failureCauseLabel(t, failure) {
       const label = t(`failureCause_${failure?.cause}`)
-      return failure?.cause === 'extraction' && failure.reason ? `${label}: ${t(`extractReason_${failure.reason}`)}` : label
+      if (failure?.cause !== 'extraction' || !failure.reason) return label
+      const stats = extractStatsLabel(t, failure.extract ?? failure.extractStats)
+      return `${label}: ${t(`extractReason_${failure.reason}`)}${stats ? ` (${stats})` : ''}`
+    }
+
+    /**
+     * "finish_reason=length · output 2000/2000 tokens (1697 thinking)" for an
+     * extraction call; '' without numbers. Pure, for tests.
+     */
+    function extractStatsLabel(t, stats) {
+      if (!stats || typeof stats !== 'object') return ''
+      const parts = []
+      if (typeof stats.finishReason === 'string') parts.push(`finish_reason=${stats.finishReason}`)
+      if (Number.isInteger(stats.completionTokens) || Number.isInteger(stats.maxTokens)) {
+        let output = template(t('extractStatsOutput'), { completion: stats.completionTokens ?? '?', max: stats.maxTokens ?? '?' })
+        if (Number.isInteger(stats.reasoningTokens)) output += ` (${template(t('extractStatsReasoning'), { reasoning: stats.reasoningTokens })})`
+        parts.push(output)
+      }
+      if (typeof stats.reasoningEffort === 'string') parts.push(`reasoning_effort=${stats.reasoningEffort}`)
+      return parts.join(' · ')
     }
 
     /** "Embedder (ollama @ 127.0.0.1:11434, embedding)" for a stored failure. */

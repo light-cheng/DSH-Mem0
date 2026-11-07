@@ -87,6 +87,14 @@ test('activity details: skip reasons, circuit time left and cause, extraction co
   assert.deepEqual(plain(activityDetails(t, { status: 'saving', retry: 'pending' })), ['未送达（sidecar 已退出），正在重试一次'])
   assert.deepEqual(plain(activityDetails(t, { status: 'error', extractReason: 'refusal' })), ['LLM 抽取失败: 模型拒答'])
   assert.deepEqual(plain(activityDetails(t, { status: 'error', extractReason: 'empty', retry: 'failed' })), ['LLM 抽取失败: 回复为空', '重试仍失败'])
+  // finish_reason and token counts, and the doubled budget of the retry.
+  assert.deepEqual(plain(activityDetails(t, {
+    status: 'error',
+    extractReason: 'truncated',
+    extractStats: { finishReason: 'length', maxTokens: 4000, completionTokens: 4000, reasoningTokens: 3100 },
+    retry: 'failed',
+  })), ['LLM 抽取失败: 回复被截断（JSON 不完整） (finish_reason=length · 输出 4000/4000 token (其中思考 3100))', '重试仍失败'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'saving', retry: 'pending', retryReason: 'extraction', extractReason: 'truncated', retryMaxTokens: 16000 })), ['LLM 回复达到输出上限被截断，正在以 max_tokens 16000 重试一次'])
 })
 
 test('a stored extraction failure names its reason (zh and en)', () => {
@@ -97,6 +105,8 @@ test('a stored extraction failure names its reason (zh and en)', () => {
   for (const reason of ['not_json', 'empty', 'truncated', 'refusal']) {
     assert.ok(zh[`extractReason_${reason}`] && en[`extractReason_${reason}`], reason)
   }
+  const cut = { ...failure, reason: 'truncated', extract: { finishReason: 'length', maxTokens: 2000, completionTokens: 2000, reasoningTokens: 1697 } }
+  assert.match(failureSummary(tFor(en), cut), /answer cut off \(truncated JSON\) \(finish_reason=length · output 2000\/2000 tokens \(1697 thinking\)\)/)
 })
 
 test('the dock tells "paused by the breaker" from "skipped, too short"', () => {

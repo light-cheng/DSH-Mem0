@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildRecallBlock, latestUserText, MemoryLifecycle } from '../lib/memory-lifecycle.js'
+import { buildRecallBlock, countsTowardBreaker, latestUserText, MemoryLifecycle, retryMaxTokens } from '../lib/memory-lifecycle.js'
 import { estimateTokens } from '../lib/memory-maintenance.js'
 
 function config(overrides = {}) {
@@ -782,7 +782,7 @@ test('an unusable extraction answer is retried once; saved on the retry, the bre
   }
 })
 
-test('an extraction retry that fails too: two history entries, one breaker failure, "retry failed"', async () => {
+test('an extraction retry that fails too: two history entries, no breaker failure, "retry failed"', async () => {
   const failures = new FailureHistory({ backend: 'oss' })
   const activity = { recall: null, capture: null }
   const breaker = new CircuitBreaker({ threshold: 5 })
@@ -802,7 +802,107 @@ test('an extraction retry that fails too: two history entries, one breaker failu
   assert.equal(failures.list().length, 2)
   assert.equal(failures.latest().retry, 'failed')
   assert.equal(failures.latest().cause, 'extraction')
-  assert.equal(breaker.failures, 1)
+  // The LLM answered: an extraction failure never pauses memory.
+  assert.equal(breaker.failures, 0)
+})
+
+function cutOff(maxTokens, extra = {}) {
+  return Object.assign(unusableAnswer('truncated'), {
+    extractStats: { finishReason: 'length', maxTokens, promptTokens: 9191, completionTokens: maxTokens, reasoningTokens: 1697, ...extra },
+  })
+}
+
+test('retryMaxTokens: twice the budget after finish_reason=length, capped; nothing otherwise', () => {
+  assert.equal(retryMaxTokens(cutOff(2000)), 4000)
+  assert.equal(retryMaxTokens(cutOff(8000)), 16000)
+  assert.equal(retryMaxTokens(cutOff(60000)), 65536)
+  assert.equal(retryMaxTokens(unusableAnswer('truncated')), undefined)
+  assert.equal(retryMaxTokens(cutOff(2000, { finishReason: 'stop' })), undefined)
+  assert.equal(retryMaxTokens(cutOff(0)), undefined)
+  assert.equal(retryMaxTokens(undefined), undefined)
+})
+
+test('countsTowardBreaker: extraction failures never, transport and server failures always', () => {
+  for (const reason of ['not_json', 'empty', 'truncated', 'refusal']) assert.equal(countsTowardBreaker(unusableAnswer(reason)), false, reason)
+  assert.equal(countsTowardBreaker(refused()), true)
+  assert.equal(countsTowardBreaker(Object.assign(new Error('boom'), { code: 'BACKEND_ERROR', status: 500, component: 'llm' })), true)
+  assert.equal(countsTowardBreaker(Object.assign(new Error('timeout'), { code: 'ABORTED' })), true)
+})
+
+test('an answer cut off at finish_reason=length is retried with twice the max_tokens', async () => {
+  const failures = new FailureHistory({ backend: 'oss' })
+  const activity = { recall: null, capture: null }
+  const breaker = new CircuitBreaker({ threshold: 1 })
+  const budgets = []
+  let pending
+  const engine = engineWith(fakeClient({
+    async add(_messages, options) {
+      budgets.push(options.llmMaxTokens)
+      if (budgets.length === 1) throw cutOff(8000)
+      pending = { ...activity.capture }
+      return { results: [{ id: 'n1', memory: 'x', event: 'ADD' }], summary: { facts: 1, add: 1, update: 0, delete: 0, none: 0 } }
+    },
+  }), { failures, activity, breaker })
+  completeTurn(engine, fakeSession())
+  await settle()
+  assert.deepEqual(budgets, [undefined, 16000])
+  assert.equal(pending.retryMaxTokens, 16000)
+  assert.equal(pending.extractStats.finishReason, 'length')
+  assert.equal(activity.capture.status, 'saved')
+  assert.equal(activity.capture.retry, 'saved')
+  assert.equal(failures.latest().extract.reasoningTokens, 1697)
+  assert.equal(breaker.isOpen(), false)
+})
+
+test('other unusable answers are retried with the configured budget', async () => {
+  const budgets = []
+  const engine = engineWith(fakeClient({
+    async add(_messages, options) {
+      budgets.push(options.llmMaxTokens)
+      if (budgets.length === 1) throw Object.assign(unusableAnswer('not_json'), { extractStats: { finishReason: 'stop', maxTokens: 8000 } })
+      return { results: [] }
+    },
+  }), { activity: { recall: null, capture: null } })
+  completeTurn(engine, fakeSession())
+  await settle()
+  assert.deepEqual(budgets, [undefined, undefined])
+})
+
+test('a cut-off retry that fails too keeps the numbers and leaves the breaker closed', async () => {
+  const failures = new FailureHistory({ backend: 'oss' })
+  const activity = { recall: null, capture: null }
+  const breaker = new CircuitBreaker({ threshold: 1 })
+  let calls = 0
+  const engine = engineWith(fakeClient({
+    async add(_messages, options) {
+      calls += 1
+      throw cutOff(options.llmMaxTokens ?? 2000)
+    },
+  }), { failures, activity, breaker })
+  for (let turn = 0; turn < 3; turn += 1) {
+    completeTurn(engine, fakeSession())
+    await settle()
+  }
+  assert.equal(calls, 6)
+  assert.equal(breaker.isOpen(), false)
+  assert.equal(activity.capture.status, 'error')
+  assert.equal(activity.capture.retry, 'failed')
+  assert.deepEqual(activity.capture.extractStats, { finishReason: 'length', maxTokens: 4000, promptTokens: 9191, completionTokens: 4000, reasoningTokens: 1697 })
+  assert.equal(failures.latest().extract.maxTokens, 4000)
+})
+
+test('transport failures still open the breaker', async () => {
+  const breaker = new CircuitBreaker({ threshold: 2 })
+  const engine = engineWith(fakeClient({
+    async add() {
+      throw Object.assign(new Error('dsh-mem0: POST /add failed: boom'), { code: 'BACKEND_ERROR', status: 500 })
+    },
+  }), { activity: { recall: null, capture: null }, breaker })
+  for (let turn = 0; turn < 2; turn += 1) {
+    completeTurn(engine, fakeSession())
+    await settle()
+  }
+  assert.equal(breaker.isOpen(), true)
 })
 
 test('a refusal is not retried', async () => {
