@@ -94,6 +94,48 @@ def _history_paths(history_db: str) -> tuple[str, str]:
     )
 
 
+QDRANT_DOCS_URL = "https://github.com/light-cheng/DSH-Mem0#qdrant-server-only"
+WINDOWS_DOCS_URL = "https://github.com/light-cheng/DSH-Mem0#windows-troubleshooting"
+EMBEDDED_QDRANT_MESSAGE = (
+    "Embedded Qdrant (vector_store.config.path) is not supported. Start a Qdrant server and set "
+    "vector_store.config.url in oss.json. 不支持嵌入式 Qdrant，请启动 Qdrant 服务端并在 oss.json 里用 url。"
+    f" See {QDRANT_DOCS_URL}"
+)
+
+
+class ConfigError(ValueError):
+    """A Mem0 config the plugin does not support; retrying cannot help."""
+
+    def __init__(self, message: str, code: str = "CONFIG_INVALID", component: str = "vector_store"):
+        super().__init__(message)
+        self.code = code
+        self._dsh_component = component
+
+
+def check_vector_store(vector_store: dict[str, Any]) -> None:
+    """Only a Qdrant server is supported (url, or host and port).
+
+    Embedded Qdrant (`path`) locks its folder exclusively, and the sidecar's
+    read and write Memory instances would each open it (issue #23). The
+    Node side runs the same check (lib/oss-config.js) before it starts
+    Python. A path next to a url or host is ignored with a warning.
+    """
+    provider = str(vector_store.get("provider") or "qdrant").lower()
+    if provider != "qdrant":
+        return
+    config = vector_store.get("config") if isinstance(vector_store.get("config"), dict) else {}
+    url = config.get("url")
+    host = config.get("host")
+    has_url = isinstance(url, str) and url.strip() != ""
+    # Mem0 uses host only together with a port; a host alone falls back to an
+    # embedded store at its default path.
+    has_host = isinstance(host, str) and host.strip() != "" and bool(config.get("port"))
+    if not has_url and not has_host:
+        raise ConfigError(EMBEDDED_QDRANT_MESSAGE, code="QDRANT_EMBEDDED_UNSUPPORTED")
+    if isinstance(config.get("path"), str) and config.get("path"):
+        logger.warning("vector_store.config.path is ignored: the Qdrant server at url/host is used")
+
+
 def build_memory_config(config_path: str, collection: str, history_db: str) -> dict[str, Any]:
     """Read a Mem0 OSS config and override only DSH-owned fields."""
     path = Path(os.path.expanduser(config_path))
@@ -112,6 +154,7 @@ def build_memory_config(config_path: str, collection: str, history_db: str) -> d
             raise ValueError(f"Mem0 config is missing oss.{section}.config")
 
     vector_store = deepcopy(oss["vector_store"])
+    check_vector_store(vector_store)
     vector_config = vector_store.setdefault("config", {})
     vector_config["collection_name"] = collection
     if not vector_config.get("embedding_model_dims"):
@@ -368,16 +411,85 @@ def instrument_memory(memory: Any, tracker: StepTracker) -> None:
     instrument_component(getattr(memory, "vector_store", None), "vector_store", tracker)
 
 
+_REFUSED_RE = re.compile(
+    r"Connection refused|actively refused|ECONNREFUSED|Errno 61\b|Errno 111\b|WinError 10061|\b10061\b",
+    re.I,
+)
+
+
+def is_connection_refused(exc: BaseException) -> bool:
+    """True when the exception (or what caused it) is a refused TCP connection."""
+    current: BaseException | None = exc
+    seen = 0
+    while current is not None and seen < 8:
+        if isinstance(current, ConnectionRefusedError) or _REFUSED_RE.search(str(current)):
+            return True
+        current = current.__cause__ or current.__context__
+        seen += 1
+    return False
+
+
+_COMPONENT_NAMES = {"vector_store": "Vector store", "embedder": "Embedder", "llm": "LLM"}
+_PROVIDER_NAMES = {"qdrant": "Qdrant", "ollama": "Ollama", "openai": "OpenAI-compatible LLM", "lmstudio": "LM Studio"}
+
+
+def unreachable_text(component: str, details: dict[str, Any] | None) -> str | None:
+    """"Qdrant unreachable at 127.0.0.1:15333 (connection refused) …" with hints."""
+    details = details or {}
+    endpoint = details.get("endpoint")
+    if not endpoint or endpoint == "local path":
+        return None
+    provider = str(details.get("provider") or "")
+    name = _PROVIDER_NAMES.get(provider.lower()) or _COMPONENT_NAMES.get(component, component)
+    return (
+        f"{name} unreachable at {endpoint} (connection refused). Check that it is running and listening on that port; "
+        "on Windows, a port inside a reserved range makes the service fail to bind (os error 10013, "
+        f"\"access a socket in a way forbidden\" in its own log). See {WINDOWS_DOCS_URL}"
+    )
+
+
+def describe_error(exc: BaseException, component: str | None, components: dict[str, dict[str, Any]] | None) -> str:
+    """Redacted error text; a refused connection names the component's host:port."""
+    if component and is_connection_refused(exc):
+        text = unreachable_text(component, (components or {}).get(component))
+        if text:
+            return text
+    return redact_error(exc)
+
+
 def error_payload(exc: BaseException, components: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     """Redacted error body for a failed request, with the failing component."""
-    payload: dict[str, Any] = {"error": redact_error(exc)}
-    payload.update(attribute_exception(exc))
+    attribution = attribute_exception(exc)
+    payload: dict[str, Any] = {"error": describe_error(exc, attribution.get("component"), components)}
+    payload.update(attribution)
     details = (components or {}).get(payload.get("component", ""))
     if details:
         payload["provider"] = details.get("provider")
         if details.get("endpoint"):
             payload["endpoint"] = details["endpoint"]
     return payload
+
+
+def startup_error_payload(exc: BaseException, config: dict[str, Any] | None) -> dict[str, Any]:
+    """The JSON line a failed start prints: error type and message, code, component."""
+    payload = error_payload(exc, describe_components(config) if config else None)
+    message = payload["error"]
+    kind = type(exc).__name__
+    if not message.startswith(kind) and "unreachable at" not in message and not isinstance(exc, ConfigError):
+        payload["error"] = f"{kind}: {message}" if message else kind
+    payload["type"] = kind
+    payload["code"] = getattr(exc, "code", None) if isinstance(getattr(exc, "code", None), str) else "START_FAILED"
+    return payload
+
+
+def check_mem0_installed() -> None:
+    """Fail fast, with a readable error, when this interpreter has no mem0."""
+    import importlib.util
+
+    if importlib.util.find_spec("mem0") is None:
+        error = ModuleNotFoundError("No module named 'mem0'", name="mem0")
+        error.code = "MEM0_NOT_INSTALLED"  # type: ignore[attr-defined]
+        raise error
 
 
 # --- /add outcome ---------------------------------------------------------
@@ -822,7 +934,7 @@ class Mem0Service:
                     filters={"user_id": self.user_id}, top_k=1
                 )
         except Exception as exc:  # noqa: BLE001 - status must report, not crash
-            read_error = str(exc)
+            read_error = describe_error(exc, "vector_store", self.components)
 
         embed_ok = False
         embed_dims = None
@@ -832,7 +944,7 @@ class Mem0Service:
             embed_ok = True
             embed_dims = len(vector)
         except Exception as exc:  # noqa: BLE001
-            embed_error = str(exc)
+            embed_error = describe_error(exc, "embedder", self.components)
 
         memory_count = len(read_result.get("results", [])) if isinstance(read_result, dict) else 0
         return {
@@ -1157,9 +1269,11 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     install_log_scrubber()
 
+    config: dict[str, Any] | None = None
     try:
         token = read_token(sys.stdin)
         config = build_memory_config(args.config, args.collection, args.history_db)
+        check_mem0_installed()
         service = Mem0Service(config, args.collection, args.user_id, args.agent_id)
         server = DshMem0Server(("127.0.0.1", args.port), SidecarHandler, service, token)
 
@@ -1173,7 +1287,7 @@ def main(argv: list[str] | None = None) -> int:
         server.server_close()
         return 0
     except Exception as exc:  # noqa: BLE001 - surface a clean startup failure to Node
-        print(json.dumps({"error": str(exc), "code": "START_FAILED"}), flush=True)
+        print(json.dumps(startup_error_payload(exc, config)), flush=True)
         logger.error("sidecar failed to start: %s", traceback.format_exc())
         return 1
 

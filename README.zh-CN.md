@@ -212,7 +212,7 @@ config:
 
 `authType` 支持 `apiKey`（`X-API-Key`）、`bearer`、`token` 和 `none`（`AUTH_DISABLED=true` 的本地服务）。
 
-#### OSS Python sidecar（本地 Qdrant / bge-m3）
+#### OSS Python sidecar（Qdrant 服务端 / bge-m3）
 
 先准备一个 Mem0 OSS 配置文件，例如 `~/.dsh/mem0/oss.json`，格式见 [examples/oss-config.example.json](examples/oss-config.example.json)。
 
@@ -233,6 +233,57 @@ Python 环境需要：
 python3 -m venv ~/.dsh/mem0/venv
 ~/.dsh/mem0/venv/bin/pip install "mem0ai>=2.0.10,<3" qdrant-client openai
 ```
+
+Windows（PowerShell）：
+
+```powershell
+py -3.11 -m venv $env:USERPROFILE\.dsh\mem0\venv
+& $env:USERPROFILE\.dsh\mem0\venv\Scripts\pip.exe install "mem0ai>=2.0.10,<3" qdrant-client openai
+```
+
+**用哪个 Python。** 设置了 `pythonPath` 就始终用它。没设置时，插件在 `~/.dsh/mem0/venv` 里找：Windows 依次找 `Scripts\python.exe`、`bin\python.exe`、`bin\python`；其他系统依次找 `bin/python3`、`bin/python`。都找不到才退回 PATH 里的 `python`（Windows）或 `python3`，这时 `mem0_status`、「OSS sidecar」区块和 `sidecar.log` 都会写明。这个解释器里没有 `mem0` 时（Windows 上常见的是 Microsoft Store 的 Python），启动会立即失败，报 `ModuleNotFoundError: No module named 'mem0'` 并带上解释器路径；失败卡片显示的是这条原因，而不再是「sidecar failed to start recently」。
+
+<a id="qdrant-server-only"></a>
+#### 只支持 Qdrant 服务端
+
+OSS 后端需要 **Qdrant 服务端**：在 `oss.json` 里设置 `vector_store.config.url`（或 `host` 加 `port`）。**不支持**嵌入式 Qdrant（只写 `vector_store.config.path`、不起服务端）：sidecar 会打开两次 Qdrant（读、写各一个），而嵌入式 Qdrant 对存储目录加的是只允许一个客户端的排他锁（[#23](https://github.com/light-cheng/DSH-Mem0/issues/23)）。只写了 `path` 时，插件在启动 Python 之前就报「不支持嵌入式 Qdrant」，归为向量库的配置错误，并且在 `oss.json` 改动之前不再重试。同时写了 `path` 和 `url` 时用 `url`，忽略 `path`（`sidecar.log` 里有一条警告）。
+
+启动本地 Qdrant 服务端的最短步骤：
+
+1. 从 [Qdrant releases](https://github.com/qdrant/qdrant/releases) 下载对应平台的版本（Windows 是 `qdrant-x86_64-pc-windows-msvc.zip`），解压到例如 `~/.dsh/mem0/qdrant/`。
+2. 在同一目录建 `config.yaml`。只监听本机回环地址；Windows 上用 15000 以上、并且不在系统保留段里的端口（见 [Windows 排障](#windows-troubleshooting)）：
+
+   ```yaml
+   storage:
+     storage_path: ./qdrant-storage
+   service:
+     host: 127.0.0.1
+     http_port: 15333
+     grpc_port: 15334
+   telemetry_disabled: true
+   ```
+
+3. 在该目录启动：`./qdrant --config-path config.yaml`（Windows：`.\qdrant.exe --config-path config.yaml`），用 `curl http://127.0.0.1:15333/collections` 检查。
+4. `oss.json` 里写：
+
+   ```json
+   "vector_store": { "provider": "qdrant", "config": { "url": "http://127.0.0.1:15333", "embedding_model_dims": 1024 } }
+   ```
+
+Windows 上想开机登录后自动启动，可以建一个计划任务运行上面的命令。
+
+**把插件配置放到 DSH 改不到的地方。** DSH 的设置同步可能重写 profile 的 `cordis.patch.yml`，把插件配置删掉（实际遇到过：装插件后 dsh-mem0 块只剩 `backend`）。插件配置也可以写在 `oss.json` 顶层的 `dsh_mem0` 段里，DSH 不会重写这个文件。profile 没设置的字段（值等于默认值也算没设置）用这里的值，profile 设置了的以 profile 为准：
+
+```json
+{
+  "dsh_mem0": { "pythonPath": "~/.dsh/mem0/venv/Scripts/python.exe", "collectionName": "dsh_mem0", "userId": "your-user-id" },
+  "oss": { "…": "…" }
+}
+```
+
+可写的字段：`pythonPath`、`collectionName`、`userId`、`agentId`、`historyDbPath`、`translateMemories`、`captureStrataFolds`。`oss.json` 按 `mem0ConfigPath` 找；这一项也丢了时，用默认的 `~/.dsh/mem0/oss.json`。
+
+插件也会发现配置被重写：它记录上次正常运行时哪些关键配置有值（只记字段名，存在 `<DSH profile>/dsh-mem0/config-fingerprint.json`）。其中有字段消失时，设置页和 `mem0_status` 会提示「dsh-mem0 配置疑似被重写，缺少：…」。写在 `dsh_mem0` 段里的字段不算缺失。如果是你有意删掉的，删除 `config-fingerprint.json` 即可。
 
 当前版本**不会在插件加载时静默安装** Python 或 Qdrant，也不会修改系统 Python。设置页会显示连接错误；建议优先使用 Platform，或按上面的命令手动准备本地环境。后续更合适的做法是在设置页做「环境检测 + 用户点击后一键创建 venv」的引导安装，而不是安装插件时自动执行。
 
@@ -310,6 +361,48 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 | `enabled` | `true` | 总开关 |
 
 在设置页或 profile 配置里保存的修改会自动生效：loader 提交新配置时（`loader/volatile-update`）插件会自己重启，不需要手动重新加载插件或重启 DSH。`backend: auto` 下，在 DSH 凭据里存入或删除 Key 也会让插件重启。
+
+<a id="windows-troubleshooting"></a>
+## Windows 排障
+
+Windows 上 OSS 后端的故障大多出自三处：端口被 Windows 保留段占了、服务没在运行、插件配置被 DSH 重写。按「先看端口、再看进程、最后看配置」的顺序查。
+
+**保留端口。** 装了 Hyper-V、WSL2 或 Docker Desktop 的机器，Windows（WinNAT）每次开机会划出一些 TCP 保留段，位置每次不同。服务的端口落进去就绑不上：进程在跑，端口却没有监听，服务自己的日志里有 `os error 10013` 或 "An attempt was made to access a socket in a way forbidden by its access permissions"。这时插件会报类似「Qdrant unreachable at 127.0.0.1:15333 (connection refused)」，并附上这条提示。
+
+```powershell
+netsh int ipv4 show excludedportrange protocol=tcp   # 保留段
+netsh int ipv4 show dynamicport tcp                  # 动态端口段（默认从 49152 起）
+```
+
+如果动态端口段起点很低（比如 1024），保留段可能落到任何常用端口上（6333、11434、8080）。把 Qdrant 和 Ollama 放到 15000 以上、并且不在上面列出的任何保留段里的端口，例如 15333（Qdrant REST，gRPC 用 15334）和 15434（Ollama）：
+
+- Qdrant：改它 `config.yaml` 里的 `http_port` / `grpc_port`，以及 `oss.json` 的 `vector_store.config.url`。
+- Ollama：设置用户环境变量 `OLLAMA_HOST=127.0.0.1:15434`（从托盘退出 Ollama 再启动；改之前就已启动的程序，包括 DSH，要重启后才拿到新值），以及 `oss.json` 的 `embedder.config.ollama_base_url`。
+
+可选，需要管理员权限：把动态端口段改回 Windows 默认，让保留段落到 49152 以上。这会短暂停掉 Windows NAT，期间 Hyper-V/WSL2/Docker 的网络中断，直到重新启动；当初改动端口段的工具以后也可能再改回去：
+
+```powershell
+net stop winnat
+netsh int ipv4 set dynamicport tcp start=49152 num=16384
+net start winnat
+```
+
+**服务。** 进程在不等于服务可用，直接查端口：
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:15333/collections -UseBasicParsing   # Qdrant
+Invoke-RestMethod  http://127.0.0.1:15434/api/tags                      # Ollama
+```
+
+**Python。** `ModuleNotFoundError: No module named 'mem0'` 表示 sidecar 用的解释器里没有 Mem0，通常是 `pythonPath` 丢了、退回了 PATH 里的 python。确认 `~\.dsh\mem0\venv\Scripts\python.exe` 存在（不设 `pythonPath` 插件也能找到它），或者重新设置 `pythonPath`。
+
+**装插件或更新插件之后**，检查一次记忆：
+
+1. 看输入框下方的记忆状态：没有红色「记忆失败」。
+2. 让 agent 运行 `mem0_status`：`status: ready`、`qdrant: ok`、`embedder: ok`，并且没有 `warning: dsh-mem0 settings look rewritten`。
+3. 配置被重写时，在插件设置页补回（或用 DSH 在 `cordis.patch.yml` 旁边留的 `.bak-<时间>` 副本恢复），并考虑把这些配置移到 `oss.json` 的 `dsh_mem0` 段。`mem0_status` 里写了启动失败原因时先修它；过了启动退避（30 秒）或熔断冷却（2 分钟）后，下一次读写记忆会重新启动 sidecar，重载插件则立即重启。
+
+sidecar 自己的日志在 `<DSH profile>\dsh-mem0\sidecar.log`（例如 `Get-Content $env:USERPROFILE\.dsh\profiles\<profile>\dsh-mem0\sidecar.log -Tail 30`）。
 
 ## 工具
 
