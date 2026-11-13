@@ -314,6 +314,9 @@ window.__ModuleLoader__.load({
       memoryDeleteReason_foreign_source: 'it was written by another app, and only memories written by DSH-Mem0 can be deleted here',
       memoryDeleteReason_other_user: 'it belongs to another Mem0 user',
       memoryDeleteReason_not_found: 'it no longer exists',
+      memoryDeleteReason_unproven_owner: 'the backend did not confirm it belongs to the configured Mem0 user',
+      profileSourcesChanged: 'A memory this summary was built from was deleted or changed; the summary may contain outdated or deleted content. Edit or reset it.',
+      profileStale: 'A memory this summary was built from was deleted or changed; the summary is not injected until it is rebuilt.',
       recallPreviewTitle: 'Last recalled memories',
       profileSummaryTitle: 'Memory summary',
       profileSummaryHint: 'Editable memory summary, injected before relevant memories during recall.',
@@ -627,6 +630,9 @@ window.__ModuleLoader__.load({
       memoryDeleteReason_foreign_source: '这条记忆由其他应用写入，这里只能删除 DSH-Mem0 写入的记忆',
       memoryDeleteReason_other_user: '这条记忆属于另一个 Mem0 用户',
       memoryDeleteReason_not_found: '这条记忆已不存在',
+      memoryDeleteReason_unproven_owner: '后端没有确认这条记忆属于当前配置的 Mem0 用户',
+      profileSourcesChanged: '生成这份摘要的记忆中有被删除或修改的，摘要可能含已删除或过时的内容，请编辑或重置。',
+      profileStale: '生成这份摘要的记忆中有被删除或修改的，摘要重建前不会注入。',
       recallPreviewTitle: '上次召回的记忆',
       profileSummaryTitle: '记忆摘要',
       profileSummaryHint: '可编辑的记忆摘要，召回时优先注入。',
@@ -865,6 +871,11 @@ window.__ModuleLoader__.load({
     }
 
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    function newIdempotencyKey() {
+      if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID()
+      return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+    }
 
     async function fetchJson(path, options, attempt = 0) {
       // `retry: false` (deletes): never resend; a 404 there is an answer.
@@ -1109,7 +1120,7 @@ window.__ModuleLoader__.load({
       return lines
     }
 
-    const DELETE_REASONS = ['foreign-source', 'other-user', 'not-found']
+    const DELETE_REASONS = ['foreign-source', 'other-user', 'not-found', 'unproven-owner']
 
     function deleteErrorText(t, error) {
       const reason = DELETE_REASONS.includes(error?.reason)
@@ -1985,11 +1996,18 @@ window.__ModuleLoader__.load({
             return
           }
           setHygieneState('running')
+          // Deletes only the previewed plan, once: never resent on a network
+          // error or 5xx, and a resend with the same key replays the result.
           const report = applyHygieneResponse(
             await fetchJson(HYGIENE_PATH, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ dryRun: false }),
+              body: JSON.stringify({
+                dryRun: false,
+                planId: preview.planId,
+                idempotencyKey: newIdempotencyKey(),
+              }),
+              retry: false,
             }),
           )
           setHygieneState('ok')
@@ -2082,6 +2100,8 @@ window.__ModuleLoader__.load({
         profileMeta.push(`${maintenance.profile.items ?? 0} ${t('profileSummaryItems')}`)
         if (maintenance.profile.tokens !== undefined) profileMeta.push(`${maintenance.profile.tokens} tok`)
         if (maintenance.profile.manual) profileMeta.push(t('profileManual'))
+        if (maintenance.profile.sourcesChanged) profileMeta.push(t('profileSourcesChanged'))
+        if (maintenance.profile.stale) profileMeta.push(t('profileStale'))
         if (maintenance.profile.updatedAt) {
           profileMeta.push(`${t('profileSummaryUpdated')} ${activityTime(maintenance.profile.updatedAt)}`)
         }

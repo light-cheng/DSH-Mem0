@@ -6,6 +6,16 @@ English is the default; the Chinese version follows below.
 
 ### Unreleased
 
+- **Hygiene and summary data-safety fixes** (external review of b93f4a0):
+  - *Duplicates are exact copies only.* Deletion compares a hash of the full text after case and whitespace normalisation. Before, punctuation was dropped and only the first 240 characters compared, so `dose 1.5 mg` and `dose 15 mg`, or two long notes with opposite endings, were "duplicates" and one was deleted. Look-alikes are now reported as suspected duplicates and kept.
+  - *A confirmed cleanup runs once.* The preview returns a `planId`; the confirmation must send it with an idempotency key, is never retried by the page, and deletes only the plan's memories that still exist unchanged. A resend returns the first result. Before, a lost response made the page resend, and the plugin computed a new plan: a 100-memory preview could delete 200. `POST /dsh-mem0/gui/hygiene` without `dryRun: true` now needs `planId` and `idempotencyKey` (HTTP 409 otherwise).
+  - *Per-store summary, history and authorisation.* `maintenance.json` (now version 2) keeps them per backend + endpoint + OSS collection + user + agent. Switching user no longer lets a due pass delete the new user's memories with the old user's authorisation, and another backend or collection no longer gets the old summary. Upgrading keeps only a manual summary for the same user; automatic passes preview again until the next confirmed run.
+  - *Disposing stops a running pass.* List and delete requests carry an abort signal; the pass stops before the next delete and state write, and a reloaded plugin waits for it.
+  - *Redaction for queries and summaries.* Recall and `mem0_search` queries are redacted before the backend and in Activity. Summaries are redacted when built, saved and injected, and forged `</mem0-user-profile>` / `</mem0-relevant-memories>` tags are removed.
+  - *Deleting or updating a memory invalidates the generated summary.* It stops being injected at once and is rebuilt in the background, also with hygiene off. A manual summary keeps being injected but is flagged on the Memory summary card when one of its sources was deleted or changed.
+  - *Reports count real results.* Remaining count and summary are the store minus the deletes that succeeded (125 memories, limit 20, 100 per run: 25 left, not 20). An automatic preview's summary no longer drops facts that are still stored.
+  - *Ownership must be proven.* `mem0_get`, `mem0_update`, `mem0_delete` and the library delete refuse a memory whose `user_id` is missing or empty (also agent-only memories) unless a listing filtered by the configured user contains it.
+  - *Server `authType: token`* now sends `Authorization: Token <key>`; before, it sent `X-API-Key`.
 - **Fact extraction is no longer cut off by a reasoning model's thinking.** With the OSS backend and a hybrid reasoning model, saves failed with "LLM extraction failed: answer cut off (truncated JSON); retry failed too". Mem0's default output budget of 2000 tokens is shared with the model's thinking: through magpie with `workbuddy/deepseek-v4.1-flash`, 2 of 3 extractions of a 1.4K-character fold summary stopped at `finish_reason=length` after 1.4–1.7K reasoning tokens. Now:
   - The sidecar uses `max_tokens: 8000` for fact extraction when `oss.llm.config` sets none (a value you set always wins). With 8000, 6 of 6 extractions finished; the largest used 2541 output tokens.
   - `oss.llm.config.reasoning_effort` is sent to every model, not only the ones Mem0 knows as reasoning models. `"none"` turns thinking off where the gateway supports it (6 of 6 finished with 0 reasoning tokens and about 850 output tokens even at 2000). `"low"` did not help (3 of 3 still cut off at 2000). It is not sent unless you set it.
@@ -123,6 +133,16 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 ### 未发布
 
+- **巡检和摘要的数据安全修复**（外部审阅 b93f4a0）：
+  - *只有完全相同才算重复*。删除前比较完整文本在大小写和空白规范化后的哈希。之前会去掉标点、只比前 240 字，`dose 1.5 mg` 和 `dose 15 mg`、或结尾结论相反的两条长记录会被判为重复并删掉一条。看起来相似的现在只列为「疑似重复」，不删除。
+  - *确认的清理只执行一次*。预览返回 `planId`；确认必须带上它和幂等键，页面不会自动重发，只删除计划里仍然存在且未改动的记忆，重复提交返回第一次的结果。之前响应丢失时页面会重发，插件又重新算一份计划：预览 100 条可能删掉 200 条。`POST /dsh-mem0/gui/hygiene` 不带 `dryRun: true` 时必须带 `planId` 和 `idempotencyKey`，否则返回 HTTP 409。
+  - *摘要、巡检历史和授权按记忆库分开*。`maintenance.json`（现为第 2 版）按「后端 + 端点 + OSS collection + 用户 + agent」分别保存。切换用户后，到期巡检不会再拿旧用户的授权删除新用户的记忆；换后端或 collection 后也不再注入旧摘要。升级时只保留同一用户的手动摘要；自动巡检重新只做预览，直到下一次确认巡检。
+  - *dispose 会停下正在跑的巡检*。列表和删除请求都带取消信号；巡检在下一次删除和写状态前停下，重载后的插件会等它停完。
+  - *查询和摘要脱敏*。自动召回和 `mem0_search` 的查询在发给后端前、在活动记录里都脱敏。摘要在生成、保存和注入时脱敏，并去掉伪造的 `</mem0-user-profile>` / `</mem0-relevant-memories>` 标记。
+  - *删除或更新记忆会让自动摘要失效*。立即停止注入，并在后台重建，关闭巡检时也一样。手动摘要继续注入，但如果它的来源被删除或修改，「记忆摘要」卡片会提示。
+  - *报告按实际结果计算*。剩余数量和摘要 = 原集合减去删除成功的记忆（125 条、上限 20、单次最多 100：剩 25 条，而不是 20 条）。自动预览生成的摘要不再漏掉仍在库中的事实。
+  - *归属必须能证明*。`mem0_get`、`mem0_update`、`mem0_delete` 和记忆库删除，遇到 `user_id` 缺失或为空（包括只有 agent 的记忆）时拒绝，除非按当前用户过滤的列表里有这条记忆。
+  - *server 后端的 `authType: token`* 现在发送 `Authorization: Token <key>`；之前发的是 `X-API-Key`。
 - **事实抽取不再被推理模型的思考挤到截断。** 使用 OSS 后端和 hybrid 推理模型时，保存会失败并显示「LLM 抽取失败: 回复被截断 (JSON 不完整) — 重试仍失败」。原因是 Mem0 默认 2000 token 的输出上限要和模型的思考共用：经 magpie 调用 `workbuddy/deepseek-v4.1-flash`，一段 1.4K 字的 fold 摘要抽取 3 次，有 2 次在思考用掉 1.4K–1.7K token 后以 `finish_reason=length` 截断。现在：
   - `oss.llm.config` 没有写 `max_tokens` 时，sidecar 抽取用 `max_tokens: 8000`（你自己写的值始终优先）。用 8000 抽取 6 次全部正常结束，最多用了 2541 个输出 token。
   - `oss.llm.config.reasoning_effort` 会发给所有模型，不再只发给 Mem0 认得的推理模型。在支持的网关上 `"none"` 会关闭思考（即使上限是 2000，6 次也全部正常结束，思考 0 token，输出约 850 token）。`"low"` 没有用（2000 时 3 次全部截断）。不设置就不发送。
