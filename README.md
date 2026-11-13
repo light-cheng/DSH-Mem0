@@ -212,7 +212,7 @@ config:
 
 `authType` supports `apiKey` (`X-API-Key`), `bearer`, `token` and `none` (for local services with `AUTH_DISABLED=true`).
 
-#### OSS Python sidecar (local Qdrant / bge-m3)
+#### OSS Python sidecar (Qdrant server / bge-m3)
 
 First prepare a Mem0 OSS config file, for example `~/.dsh/mem0/oss.json`; see [examples/oss-config.example.json](examples/oss-config.example.json).
 
@@ -233,6 +233,57 @@ The Python environment needs:
 python3 -m venv ~/.dsh/mem0/venv
 ~/.dsh/mem0/venv/bin/pip install "mem0ai>=2.0.10,<3" qdrant-client openai
 ```
+
+On Windows (PowerShell):
+
+```powershell
+py -3.11 -m venv $env:USERPROFILE\.dsh\mem0\venv
+& $env:USERPROFILE\.dsh\mem0\venv\Scripts\pip.exe install "mem0ai>=2.0.10,<3" qdrant-client openai
+```
+
+**Which Python is used.** A `pythonPath` you set always wins. Without one the plugin looks for the venv in `~/.dsh/mem0/venv`: on Windows `Scripts\python.exe`, then `bin\python.exe` and `bin\python`; elsewhere `bin/python3`, then `bin/python`. Only when none exists does it fall back to `python` (Windows) or `python3` from PATH, and `mem0_status`, the **OSS sidecar** block and `sidecar.log` say so. When that interpreter has no `mem0` (on Windows often the Microsoft Store Python), the start fails at once with `ModuleNotFoundError: No module named 'mem0'` and the interpreter's path, and the failure card shows that instead of "sidecar failed to start recently".
+
+<a id="qdrant-server-only"></a>
+#### Qdrant: server only
+
+The OSS backend needs a **Qdrant server**: set `vector_store.config.url` (or `host` and `port`) in `oss.json`. Embedded Qdrant (`vector_store.config.path`, no server) is **not supported**: the sidecar opens Qdrant twice (a read path and a write path), and embedded Qdrant locks its folder for one client only ([#23](https://github.com/light-cheng/DSH-Mem0/issues/23)). With only `path`, the plugin stops before starting Python with "Embedded Qdrant is not supported", shows it as a configuration error of the vector store, and does not try again until `oss.json` changes. With both `path` and `url`, `url` is used and `path` is ignored (a warning in `sidecar.log`).
+
+Shortest way to run a local Qdrant server:
+
+1. Download the release for your platform from [Qdrant releases](https://github.com/qdrant/qdrant/releases) (for Windows, `qdrant-x86_64-pc-windows-msvc.zip`) and unpack it, for example into `~/.dsh/mem0/qdrant/`.
+2. Next to it, create `config.yaml`. It listens on loopback only; on Windows use ports above 15000 that are outside the reserved ranges (see [Windows troubleshooting](#windows-troubleshooting)):
+
+   ```yaml
+   storage:
+     storage_path: ./qdrant-storage
+   service:
+     host: 127.0.0.1
+     http_port: 15333
+     grpc_port: 15334
+   telemetry_disabled: true
+   ```
+
+3. Start it from that folder: `./qdrant --config-path config.yaml` (Windows: `.\qdrant.exe --config-path config.yaml`). Check it with `curl http://127.0.0.1:15333/collections`.
+4. In `oss.json`:
+
+   ```json
+   "vector_store": { "provider": "qdrant", "config": { "url": "http://127.0.0.1:15333", "embedding_model_dims": 1024 } }
+   ```
+
+To start it at login on Windows, a Task Scheduler task that runs the command above works.
+
+**Keeping plugin settings out of DSH's reach.** DSH's settings sync can rewrite the profile's `cordis.patch.yml` and drop plugin settings (seen when a plugin was installed: the dsh-mem0 block was cut down to `backend`). Settings can also live in a `dsh_mem0` block at the top of `oss.json`, which DSH never rewrites. They apply when the profile does not set them (a value equal to the default counts as not set); the profile wins otherwise:
+
+```json
+{
+  "dsh_mem0": { "pythonPath": "~/.dsh/mem0/venv/Scripts/python.exe", "collectionName": "dsh_mem0", "userId": "your-user-id" },
+  "oss": { "…": "…" }
+}
+```
+
+Allowed keys: `pythonPath`, `collectionName`, `userId`, `agentId`, `historyDbPath`, `translateMemories`, `captureStrataFolds`. `oss.json` is found at `mem0ConfigPath`, or at the default `~/.dsh/mem0/oss.json` when that setting is gone too.
+
+The plugin also notices a rewrite: it records which key settings were set the last time it ran fine (names only, in `<DSH profile>/dsh-mem0/config-fingerprint.json`). When some of them disappear, the settings page and `mem0_status` say "dsh-mem0 settings look rewritten; missing: …". Settings kept in the `dsh_mem0` block do not count as missing. If you removed one on purpose, delete `config-fingerprint.json`.
 
 This version **does not silently install** Python or Qdrant when the plugin loads, and does not modify the system Python. The settings page shows connection errors; prefer Platform, or prepare the local environment manually with the commands above. A better future flow is a guided **environment check + explicit one-click venv creation** in the settings page, rather than automatic execution at plugin install time.
 
@@ -310,6 +361,48 @@ Measured on a hybrid setup (cloud LLM for extraction, local bge-m3 embeddings, l
 | `enabled` | `true` | Master switch |
 
 Changes saved in the settings page or the profile config apply on their own: the plugin restarts itself when the loader commits new values (`loader/volatile-update`), so no manual reload or DSH restart is needed. With `backend: auto`, storing or removing the key in DSH credentials restarts it too.
+
+<a id="windows-troubleshooting"></a>
+## Windows troubleshooting
+
+Most OSS failures on Windows come from three things: a port taken by a Windows reserved range, a service that is not running, or plugin settings that DSH rewrote. Look in that order: ports, processes, settings.
+
+**Reserved ports.** Hyper-V, WSL2 and Docker Desktop make Windows (WinNAT) reserve TCP port ranges at boot, at different places each time. A service whose port falls inside one cannot listen: its process runs, but the port is silent. Its own log says `os error 10013` or "An attempt was made to access a socket in a way forbidden by its access permissions". The plugin then reports, for example, "Qdrant unreachable at 127.0.0.1:15333 (connection refused)" with this hint.
+
+```powershell
+netsh int ipv4 show excludedportrange protocol=tcp   # reserved ranges
+netsh int ipv4 show dynamicport tcp                  # dynamic port range (default: start 49152)
+```
+
+If the dynamic range starts low (for example at 1024), reserved ranges can land on any common port (6333, 11434, 8080). Put Qdrant and Ollama on ports above 15000 that are outside every listed range, for example 15333 (Qdrant REST; gRPC 15334) and 15434 (Ollama):
+
+- Qdrant: `http_port` / `grpc_port` in its `config.yaml`, and `vector_store.config.url` in `oss.json`.
+- Ollama: the user environment variable `OLLAMA_HOST=127.0.0.1:15434` (quit Ollama from the tray and start it again; programs started before the change, DSH included, keep the old value until restarted), and `embedder.config.ollama_base_url` in `oss.json`.
+
+Optional, needs an administrator shell: move the dynamic range back to the Windows default so reservations land above 49152. This briefly stops Windows NAT, which cuts network access for Hyper-V/WSL2/Docker until it is started again, and the tool that changed the range may change it again:
+
+```powershell
+net stop winnat
+netsh int ipv4 set dynamicport tcp start=49152 num=16384
+net start winnat
+```
+
+**Services.** A running process is not a working service; check the ports:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:15333/collections -UseBasicParsing   # Qdrant
+Invoke-RestMethod  http://127.0.0.1:15434/api/tags                      # Ollama
+```
+
+**Python.** `ModuleNotFoundError: No module named 'mem0'` means the sidecar ran an interpreter without Mem0, usually because `pythonPath` was lost and the PATH python was used. Check that `~\.dsh\mem0\venv\Scripts\python.exe` exists (the plugin finds it without `pythonPath`), or set `pythonPath` again.
+
+**After installing or updating a plugin**, check memory once:
+
+1. Look at the memory status under the composer: no red **Memory failed**.
+2. Ask the agent to run `mem0_status`: `status: ready`, `qdrant: ok`, `embedder: ok`, and no `warning: dsh-mem0 settings look rewritten`.
+3. If settings were rewritten, set them again on the plugin settings page (or restore `cordis.patch.yml` from the `.bak-<time>` copy DSH writes next to it), and consider moving them into the `dsh_mem0` block of `oss.json`. If `mem0_status` names a start failure, fix that first; the sidecar starts again with the next memory call once the restart backoff (30 s) or the circuit breaker (2 min) has passed, or at once after reloading the plugin.
+
+The sidecar's own log is `<DSH profile>\dsh-mem0\sidecar.log` (for example `Get-Content $env:USERPROFILE\.dsh\profiles\<profile>\dsh-mem0\sidecar.log -Tail 30`).
 
 ## Tools
 

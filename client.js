@@ -277,6 +277,19 @@ window.__ModuleLoader__.load({
       extractReason_truncated: 'answer cut off (truncated JSON)',
       extractReason_refusal: 'model refused',
       failureCause_other: 'Other error',
+      failureCause_startup: 'Sidecar failed to start',
+      failureCause_config: 'Configuration error',
+      failureHintUnreachable: '{component} unreachable at {endpoint}. Is it running? On Windows, a port in a reserved range fails to bind (os error 10013 in the service log): see the README, Windows troubleshooting.',
+      sidecarPython: 'Python: {path} ({source})',
+      sidecarPythonSource_configured: 'pythonPath setting',
+      sidecarPythonSource_oss_config: 'dsh_mem0 block of oss.json',
+      sidecarPythonSource_default: 'default venv',
+      sidecarPythonSource_legacy: 'legacy location',
+      sidecarPythonSource_path: 'PATH fallback: no ~/.dsh/mem0/venv found',
+      sidecarLastStartFailure: 'Last start failure ({at}): {reason}',
+      sidecarConfigErrorNoRetry: 'Configuration error: not retried until oss.json changes.',
+      configWarning: 'dsh-mem0 settings look rewritten (DSH settings sync); missing: {fields}',
+      configWarningFix: 'Restore them above and save, or keep them in the "dsh_mem0" block of oss.json, which DSH does not rewrite. Removed on purpose: delete config-fingerprint.json next to sidecar.log.',
       failureRepeated: '{count} times since {since}',
       failureComponent_llm: 'LLM',
       failureComponent_embedder: 'Embedder',
@@ -590,6 +603,19 @@ window.__ModuleLoader__.load({
       extractReason_truncated: '回复被截断（JSON 不完整）',
       extractReason_refusal: '模型拒答',
       failureCause_other: '其他错误',
+      failureCause_startup: 'sidecar 启动失败',
+      failureCause_config: '配置错误',
+      failureHintUnreachable: '{component}不可达：{endpoint}。请确认服务在运行；Windows 上端口落在系统保留段时服务会绑定失败（服务日志里有 os error 10013），见 README「Windows 排障」。',
+      sidecarPython: 'Python：{path}（{source}）',
+      sidecarPythonSource_configured: 'pythonPath 设置',
+      sidecarPythonSource_oss_config: 'oss.json 的 dsh_mem0 段',
+      sidecarPythonSource_default: '默认 venv',
+      sidecarPythonSource_legacy: '旧位置',
+      sidecarPythonSource_path: '退回 PATH：没找到 ~/.dsh/mem0/venv',
+      sidecarLastStartFailure: '最近一次启动失败（{at}）：{reason}',
+      sidecarConfigErrorNoRetry: '这是配置错误：oss.json 改动之前不会再重试。',
+      configWarning: 'dsh-mem0 配置疑似被重写（DSH 设置同步），缺少：{fields}',
+      configWarningFix: '在上方补回并保存，或写进 oss.json 的 "dsh_mem0" 段（DSH 不会重写它）。如果是有意删除，删掉 sidecar.log 旁边的 config-fingerprint.json。',
       failureRepeated: '自 {since} 起共 {count} 次',
       failureComponent_llm: 'LLM',
       failureComponent_embedder: '向量模型',
@@ -1158,6 +1184,17 @@ window.__ModuleLoader__.load({
         lines.push(sidecar.starting ? t('sidecarStartingNow') : t('sidecarStopped'))
       }
       if (sidecar.restarts > 0) lines.push(template(t('sidecarRestarts'), { count: sidecar.restarts }))
+      if (sidecar.python?.path) {
+        lines.push(template(t('sidecarPython'), {
+          path: sidecar.python.path,
+          source: t(`sidecarPythonSource_${String(sidecar.python.source || 'configured').replace(/-/g, '_')}`),
+        }))
+      }
+      const startFailure = sidecar.lastStartFailure
+      if (startFailure && !sidecar.running) {
+        lines.push(template(t('sidecarLastStartFailure'), { at: activityTime(startFailure.at), reason: startFailure.reason || '—' }))
+        if (startFailure.configError) lines.push(t('sidecarConfigErrorNoRetry'))
+      }
       const exit = sidecar.lastExit
       if (exit) {
         let line = template(t('sidecarLastExit'), {
@@ -1419,7 +1456,17 @@ window.__ModuleLoader__.load({
       }
       if (failure.retry === 'failed') parts.push(t('failureRetryFailed'))
       if (failure.message) parts.push(failure.message)
+      const hint = unreachableHint(t, failure)
+      if (hint) parts.push(hint)
       return parts.join(' · ')
+    }
+
+    /** Localized "Qdrant unreachable at host:port" hint for a refused connection. */
+    function unreachableHint(t, failure) {
+      if (failure?.cause !== 'connection' || !failure.endpoint) return ''
+      const provider = String(failure.provider || '').toLowerCase()
+      const name = provider === 'qdrant' ? 'Qdrant' : provider === 'ollama' ? 'Ollama' : t(`failureComponent_${failure.component || 'unknown'}`)
+      return template(t('failureHintUnreachable'), { component: name, endpoint: failure.endpoint })
     }
 
     /**
@@ -2479,6 +2526,14 @@ window.__ModuleLoader__.load({
                 'p',
                 { className: 'mem0-hint' },
                 recentMemories.length > 0 ? t('activityScopeHint') : t('activityEmpty'),
+              )
+            : null,
+          data?.configWarning?.missing?.length
+            ? h(
+                'div',
+                { className: 'mem0-error' },
+                h('p', null, template(t('configWarning'), { fields: data.configWarning.missing.join(', ') })),
+                h('p', null, t('configWarningFix')),
               )
             : null,
           data?.sidecar ? h(SidecarStatus, { t, sidecar: data.sidecar }) : null,

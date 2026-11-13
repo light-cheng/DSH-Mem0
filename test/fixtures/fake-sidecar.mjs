@@ -8,6 +8,9 @@
 //     process while the request is in flight
 //     chatty: after the ready line, write 1 MB to stderr, then append
 //     {"stderrDone": true} to FAKE_SIDECAR_RECORD once it is all written
+//     nomem0: write a Python traceback ending in ModuleNotFoundError for
+//     mem0 to stderr, then exit 1 before the ready line (no JSON line)
+//     stubborn: become ready, then ignore SIGTERM (only SIGKILL stops it)
 //   FAKE_SIDECAR_DELAY_MS  delay before the ready line
 //   FAKE_SIDECAR_PORT  port the ready line reports (default 9, which fetch
 //     refuses as a "bad port"; tests that need ECONNREFUSED pick another)
@@ -37,6 +40,13 @@ process.stdin.on('end', () => {
     process.stderr.write('Traceback: ValueError: bad config api_key=sk-fakefakefake1234 in /Users/alice/.dsh/mem0/oss.json\n', () => process.exit(3))
     return
   }
+  if (mode === 'nomem0') {
+    process.stderr.write(
+      'Traceback (most recent call last):\n  File "C:\\Users\\alice\\x\\mem0_sidecar.py", line 765, in __init__\n    from mem0.memory.main import Memory\nModuleNotFoundError: No module named \'mem0\'\n',
+      () => process.exit(1),
+    )
+    return
+  }
   if (mode === 'serve') {
     import('node:http').then(({ createServer }) => {
       const server = createServer((req, res) => {
@@ -52,7 +62,7 @@ process.stdin.on('end', () => {
     return
   }
   setTimeout(() => {
-    if (mode === 'ready' || mode === 'chatty') console.log(JSON.stringify({ port: Number(process.env.FAKE_SIDECAR_PORT ?? 9), pid: process.pid }))
+    if (mode === 'ready' || mode === 'chatty' || mode === 'stubborn') console.log(JSON.stringify({ port: Number(process.env.FAKE_SIDECAR_PORT ?? 9), pid: process.pid }))
     if (mode === 'chatty') {
       const line = `${'x'.repeat(1023)}\n`
       let left = 1024
@@ -74,4 +84,7 @@ process.stdin.on('end', () => {
   }, delay)
 })
 setInterval(() => {}, 1_000)
-process.on('SIGTERM', () => process.exit(0))
+process.on('SIGTERM', () => {
+  if (mode !== 'stubborn') process.exit(0)
+  if (process.env.FAKE_SIDECAR_RECORD) fs.appendFileSync(process.env.FAKE_SIDECAR_RECORD, `${JSON.stringify({ ignoredTerm: true })}\n`)
+})
