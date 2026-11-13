@@ -308,36 +308,48 @@ test('activity route can skip translation for the dock poller', async () => {
   assert.equal(result.body.activity.recall.preview[0].memory, 'Likes tea')
 })
 
-test('hygiene route runs maintenance and returns its status', async () => {
+test('hygiene route previews a plan and confirms only with its planId and an idempotency key', async () => {
   const calls = []
-  const dryRuns = []
   const maintenance = {
     async run(reason, options = {}) {
-      calls.push(reason)
-      dryRuns.push(options.dryRun)
-      return options.dryRun
-        ? { dryRun: true, scanned: 3, duplicates: 1, pruned: 0, deleted: 0, planned: 1, failed: 0 }
-        : { scanned: 3, duplicates: 1, pruned: 0, deleted: 1, failed: 0 }
+      calls.push(['run', reason, options.dryRun])
+      return { dryRun: true, scanned: 3, duplicates: 1, pruned: 0, deleted: 0, planned: 1, failed: 0, planId: 'p1' }
+    },
+    async runPlan(request) {
+      calls.push(['plan', request.planId, request.idempotencyKey])
+      if (!request.planId || !request.idempotencyKey) {
+        throw Object.assign(new Error('needs plan'), { code: 'plan-required' })
+      }
+      if (request.planId !== 'p1') throw Object.assign(new Error('unknown'), { code: 'plan-unknown' })
+      return { scanned: 3, duplicates: 1, pruned: 0, deleted: 1, failed: 0, planId: 'p1' }
     },
     status() {
       return { enabled: true, running: false, profile: { items: 2, tokens: 20 } }
     },
   }
   const routes = harness({ config, client: {}, maintenance })
-  const result = await invoke(routes.get(GUI_HYGIENE_PATH), 'POST')
-  assert.equal(result.status, 200)
-  assert.equal(result.body.ok, true)
-  assert.equal(result.body.report.deleted, 1)
-  assert.equal(result.body.maintenance.profile.items, 2)
-  assert.deepEqual(calls, ['manual'])
+  // No body, or no planId: never a fresh, unconfirmed deletion pass.
+  const bare = await invoke(routes.get(GUI_HYGIENE_PATH), 'POST')
+  assert.equal(bare.status, 409)
+  assert.equal(bare.body.ok, false)
+  assert.equal(bare.body.reason, 'plan-required')
   const preview = await invoke(routes.get(GUI_HYGIENE_PATH), 'POST', '/', { dryRun: true })
   assert.equal(preview.body.ok, true)
   assert.equal(preview.body.report.dryRun, true)
-  assert.equal(preview.body.report.planned, 1)
-  assert.equal(preview.body.report.deleted, 0)
-  const confirmed = await invoke(routes.get(GUI_HYGIENE_PATH), 'POST', '/', { dryRun: false })
+  assert.equal(preview.body.report.planId, 'p1')
+  const confirmed = await invoke(routes.get(GUI_HYGIENE_PATH), 'POST', '/', { dryRun: false, planId: 'p1', idempotencyKey: 'k1' })
+  assert.equal(confirmed.body.ok, true)
   assert.equal(confirmed.body.report.deleted, 1)
-  assert.deepEqual(dryRuns, [false, true, false])
+  assert.equal(confirmed.body.maintenance.profile.items, 2)
+  const unknown = await invoke(routes.get(GUI_HYGIENE_PATH), 'POST', '/', { dryRun: false, planId: 'zz', idempotencyKey: 'k2' })
+  assert.equal(unknown.status, 409)
+  assert.equal(unknown.body.reason, 'plan-unknown')
+  assert.deepEqual(calls, [
+    ['plan', undefined, undefined],
+    ['run', 'manual', true],
+    ['plan', 'p1', 'k1'],
+    ['plan', 'zz', 'k2'],
+  ])
   const rejected = await invoke(routes.get(GUI_HYGIENE_PATH), 'GET')
   assert.equal(rejected.status, 405)
   assert.equal(rejected.headers.allow, 'POST')

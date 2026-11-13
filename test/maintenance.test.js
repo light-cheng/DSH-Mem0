@@ -81,7 +81,7 @@ test('capture filter skips acknowledgements and keeps durable preferences', () =
 test('dedupe and profile builder keep one copy and respect the profile budget', () => {
   const memories = [
     memory('a', 'Likes tea'),
-    memory('b', 'likes tea.'),
+    memory('b', 'likes  TEA '),
     memory('c', 'Works on DSH plugins'),
   ]
   const { unique, duplicates } = dedupeMemories(memories)
@@ -134,7 +134,7 @@ test('hygiene never deletes memories without the dsh source tag', async () => {
   try {
     const client = fakeClient([
       foreignMemory('f1', 'Likes tea'),
-      memory('d1', 'likes tea.'),
+      memory('d1', 'LIKES tea'),
       foreignMemory('f2', 'Foreign fact two'),
       foreignMemory('f3', 'Foreign fact three'),
       foreignMemory('f4', 'likes tea'),
@@ -165,7 +165,7 @@ test('hygiene never deletes memories without the dsh source tag', async () => {
 test('first automatic hygiene run is a preview and deletes nothing', async () => {
   const { dir, state } = tempState('dsh-mem0-first-run-')
   try {
-    const client = fakeClient([memory('a', 'Likes tea'), memory('b', 'Likes tea.'), memory('c', 'Works on DSH plugins')])
+    const client = fakeClient([memory('a', 'Likes tea'), memory('b', 'LIKES TEA'), memory('c', 'Works on DSH plugins')])
     const maintenance = new MemoryMaintenance({
       client,
       config: config({ storeMaxMemories: 1 }),
@@ -180,10 +180,10 @@ test('first automatic hygiene run is a preview and deletes nothing', async () =>
     assert.equal(report.planned, 2)
     assert.deepEqual(report.plannedDetails.map((item) => item.id).sort(), ['b', 'c'])
     assert.deepEqual(client.removed, [])
-    const saved = state.read()
-    assert.equal(saved.hygiene.lastRunAt, null)
-    assert.ok(saved.hygiene.previewAt)
-    assert.equal(saved.hygiene.lastReport.dryRun, true)
+    const saved = maintenance.status()
+    assert.equal(saved.lastRunAt, null)
+    assert.ok(saved.previewAt)
+    assert.equal(saved.lastReport.dryRun, true)
     assert.match(maintenance.profileBlock(), /Likes tea/)
     const status = maintenance.status()
     assert.equal(status.previewOnly, true)
@@ -197,7 +197,7 @@ test('first automatic hygiene run is a preview and deletes nothing', async () =>
     const confirmed = await maintenance.run('manual')
     assert.equal(confirmed.dryRun, false)
     assert.deepEqual(client.removed.sort(), ['b', 'c'])
-    assert.ok(state.read().hygiene.lastRunAt)
+    assert.ok(maintenance.status().lastRunAt)
     assert.equal(maintenance.status().previewOnly, false)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
@@ -207,7 +207,7 @@ test('first automatic hygiene run is a preview and deletes nothing', async () =>
 test('manual dry run returns the plan without deleting or writing state', async () => {
   const { dir, state } = tempState('dsh-mem0-dry-run-')
   try {
-    const client = fakeClient([memory('a', 'Likes tea'), memory('b', 'Likes tea.')])
+    const client = fakeClient([memory('a', 'Likes tea'), memory('b', 'LIKES TEA')])
     const maintenance = new MemoryMaintenance({
       client,
       config: config(),
@@ -237,7 +237,7 @@ test('hygiene dedupes, prunes, writes profile state and exposes status', async (
         return {
           results: [
             memory('a', 'Likes tea'),
-            memory('b', 'Likes tea.'),
+            memory('b', 'LIKES TEA'),
             memory('c', 'Works on DSH plugins'),
             memory('d', 'Another fact'),
           ],
@@ -323,7 +323,10 @@ test('startup rebuilds a legacy flat generated profile without deleting memories
     assert.equal(report.profileItems, 2)
     assert.deepEqual(removed, [])
     assert.match(maintenance.profileBlock(), /^## /m)
-    assert.equal(state.read().hygiene.lastRunAt, oldLastRun)
+    // A version-1 authorisation is not tied to a store, so it is dropped:
+    // automatic passes preview again until the next confirmed run.
+    assert.equal(maintenance.status().lastRunAt, null)
+    assert.equal(oldLastRun.length > 0, true)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -435,7 +438,7 @@ test('stored hygiene reports keep ids and reasons but no memory text', async () 
   try {
     const client = fakeClient([
       memory('a', 'Likes tea'),
-      memory('b', 'Likes tea.'),
+      memory('b', 'LIKES TEA'),
       memory('c', 'Private fact about the user health'),
       memory('d', 'Another fact'),
     ])
@@ -466,11 +469,11 @@ test('stored hygiene reports keep ids and reasons but no memory text', async () 
     }
     const raw = fs.readFileSync(path.join(dir, 'maintenance.json'), 'utf8')
     assert.equal(raw.includes('Private fact'), false)
-    assert.equal(raw.includes('Likes tea.'), false)
+    assert.equal(raw.includes('LIKES TEA'), false)
     assert.equal(maintenance.status().lastReport.deletedDetails.length, 2)
     // Translation cache entries of deleted memories are dropped.
     assert.equal(forgotten.length, 2)
-    assert.ok(forgotten.includes('Likes tea.'))
+    assert.ok(forgotten.includes('LIKES TEA'))
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
