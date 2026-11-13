@@ -226,7 +226,7 @@ class ConfigDefaultTests(unittest.TestCase):
             path.write_text(json.dumps({"oss": {
                 "llm": {"provider": "openai", "config": llm_config},
                 "embedder": {"provider": "openai", "config": {"model": "bge-m3"}},
-                "vector_store": {"provider": "qdrant", "config": {}},
+                "vector_store": {"provider": "qdrant", "config": {"url": "http://127.0.0.1:6333"}},
             }}), encoding="utf-8")
             return sidecar.build_memory_config(str(path), "dsh_mem0_truncation_test", str(Path(tmp) / "h.db"))
 

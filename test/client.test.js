@@ -200,3 +200,24 @@ test('delete errors name the reason in the page language', () => {
   assert.match(deleteErrorText(t, Object.assign(new Error('x'), { reason: 'other-user' })), /another Mem0 user/)
   assert.equal(deleteErrorText(t, new Error('HTTP 502')), 'Could not delete the memory: HTTP 502')
 })
+
+test('failure card: startup/config causes, the unreachable hint and the sidecar start failure', () => {
+  const { failureSummary, sidecarLines, zh } = loadClient().exports.__test__
+  const t = (key) => zh[key] ?? key
+  const refused = failureSummary(t, {
+    kind: 'recall', cause: 'connection', component: 'vector_store', provider: 'qdrant', endpoint: '127.0.0.1:15333', message: 'refused',
+  })
+  assert.match(refused, /Qdrant不可达：127\.0\.0\.1:15333/)
+  assert.match(refused, /10013/)
+  assert.match(failureSummary(t, { kind: 'recall', cause: 'startup', component: 'sidecar', message: 'x' }), /sidecar 启动失败/)
+  assert.match(failureSummary(t, { kind: 'recall', cause: 'config', component: 'vector_store', message: 'x' }), /配置错误/)
+  assert.doesNotMatch(failureSummary(t, { kind: 'recall', cause: 'startup', component: 'sidecar', message: 'x' }), /其他错误/)
+  const lines = sidecarLines(t, {
+    running: false,
+    restarts: 0,
+    python: { path: 'python', source: 'path' },
+    lastStartFailure: { at: '2026-11-10T11:01:05.000Z', reason: "ModuleNotFoundError: No module named 'mem0'", configError: false },
+  })
+  assert.ok(lines.some((line) => /退回 PATH/.test(line)))
+  assert.ok(lines.some((line) => /最近一次启动失败.*ModuleNotFoundError/.test(line)))
+})
