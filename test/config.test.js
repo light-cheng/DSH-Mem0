@@ -325,5 +325,5 @@ test('upgrade notices: old memories still in Qdrant (config only), and no local 
   // backend oss without an embedder: the same notice.
   const empty = resolveConfig({ backend: 'oss' }, { ossConfigPath: tempOss(t, {}) })
   assert.deepEqual(upgradeNotices(empty, { memoryCount: 0 }).map((notice) => notice.code), ['noLocalConfig'])
-  assert.ok(diagnosticLines({ config: empty }).some((line) => /no local backend settings were found.*Hermes/.test(line)))
+  assert.ok(diagnosticLines({ config: empty }).some((line) => /no local backend settings were found.*setup wizard/.test(line)))
 })

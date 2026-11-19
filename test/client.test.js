@@ -213,3 +213,27 @@ test('failure card: startup/config causes and the unreachable hint', () => {
   assert.match(failureSummary(t, { kind: 'recall', cause: 'config', component: 'vector_store', message: 'x' }), /配置错误/)
   assert.doesNotMatch(failureSummary(t, { kind: 'recall', cause: 'startup', component: 'sidecar', message: 'x' }), /其他错误/)
 })
+
+test('setup wizard: texts without Python or Hermes, store and switch helpers', () => {
+  const { exports } = loadClient()
+  const { en, zh, storeCheckText, missingLocalSetup, wizardPayload, llmAdvice, emptyWizardDraft, migrationText } = exports.__test__
+  for (const dict of [en, zh]) {
+    for (const [key, value] of Object.entries(dict)) {
+      if (key.startsWith('wz') || key.startsWith('upgrade')) assert.doesNotMatch(value, /python|hermes|pythonPath/i, key)
+    }
+  }
+  const tz = (key) => zh[key]
+  assert.match(storeCheckText(tz, { writable: true, kind: 'sync', provider: 'OneDrive', path: 'C:\\x' }), /OneDrive 同步目录/)
+  assert.match(storeCheckText((key) => en[key], { writable: true, kind: 'network', path: '/n' }), /network drive/)
+  assert.match(storeCheckText(tz, { writable: true, kind: 'local', path: '~/.dsh/mem0/memory.sqlite' }), /可写/)
+  assert.deepEqual([...missingLocalSetup({ current: { problems: [{ component: 'embedder' }, { component: 'llm' }] } })], ['embedder', 'llm'])
+  assert.equal(missingLocalSetup({ current: { problems: [] } }).length, 0)
+  const draft = emptyWizardDraft({ refs: { embedder: 'E', llm: 'L' }, recommendations: { cloud: [{ baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-small', dims: 1536 }] } })
+  assert.equal(draft.embedder.mode, 'cloud')
+  assert.equal(draft.embedder.apiKeyRef, 'E')
+  const local = wizardPayload({ ...draft, embedder: { ...draft.embedder, mode: 'local', keyTyped: false } })
+  assert.equal(local.embedder.apiKeyRef, '', 'a local server gets no credential name')
+  assert.equal(local.embedder.mode, undefined)
+  assert.equal(llmAdvice(tz, ['raise-max-tokens']).length, 1)
+  assert.match(migrationText(tz, { imported: 50, vectors: 'copied', skippedExisting: 0, skippedEmpty: 0 }), /已迁移 50 条.*旧数据仍在 Qdrant/)
+})
