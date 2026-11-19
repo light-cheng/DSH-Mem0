@@ -23,8 +23,8 @@ This file is the remaining checklist for publishing the universal build.
 4. Run:
    ```bash
    pnpm install --ignore-scripts --frozen-lockfile
-   node --test
-   python3 -m unittest discover -s python/tests -v
+   npm test
+   npm run check
    pnpm pack
    ```
 5. Publish to npm (optional, but recommended for market install/update):
@@ -83,8 +83,9 @@ marketplace screenshots; the market reads that file from this repository.
 - GUI: Plugins → Mem0 Memory → backend tabs, connection fields, Test connection.
 - Platform: `backend: platform` + `apiKey` or `MEM0_API_KEY`.
 - Self-hosted server: `backend: server` + `baseUrl` + `authType` + `apiKey`.
-- Local OSS: `backend: oss` + `mem0ConfigPath` + `pythonPath` + optional
-  `collectionName`; see `examples/oss-config.example.json`.
+- Local OSS: `backend: oss`; embedder and extraction LLM in the `dsh_mem0`
+  block of `~/.dsh/mem0/oss.json` (keys by credential name); memories in
+  `~/.dsh/mem0/memory.sqlite`. See `examples/oss-config.example.json`.
 
 ## Current verification
 

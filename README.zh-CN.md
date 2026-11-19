@@ -12,7 +12,7 @@
 
 - **Mem0 Platform**：使用 Mem0 托管 API，只需 API Key，适合大多数用户。
 - **Self-hosted server**：连接自建 Mem0 REST 服务。
-- **OSS Python sidecar**：复用本地 Mem0 Python SDK / Qdrant / embedding 服务，适合本地 bge-m3、Qdrant 等自托管环境。
+- **本地（OSS）**：记忆存在本机的一个 SQLite 文件里（`~/.dsh/mem0/memory.sqlite`），使用你自己的 embedding 模型（oMLX / LM Studio / vLLM 等 OpenAI 兼容服务，或 Ollama）和抽取 LLM。它是 Mem0 2.2.1 写入与检索流程的 Node 原生移植：不需要 Python，不需要 Qdrant，除了这两个模型不需要别的服务。
 
 ## 能力
 
@@ -21,11 +21,11 @@
 - **可编辑的记忆摘要**：从已存记忆中按置顶/重要度元数据、再按新鲜度（越新越靠前，约 90 天衰减；文本长度只用于平局判定）提取一份结构化摘要，在相关记忆之前注入；它有独立 token 预算，可以直接在设置页编辑，也可以由 agent 通过 `mem0_profile_get` / `mem0_profile_update` / `mem0_profile_reset` 读取或改写。手动编辑不会被周巡检覆盖；「从记忆重建」可恢复自动生成版本。
 - **记忆预算与周巡检**：召回记忆和画像各有 token 预算；默认每 7 天做一次记忆卫生巡检，去重并清理超预算中最旧的记忆。巡检只会删除本插件写入的记忆（`metadata.source: "dsh"`），并且在你于设置页确认一次手动巡检之前，自动巡检只出预览、不删除。
 - **显式工具**：`mem0_search`、`mem0_add`、`mem0_get`、`mem0_update`、`mem0_delete`、`mem0_status`，以及记忆摘要的 `mem0_profile_get`、`mem0_profile_update`、`mem0_profile_reset`。
-- **后端可切换**：Platform、自托管 server、本地 OSS sidecar 共用同一套工具与自动记忆逻辑。
+- **后端可切换**：Platform、自托管 server、本地 SQLite 后端共用同一套工具与自动记忆逻辑。
 - **可验证的记忆活动**：设置页显示自动保存 / 自动召回的最后状态，列出最近写入的记忆（文本、ID、时间），并可打开「记忆库」搜索当前用户的全部记忆；「上次召回的记忆」显示最近一次召回实际命中的文本。
 - **前台状态图标**：对话输入框下方有一个由大小不一的圆点组成的镂空地球仪；自动保存/召回时沿倾斜方向滚动，成功后变成浅蓝色并继续滚动，失败显示红色。滚动时球体轮廓保持圆形，不会压扁。浅色主题下是黑点，深色主题自动用浅色点保证可见。
 - **中英双语界面与记忆内容**：文案跟随 DSH 的语言设置；开启 `translateMemories`（默认关闭）后，已存记忆文本会用当前 DSH 模型翻译成页面语言，带缓存，没有可用模型时回退原文。
-- **安全边界**：sidecar 只监听 `127.0.0.1` 的随机端口并使用随机 token；写入/召回前做常见密钥脱敏；`mem0_status` 不输出 API key。
+- **安全边界**：本地后端不开端口、不起额外进程；写入/召回前做常见密钥脱敏；`mem0_status` 不输出 API key。
 
 ## 界面
 
@@ -41,7 +41,7 @@
 
 ![本地 OSS 配置](assets/screenshots/04-settings-oss.png)
 
-页面里的「测试连接」会调用 `mem0_status` 同源的只读健康检查，显示当前后端、集合、Python/Mem0/Qdrant/Embedder 状态，不会显示 API Key。
+页面里的「测试连接」会调用 `mem0_status` 同源的只读健康检查，显示当前后端、记忆存在哪里、存储 / embedding / 抽取 LLM 的状态，不会显示 API Key。
 
 「记忆摘要」是召回时优先注入的可编辑摘要，按主题分节显示；点「编辑摘要」修改并保存，下一轮对话即可使用；「从记忆重建」会丢弃手动编辑，按已存记忆重新生成。
 
@@ -132,11 +132,13 @@ DSH Agent
   │                                     ▼
   │                          后端适配器（二选一）
   │                          ├─ Mem0RestClient（platform / server）
-  │                          └─ Mem0SidecarClient（oss）
+  │                          └─ Mem0NativeClient（oss）
   │                          （共用的 HTTP、超时和熔断：lib/http.js）
   │                                     │
-  │                                     ▼
-  │                          Mem0 Platform / 自建 server / 本地 Python Mem0
+  │                     ┌───────────────┴──────────────┐
+  │                     ▼                              ▼
+  │          Mem0 Platform / 自建 server      SQLite 存储（node:sqlite，WAL）
+  │                                           + 你的 embedding + 你的 LLM
 ```
 
 ## 安装
@@ -222,115 +224,71 @@ config:
 
 `authType` 支持 `apiKey`（`X-API-Key`）、`bearer`、`token` 和 `none`（`AUTH_DISABLED=true` 的本地服务）。
 
-#### OSS Python sidecar（Qdrant 服务端 / bge-m3）
+<a id="local-backend"></a>
+#### 本地后端（SQLite，不需要 Python）
 
-先准备一个 Mem0 OSS 配置文件，例如 `~/.dsh/mem0/oss.json`，格式见 [examples/oss-config.example.json](examples/oss-config.example.json)。
+`backend: oss` 把记忆存在一个 SQLite 文件里，默认 `~/.dsh/mem0/memory.sqlite`（Windows：`%USERPROFILE%\.dsh\mem0\memory.sqlite`）。它用 DSH 自带 Node（24.9 及以上）内置的 `node:sqlite`，什么都不用装。你需要准备两个模型：
 
-```yaml
-config:
-  backend: oss
-  pythonPath: "~/.dsh/mem0/venv/bin/python"
-  mem0ConfigPath: "~/.dsh/mem0/oss.json"
-  collectionName: "dsh_mem0"
-  userId: "your-user-id"
-  # 可选：允许 sidecar 额外看到的环境变量（见下文）
-  # sidecarEnv: ["MY_GATEWAY_API_KEY"]
-```
+- **embedding 模型**：任意 OpenAI 兼容的 `/embeddings` 接口（oMLX、LM Studio、vLLM、OpenAI 等），或 Ollama（`/api/embed`）；
+- **抽取 LLM**：任意 OpenAI 兼容的 `/chat/completions` 接口（DeepSeek、本地网关等）。
 
-Python 环境需要：
-
-```bash
-python3 -m venv ~/.dsh/mem0/venv
-~/.dsh/mem0/venv/bin/pip install "mem0ai>=2.0.10,<3" qdrant-client openai
-```
-
-Windows（PowerShell）：
-
-```powershell
-py -3.11 -m venv $env:USERPROFILE\.dsh\mem0\venv
-& $env:USERPROFILE\.dsh\mem0\venv\Scripts\pip.exe install "mem0ai>=2.0.10,<3" qdrant-client openai
-```
-
-**用哪个 Python。** 设置了 `pythonPath` 就始终用它。没设置时，插件在 `~/.dsh/mem0/venv` 里找：Windows 依次找 `Scripts\python.exe`、`bin\python.exe`、`bin\python`；其他系统依次找 `bin/python3`、`bin/python`。都找不到才退回 PATH 里的 `python`（Windows）或 `python3`，这时 `mem0_status`、「OSS sidecar」区块和 `sidecar.log` 都会写明。这个解释器里没有 `mem0` 时（Windows 上常见的是 Microsoft Store 的 Python），启动会立即失败，报 `ModuleNotFoundError: No module named 'mem0'` 并带上解释器路径；失败卡片显示的是这条原因，而不再是「sidecar failed to start recently」。
-
-<a id="qdrant-server-only"></a>
-#### 只支持 Qdrant 服务端
-
-OSS 后端需要 **Qdrant 服务端**：在 `oss.json` 里设置 `vector_store.config.url`（或 `host` 加 `port`）。**不支持**嵌入式 Qdrant（只写 `vector_store.config.path`、不起服务端）：sidecar 会打开两次 Qdrant（读、写各一个），而嵌入式 Qdrant 对存储目录加的是只允许一个客户端的排他锁（[#23](https://github.com/light-cheng/DSH-Mem0/issues/23)）。只写了 `path` 时，插件在启动 Python 之前就报「不支持嵌入式 Qdrant」，归为向量库的配置错误，并且在 `oss.json` 改动之前不再重试。同时写了 `path` 和 `url` 时用 `url`，忽略 `path`（`sidecar.log` 里有一条警告）。
-
-启动本地 Qdrant 服务端的最短步骤：
-
-1. 从 [Qdrant releases](https://github.com/qdrant/qdrant/releases) 下载对应平台的版本（Windows 是 `qdrant-x86_64-pc-windows-msvc.zip`），解压到例如 `~/.dsh/mem0/qdrant/`。
-2. 在同一目录建 `config.yaml`。只监听本机回环地址；Windows 上用 15000 以上、并且不在系统保留段里的端口（见 [Windows 排障](#windows-troubleshooting)）：
-
-   ```yaml
-   storage:
-     storage_path: ./qdrant-storage
-   service:
-     host: 127.0.0.1
-     http_port: 15333
-     grpc_port: 15334
-   telemetry_disabled: true
-   ```
-
-3. 在该目录启动：`./qdrant --config-path config.yaml`（Windows：`.\qdrant.exe --config-path config.yaml`），用 `curl http://127.0.0.1:15333/collections` 检查。
-4. `oss.json` 里写：
-
-   ```json
-   "vector_store": { "provider": "qdrant", "config": { "url": "http://127.0.0.1:15333", "embedding_model_dims": 1024 } }
-   ```
-
-Windows 上想开机登录后自动启动，可以建一个计划任务运行上面的命令。
-
-**把插件配置放到 DSH 改不到的地方。** DSH 的设置同步可能重写 profile 的 `cordis.patch.yml`，把插件配置删掉（实际遇到过：装插件后 dsh-mem0 块只剩 `backend`）。插件配置也可以写在 `oss.json` 顶层的 `dsh_mem0` 段里，DSH 不会重写这个文件。profile 没设置的字段（值等于默认值也算没设置）用这里的值，profile 设置了的以 profile 为准：
+在 `~/.dsh/mem0/oss.json` 的 `dsh_mem0` 段里配置它们，DSH 的设置同步不会重写这个文件（见 [examples/oss-config.example.json](examples/oss-config.example.json)）：
 
 ```json
 {
-  "dsh_mem0": { "pythonPath": "~/.dsh/mem0/venv/Scripts/python.exe", "collectionName": "dsh_mem0", "userId": "your-user-id" },
-  "oss": { "…": "…" }
+  "dsh_mem0": {
+    "userId": "your-user-id",
+    "embedderProvider": "openai",
+    "embedderBaseUrl": "http://127.0.0.1:8000/v1",
+    "embedderModel": "bge-m3",
+    "embedderDims": 1024,
+    "embedderApiKeyRef": "MEM0_EMBEDDER_API_KEY",
+    "llmBaseUrl": "https://api.deepseek.com/v1",
+    "llmModel": "deepseek-chat",
+    "llmApiKeyRef": "MEM0_LLM_API_KEY"
+  }
 }
 ```
 
-可写的字段：`pythonPath`、`collectionName`、`userId`、`agentId`、`historyDbPath`、`translateMemories`、`captureStrataFolds`。`oss.json` 按 `mem0ConfigPath` 找；这一项也丢了时，用默认的 `~/.dsh/mem0/oss.json`。
+密钥按名字引用（`embedderApiKeyRef`、`llmApiKeyRef`），每次请求时先查 DSH 凭据（`~/.dsh/.credentials.yaml`），再查环境变量；密钥本身不写进 `oss.json` 或 profile。Mem0 自己格式的 `oss.json`（`oss.embedder` / `oss.llm`，带明文 `api_key`）仍可作为兜底使用；`oss.vector_store` 段会被忽略。同样的字段也可以写在 profile 配置里；profile 优先于 `dsh_mem0` 段，等于默认值的视为未设置。
 
-插件也会发现配置被重写：它记录上次正常运行时哪些关键配置有值（只记字段名，存在 `<DSH profile>/dsh-mem0/config-fingerprint.json`）。其中有字段消失时，设置页和 `mem0_status` 会提示「dsh-mem0 配置疑似被重写，缺少：…」。写在 `dsh_mem0` 段里的字段不算缺失。如果是你有意删掉的，删除 `config-fingerprint.json` 即可。
-
-当前版本**不会在插件加载时静默安装** Python 或 Qdrant，也不会修改系统 Python。设置页会显示连接错误；建议优先使用 Platform，或按上面的命令手动准备本地环境。后续更合适的做法是在设置页做「环境检测 + 用户点击后一键创建 venv」的引导安装，而不是安装插件时自动执行。
-
-sidecar 会读取 `mem0ConfigPath` 中的 `oss.llm`、`oss.embedder`、`oss.vector_store`，并把集合名覆盖为 `collectionName`；其他 Mem0 客户端可以继续使用自己的集合。
-
-**事实抽取的输出预算。** `oss.llm.config` 里有两个键控制 Mem0 的事实抽取调用：
-
-| 键 | 默认值 | 说明 |
+| `dsh_mem0` 字段 | 默认值 | 含义 |
 | --- | --- | --- |
-| `max_tokens` | 没写时为 `8000` | 每次抽取调用的输出上限。Mem0 自己的默认值是 2000，但 hybrid 推理模型（例如 DeepSeek V4.1 Flash）的思考也占用这份预算；经 magpie 实测，一段 1.4K 字的 fold 摘要抽取 3 次，有 2 次在 2000 时以 `finish_reason=length` 截断。你自己写的值始终优先。 |
-| `reasoning_effort` | 不发送 | 设置后每次抽取调用都会带上。Mem0 自己只对它认得的推理模型（o1/o3/gpt-5）发送这个参数，其他模型由 sidecar 补上。在支持的网关上 `"none"` 会关闭思考（magpie 的 `workbuddy/deepseek-v4.1-flash`：思考 token 为 0，输出约 850 token，速度约快一倍）。如果你的端点不接受这个参数，就不要设置。 |
+| `storePath` | `~/.dsh/mem0/memory.sqlite` | SQLite 文件 |
+| `embedderProvider` | `openai` | `openai`（任意 OpenAI 兼容服务）或 `ollama` |
+| `embedderBaseUrl` | Ollama：`http://localhost:11434` | 例如 `http://127.0.0.1:8000/v1` |
+| `embedderModel` | — | 例如 `bge-m3` |
+| `embedderDims` | 取模型输出 | 设置后作为 `dimensions` 发送（仅 OpenAI 兼容） |
+| `embedderApiKeyRef` | — | embedding 密钥的凭据名 |
+| `llmBaseUrl`、`llmModel`、`llmApiKeyRef` | — | 抽取 LLM |
+| `llmMaxTokens` | `8000` | 每次抽取调用的输出上限（Mem0 自己默认 2000，混合推理模型会把一部分花在思考上） |
+| `llmTemperature` | `0` | Mem0 发 0（`top_p` 0.1） |
+| `llmReasoningEffort` | 不发送 | 例如 `"none"`，在支持的网关上关闭思考 |
+| `userId`、`agentId`、`translateMemories`、`captureStrataFolds` | | 插件设置，见下方总表 |
 
-```json
-{ "oss": { "llm": { "provider": "openai", "config": {
-  "model": "workbuddy/deepseek-v4.1-flash",
-  "openai_base_url": "http://127.0.0.1:3425/v1",
-  "max_tokens": 8000,
-  "reasoning_effort": "none"
-} } } }
-```
+**工作方式。** 写入遵循 Mem0 2.2.1 的 V3 追加式流程：取该对话范围最近 10 条消息和最相似的 10 条记忆，用 Mem0 自己的抽取 prompt（逐字复制，开启「按输入语言回答」）调用一次 LLM，然后只做 ADD：md5 与已有记忆或同批新事实相同的会跳过。同一用户/agent 的写入依次执行。检索时把查询向量化，与所有已存向量逐一比较（余弦，暴力检索；几千条记忆只要几毫秒），丢掉低于 0.1 的分数。向量缓存在内存里；另一个 DSH 进程写了同一个文件时，通过 SQLite 的 `data_version` 发现。WAL 模式和 5 秒 busy timeout 让多个 DSH profile 可以共用这个文件。哪些部分来自 Mem0 见 [NOTICE](NOTICE)。
 
-如果抽取回复仍然被截断（`finish_reason=length`），这次保存会用加倍的输出上限重试一次（最多 65536）。抽取失败时，失败记录、记忆活动卡片和 `sidecar.log` 会记下 `finish_reason`、输出上限，以及输入、输出、思考的 token 数（只有数字，不含文本）。抽取失败（被截断、拒答、不是 JSON、为空）不计入熔断：LLM 已经回复了，暂停记忆也没有用。只有连接、超时、鉴权和服务端错误才计入。
+**更换 embedding 模型。** 存储会记住写入向量的 embedding（模型和维度）。配置了另一个模型时，召回和保存会停下并给出明确的 `EMBEDDER_MISMATCH` 配置错误，而不是把两种向量混在一起。可以换回原模型，或用新模型重算向量（re-embed 操作；设置页按钮随配置向导提供）。空存储会直接采用新模型。
 
-sidecar 不继承 DSH 的全部环境变量，只拿到：`PATH`、`HOME`、语言区域、代理和 CA 证书相关变量，Python/virtualenv/Conda 变量，模型缓存变量（`HF_*`、`TRANSFORMERS_*`、`TORCH_*` 等），以及 `oss.json` 没写 `api_key` 时 Mem0 OSS 会去读的各家服务商前缀（`OPENAI_*`、`AZURE_*`、`ANTHROPIC_*`、`GOOGLE_*`、`GEMINI_*`、`AWS_*`、`OLLAMA_*`、`DEEPSEEK_*`、`GROQ_*`、`TOGETHER_*`、`MISTRAL_*`、`LITELLM_*`、`QDRANT_*` 等）。`MEM0_API_KEY` 和 `OPENROUTER_API_KEY` 不会传过去。如果你的服务商读取别的变量名，把它写进 `sidecarEnv`。每个进程的 token 通过 sidecar 的 stdin 传入，不出现在命令行参数里。
+**抽取失败。** 回复被截断（`finish_reason=length`）时，这次保存会用加倍的输出上限（最多 65536）重试一次。回复不是 JSON 或为空时重试一次；模型拒答不重试。抽取失败会把 `finish_reason`、输出上限和 token 数记进失败历史和「记忆活动」卡片（只有数字，不含文本）。抽取失败不计入熔断：LLM 已经回答了，暂停记忆也没用。
 
-**旧版配置位置。** 没有设置 `mem0ConfigPath` 或 `pythonPath` 时，插件先找 `~/.dsh/mem0/`；为了兼容早于这个目录的旧环境，接着还会（只读地）检查 `~/.hermes/mem0.json` 和 `~/.hermes/hermes-agent/venv/bin/python`。新安装用不到这些路径；设置这两个配置项，或把文件移到 `~/.dsh/mem0/`，就不会再用它们。完整列表在 [lib/legacy-paths.js](lib/legacy-paths.js)。
+**错误。** SQLite 错误归到向量库，并带一个短代码：`busy`（另一个进程占用文件太久；下次读写时重试）、`readonly`、`corrupt`、`disk_full`、`cantopen`、`ioerr`，或 `schema_newer`（由更新版本的 DSH-Mem0 写入）。配置错误（没配 embedding、embedding 不匹配、schema 更新）在设置或 `oss.json` 改动之前不会重试。
 
-sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回会直接跳过这一轮、不等待，sidecar 在后台继续启动；工具调用和自动保存会等它启动完成（启动最多 15 秒）。
+**文件权限。** 在 macOS 和 Linux 上，数据库文件及其 `-wal` / `-shm` 文件权限设为 0600。在 Windows 上它们继承 `%USERPROFILE%\.dsh\mem0` 的 ACL，默认只有你的账号、SYSTEM 和 Administrators 能读；不要把这个目录放进同步盘或共享目录。
+
+**让插件设置避开 DSH 的重写。** DSH 的设置同步可能重写 profile 的 `cordis.patch.yml` 并丢掉插件设置（安装插件时出现过：dsh-mem0 配置块被删到只剩 `backend`）。写在 `oss.json` 的 `dsh_mem0` 段里的设置不受影响。插件也会发现这种重写：它记下上次正常运行时设置了哪些关键配置（只记字段名，存在 `<DSH profile>/dsh-mem0/config-fingerprint.json`）。其中有字段消失时，设置页和 `mem0_status` 会提示「dsh-mem0 配置疑似被重写，缺少：…」。写在 `dsh_mem0` 段里的设置不算缺失。如果是你有意删掉的，删除 `config-fingerprint.json` 即可。
+
+<a id="migrating-from-qdrant"></a>
+**从 Python sidecar（0.3.x）升级。** 旧版的 Python sidecar、Qdrant 和旧版回退路径已移除。旧设置（`pythonPath`、`mem0ConfigPath`、`historyDbPath`、`sidecarEnv`）会被忽略，只记一条 debug 日志，不报错，也不会触发「配置疑似被重写」的提示。请用设置页向导重新配置。这个版本不读取存放在 Qdrant 里的记忆；向导的迁移步骤会把它们复制进 SQLite 存储，在那之前它们原封不动地留在 Qdrant 里。
 
 #### 低配机器（embedding 只能用 CPU 跑）
 
-下面的数字来自混合方案的实测：记忆抽取用云端 LLM，embedding 用本地 bge-m3，Qdrant 也在本地。抽取在云端完成，所以召回快不快，主要看本地 embedding 模型。
+记忆抽取通常在云端，所以本地 embedding 模型决定了召回能不能保持快速。
 
-- **让 embedding 模型常驻内存。** Ollama 默认在模型空闲 5 分钟后把它卸载。停一会儿再用时，第一次召回要等模型冷加载：在 i5-13500H 上 bge-m3 大约要 2.5 秒，内存紧张时更久。在 Ollama 服务的环境变量里设置 `OLLAMA_KEEP_ALIVE=-1`（永不卸载），或一个较长的值，例如 `24h`。Windows 上把它加为用户环境变量，然后从托盘退出 Ollama 再重新打开。bge-m3 加载后约占 1.2 GB 内存。
-- **`recallTimeoutMs`：** 默认 5000。如果模型仍可能被卸载（没设 keep-alive，或内存紧张），建议设成 8000。召回超时只会让这一轮不带记忆；但 sidecar 会把这次请求做完，在它做完之前，下一次召回也可能跟着超时。
-- **`addTimeoutMs`：** 默认 120000 足够。抽取用云端模型时，测试里每次保存都在 10 秒以内完成。
-- **embedding 模型：** 用中文的话保留 bge-m3。更小的、以英文为主的模型（`nomic-embed-text`、`all-minilm`）召回中文效果差。换模型还会改变向量维度，需要换一个新的 `collectionName`，旧记忆留在旧 collection 里。
+- **让 embedding 模型常驻。** Ollama 默认空闲 5 分钟就卸载模型，之后第一次召回要等冷加载：i5-13500H 上 bge-m3 约 2.5 秒，内存紧张时更久。在 Ollama 服务的环境里设置 `OLLAMA_KEEP_ALIVE=-1`（永不卸载）或较长的值如 `24h`。Windows 上把它加为用户环境变量，然后从托盘退出 Ollama 再启动。bge-m3 加载后约占 1.2 GB 内存。
+- **`recallTimeoutMs`：** 默认 5000。如果模型仍可能被卸载（没设 keep-alive，或内存紧张），用 8000。召回超时只会让这一轮没有记忆。
+- **`addTimeoutMs`：** 默认 120000 足够。用云端抽取模型时，我们测试中每次保存不到 10 秒。
+- **embedding 模型：** 用中文写作就保持 bge-m3。较小的英文模型（`nomic-embed-text`、`all-minilm`）对中文召回很差。换模型需要重算向量（见上文）。
 
 
 ### 全部配置项
@@ -342,10 +300,7 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 | `apiKeyEnv` | `MEM0_API_KEY` | API Key 在 DSH 凭据里的名字，或环境变量名 |
 | `baseUrl` | Platform 为 `https://api.mem0.ai`，server 为 `http://127.0.0.1:8888` | API 地址 |
 | `authType` | `apiKey`（platform 固定 token） | `apiKey` / `bearer` / `token` / `none` |
-| `pythonPath` | 自动发现 | OSS 模式 Python 解释器 |
-| `mem0ConfigPath` | `~/.dsh/mem0/oss.json` | OSS 模式 Mem0 配置文件 |
-| `collectionName` | `dsh_mem0` | OSS 模式 Qdrant 集合 |
-| `historyDbPath` | `~/.dsh/mem0/history.db` | OSS sidecar 本地历史库 |
+| `storePath` | `~/.dsh/mem0/memory.sqlite` | 本地后端：SQLite 文件。embedding 和 LLM 设置见[本地后端](#local-backend) |
 | `userId` | `dsh-user` | 记忆归属用户 |
 | `agentId` | `dsh` | DSH 写入时附加的 agent 标识；当前召回只按 `userId` 过滤，不按 `agentId` 隔离 |
 | `autoRecall` | `true` | 自动召回 |
@@ -367,7 +322,6 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 | `timeoutMs` | `30000` | 所有后端（Platform、server、OSS）每次请求的超时：工具、列表、巡检。写入和自动召回用下面两个设置 |
 | `recallTimeoutMs` | `5000` | 自动召回的超时，100–60000；超时后本轮不带召回记忆继续 |
 | `addTimeoutMs` | `120000` | 保存记忆（自动保存和 `mem0_add`）的超时，写入时可能调用 LLM 抽取事实，1000–600000 |
-| `sidecarEnv` | `[]` | OSS：在内置白名单之外，额外传给 sidecar 的环境变量名 |
 | `enabled` | `true` | 总开关 |
 
 在设置页或 profile 配置里保存的修改会自动生效：loader 提交新配置时（`loader/volatile-update`）插件会自己重启，不需要手动重新加载插件或重启 DSH。`backend: auto` 下，在 DSH 凭据里存入或删除 Key 也会让插件重启。
@@ -375,21 +329,18 @@ sidecar 还在启动时（第一次使用，或崩溃后重启），自动召回
 <a id="windows-troubleshooting"></a>
 ## Windows 排障
 
-Windows 上 OSS 后端的故障大多出自三处：端口被 Windows 保留段占了、服务没在运行、插件配置被 DSH 重写。按「先看端口、再看进程、最后看配置」的顺序查。
+Windows 上本地后端的故障大多来自三类原因：端口落在 Windows 保留段里、模型服务没在运行、插件配置被 DSH 重写。按这个顺序查：端口、进程、配置。
 
-**保留端口。** 装了 Hyper-V、WSL2 或 Docker Desktop 的机器，Windows（WinNAT）每次开机会划出一些 TCP 保留段，位置每次不同。服务的端口落进去就绑不上：进程在跑，端口却没有监听，服务自己的日志里有 `os error 10013` 或 "An attempt was made to access a socket in a way forbidden by its access permissions"。这时插件会报类似「Qdrant unreachable at 127.0.0.1:15333 (connection refused)」，并附上这条提示。
+**保留端口。** 装了 Hyper-V、WSL2 或 Docker Desktop 的机器，Windows（WinNAT）每次开机会划出一些 TCP 保留端口段，位置每次不同。服务的端口落在保留段里就无法监听：进程在跑，端口却没响应，它自己的日志里会有 `os error 10013` 或「以一种访问权限不允许的方式做了一个访问套接字的尝试」。插件这时会报例如「Embedder Ollama unreachable at 127.0.0.1:11434 (connection refused)」并附上这条提示。
 
 ```powershell
-netsh int ipv4 show excludedportrange protocol=tcp   # 保留段
-netsh int ipv4 show dynamicport tcp                  # 动态端口段（默认从 49152 起）
+netsh int ipv4 show excludedportrange protocol=tcp   # 保留端口段
+netsh int ipv4 show dynamicport tcp                  # 动态端口范围（默认起点 49152）
 ```
 
-如果动态端口段起点很低（比如 1024），保留段可能落到任何常用端口上（6333、11434、8080）。把 Qdrant 和 Ollama 放到 15000 以上、并且不在上面列出的任何保留段里的端口，例如 15333（Qdrant REST，gRPC 用 15334）和 15434（Ollama）：
+如果动态端口段起点很低（比如 1024），保留段可能落到任何常用端口上（11434、8000、8080）。把 embedding 服务放到 15000 以上、不在任何保留段里的端口，例如 Ollama 用 15434：设置用户环境变量 `OLLAMA_HOST=127.0.0.1:15434`（从托盘退出 Ollama 再启动；在改动之前启动的程序，包括 DSH，要重启后才能拿到新值），并在 `oss.json` 里写 `"embedderBaseUrl": "http://127.0.0.1:15434"`。
 
-- Qdrant：改它 `config.yaml` 里的 `http_port` / `grpc_port`，以及 `oss.json` 的 `vector_store.config.url`。
-- Ollama：设置用户环境变量 `OLLAMA_HOST=127.0.0.1:15434`（从托盘退出 Ollama 再启动；改之前就已启动的程序，包括 DSH，要重启后才拿到新值），以及 `oss.json` 的 `embedder.config.ollama_base_url`。
-
-可选，需要管理员权限：把动态端口段改回 Windows 默认，让保留段落到 49152 以上。这会短暂停掉 Windows NAT，期间 Hyper-V/WSL2/Docker 的网络中断，直到重新启动；当初改动端口段的工具以后也可能再改回去：
+可选，需要管理员终端：把动态端口范围改回 Windows 默认值，让保留段落在 49152 以上。这会短暂停止 Windows NAT，Hyper-V/WSL2/Docker 在它重新启动前没有网络；改过范围的那个工具以后也可能再改回去：
 
 ```powershell
 net stop winnat
@@ -397,22 +348,19 @@ netsh int ipv4 set dynamicport tcp start=49152 num=16384
 net start winnat
 ```
 
-**服务。** 进程在不等于服务可用，直接查端口：
+**服务。** 进程在跑不等于服务可用，检查端口：
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:15333/collections -UseBasicParsing   # Qdrant
-Invoke-RestMethod  http://127.0.0.1:15434/api/tags                      # Ollama
+Invoke-RestMethod http://127.0.0.1:15434/api/tags   # Ollama
 ```
 
-**Python。** `ModuleNotFoundError: No module named 'mem0'` 表示 sidecar 用的解释器里没有 Mem0，通常是 `pythonPath` 丢了、退回了 PATH 里的 python。确认 `~\.dsh\mem0\venv\Scripts\python.exe` 存在（不设 `pythonPath` 插件也能找到它），或者重新设置 `pythonPath`。
+**数据库文件。** `readonly` 或 `cantopen` 表示插件写不了 `%USERPROFILE%\.dsh\mem0\memory.sqlite`：检查目录是否存在、是否属于你，并且不在 OneDrive 等同步目录里。`busy` 表示另一个 DSH 进程占用文件超过 5 秒；下次读写记忆时会重试。
 
-**装插件或更新插件之后**，检查一次记忆：
+**安装或更新插件后**，检查一次记忆：
 
-1. 看输入框下方的记忆状态：没有红色「记忆失败」。
-2. 让 agent 运行 `mem0_status`：`status: ready`、`qdrant: ok`、`embedder: ok`，并且没有 `warning: dsh-mem0 settings look rewritten`。
-3. 配置被重写时，在插件设置页补回（或用 DSH 在 `cordis.patch.yml` 旁边留的 `.bak-<时间>` 副本恢复），并考虑把这些配置移到 `oss.json` 的 `dsh_mem0` 段。`mem0_status` 里写了启动失败原因时先修它；过了启动退避（30 秒）或熔断冷却（2 分钟）后，下一次读写记忆会重新启动 sidecar，重载插件则立即重启。
-
-sidecar 自己的日志在 `<DSH profile>\dsh-mem0\sidecar.log`（例如 `Get-Content $env:USERPROFILE\.dsh\profiles\<profile>\dsh-mem0\sidecar.log -Tail 30`）。
+1. 看输入框下方的记忆状态：没有红色的「记忆失败」。
+2. 让 agent 运行 `mem0_status`：`status: ready`、`store: ok (sqlite)`、`embedder: ok`，并且没有 `warning: dsh-mem0 settings look rewritten`。
+3. 配置被重写时，在插件设置页补回（或用 DSH 在 `cordis.patch.yml` 旁边留的 `.bak-<时间>` 备份恢复），并考虑把它们挪到 `oss.json` 的 `dsh_mem0` 段里。
 
 ## 工具
 
@@ -432,15 +380,16 @@ sidecar 自己的日志在 `<DSH profile>\dsh-mem0\sidecar.log`（例如 `Get-Co
 
 ```bash
 pnpm install --ignore-scripts
-npm run check   # 对所有 .js/.mjs/.cjs 文件做 node --check
-node --test     # 需要本地端口的测试在不允许监听的环境里会跳过并说明原因
+npm run check              # 对所有 .js/.mjs/.cjs 文件做 node --check
+npm test                   # Node >= 24.9；需要本地端口的测试在不允许监听的环境里会跳过并说明原因
+node scripts/smoke-store.mjs   # SQLite 存储端到端（临时目录；CI 在 Windows、macOS、Linux 上都跑）
 
-# Python 测试：配置构建和 HTTP 处理器（用假 service，不需要安装 mem0ai）
-PYTHONPYCACHEPREFIX="$PWD/.pycache" \
-  python3 -m unittest discover -s python/tests -v
+# 手动：原生后端对接真实的 embedding 和 LLM 接口，使用临时 HOME
+# （不碰你的 ~/.dsh）；需要的环境变量见脚本开头。
+node scripts/smoke-native.mjs
 
-# 本地 OSS 真实服务 smoke test（会创建并删除临时 Qdrant 集合）
-node scripts/smoke-sidecar.mjs
+# mem0ai 是否发布了 prompt 或流程与 2.2.1 不同的新版本？
+npm run upstream
 ```
 
 ## 隐私与数据
@@ -451,7 +400,7 @@ node scripts/smoke-sidecar.mjs
 |---|---|---|
 | Platform | 捕获的对话文本（用户和助手消息，已脱敏并截断；开启 `captureStrataFolds` 时还有脱敏后的 dsh-strata 折叠摘要，元数据带 `via`、`fold`、`tier`）、召回查询、`userId`/`agentId`、元数据 `source`、`channel`、`session_id` | `https://api.mem0.ai`（或你的 `baseUrl`） |
 | Server | 同上 | 你自建的 Mem0 服务器 |
-| OSS | 同上，经由只监听 loopback 的 sidecar | `oss.json` 里配置的 LLM、embedder 和向量库；如果它们是云端 API（如 OpenAI），文本会发到那里 |
+| 本地（OSS） | 对话文本和召回查询发给抽取 LLM；记忆文本和查询发给 embedding | `oss.json` 里配置的接口；如果它们是云端 API（如 DeepSeek、OpenAI），文本会发到那里。除此之外不离开本机 |
 | 记忆翻译（`translateMemories`，默认关闭） | 设置页上显示的记忆原文，打开记忆库时最多是整个列表 | DSH 当前默认模型，可能是云端模型 |
 
 不会发送工作目录。`backend: auto` 下，仅凭继承来的 `MEM0_API_KEY` 就会选择 Platform；可在 `mem0_status` 或设置页查看「后端选择依据」。
@@ -460,17 +409,16 @@ node scripts/smoke-sidecar.mjs
 
 - `<DSH profile>/dsh-mem0/maintenance.json`（权限 0600）：记忆摘要文本和巡检报告。报告只保留记忆 id、数量和原因，不保留被删记忆的文本。
 - `<DSH profile>/dsh-mem0/failures.json`（权限 0600）：最近 20 次记忆失败（时间、类型、后端、原因、出错组件、耗时、简短消息）。消息在保存前脱敏并截短，不含 API key、token、记忆正文和用户主目录路径。删除该文件即可清空。
-- `<DSH profile>/dsh-mem0/sidecar.log`（权限 0600，仅 OSS 后端）：sidecar 的 stderr，以及它每次启动、退出的事件（退出码或信号、运行时长）。每行写入前先脱敏（密钥、token；家目录路径换成 `~`）。不记录 LLM 回复原文（只记长度和开头的类型），Mem0 日志里引用记忆或消息内容的部分会被替换掉。上限 512 KB，另保留一份轮转的 `sidecar.log.1`。删除这两个文件即可清空。
 - `<DSH profile>/dsh-mem0/translation-cache.json`（权限 0600，仅在开启翻译时产生）：记忆原文和译文明文。通过 `mem0_delete` 或巡检删除记忆时会同步删除对应条目；在别处删除的记忆会留到缓存淘汰为止（最多 2000 条）。删除该文件即可清空。
-- OSS 模式：`historyDbPath`（`~/.dsh/mem0/history.db`）以及你 OSS 环境里的 Qdrant 数据。
+- 本地后端：`~/.dsh/mem0/memory.sqlite`（macOS/Linux 上权限 0600），存记忆、向量，以及每个对话范围最近 10 条消息（Mem0 用它们作为下一次抽取的上下文）。不写 `~/.mem0`，不发送遥测。
 
 **其他说明**
 
 - Platform/server 模式的记忆由对应服务保存；请阅读服务方的隐私和保留策略。
-- OSS 模式的记忆保存在你配置的 Qdrant/embedder/LLM 服务中。
+- 本地模式的记忆保存在 SQLite 文件里；你配置的 embedding 和 LLM 能看到它们处理的文本。
 - `autoCapture` 默认开启；如果不希望自动保存，请显式设为 `false`。默认的 `captureFilter: heuristic` 只跳过明显的低价值回合；写入前仍会做常见密钥脱敏（`sk-`、`tvly-`、`AIza…` 等 API Key、JWT、`Bearer` 令牌、URL 里的密码、`password=` / `密码：` 写法、私钥），但正则表达式不能替代完整的 secret 管理。
 - 周巡检会删除本插件写入的重复项和超预算记忆，且只在你确认过一次手动巡检之后才会自动删除。删除是真实删除，不会进入回收站；如果希望完全手动控制，可设 `hygieneEnabled: false`，此时仍会在画像缺失时构建画像，但不会自动删除记忆。
-- sidecar 只监听 loopback，随机端口 + 随机 token；token 通过 stdin 传给 sidecar（`ps` 看不到），sidecar 只拿到白名单内的环境变量，而不是 DSH 的全部环境；`mem0_status` 不返回 API key。
+- 本地后端不开端口、不起进程；embedding 和 LLM 的密钥每次请求时按名字从 DSH 凭据读取；`mem0_status` 不返回 API key。
 
 ## 上架相关
 
@@ -478,7 +426,7 @@ node scripts/smoke-sidecar.mjs
 - 市场收录需要公开 GitHub 仓库、`dsh-plugin` topic、仓库创建满 1 天，并在 `awesome-dsh-plugin` 提交一个 `data/plugins/<owner>__<repo>.yml`，分类选 `memory`。
 - 仓库已绑定 `repository` / `homepage`：`https://github.com/light-cheng/DSH-Mem0`。仓库根目录的 `screenshots.json` 提供 8 张市场截图，另有 `assets/screenshots/`（中文）和 `assets/screenshots/en/`（英文）两套界面图。市场直接读取本仓库的 `screenshots.json`；提交到 awesome-dsh-plugin 的只有插件 YAML。
 - 插件自带可视化配置页（`dsh.client` + `plugins.bundle.config`），上架不要求 GUI，但本插件已提供，便于用户安装后直接配置三种后端并测试连接。
-- OSS 模式依赖外部 Python/Qdrant/embedding 服务，README 已明确声明，不应描述成“零依赖”插件。
+- 本地模式需要一个 embedding 模型和一个抽取 LLM 接口，README 已明确声明，不应描述成“零依赖”插件。
 
 ## 发布说明
 

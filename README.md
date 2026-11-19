@@ -12,7 +12,7 @@ Three backends are supported:
 
 - **Mem0 Platform**: the managed Mem0 API; only an API key is required, and it is the best fit for most users.
 - **Self-hosted server**: connect to your own Mem0 REST service.
-- **OSS Python sidecar**: reuse a local Mem0 Python SDK / Qdrant / embedding setup, suitable for local bge-m3, Qdrant and similar self-hosted environments.
+- **Local (OSS)**: memories in a SQLite file on this machine (`~/.dsh/mem0/memory.sqlite`), with your own embedding model (OpenAI-compatible server such as oMLX / LM Studio / vLLM, or Ollama) and extraction LLM. It is a native Node port of Mem0 2.2.1's add and search pipeline: no Python, no Qdrant, no extra service besides the two models.
 
 ## Features
 
@@ -21,11 +21,11 @@ Three backends are supported:
 - **Editable memory summary**: a structured summary is derived from stored memories, ranked by pinned/importance metadata and then freshness (newer facts first, decaying over roughly 90 days; text length only breaks ties), and injected before relevant memories. It has its own token budget, can be edited directly in the settings page, and can be read or rewritten by the agent through `mem0_profile_get` / `mem0_profile_update` / `mem0_profile_reset`. Manual edits survive weekly hygiene; **Rebuild from memories** restores the generated version.
 - **Memory budgets and weekly hygiene**: recall memories and the profile each have a token budget; a memory hygiene pass runs every 7 days by default to deduplicate and prune the oldest over-budget memories. It only ever deletes memories written by this plugin (`metadata.source: "dsh"`), and automatic passes only preview until you confirm a manual run in the settings page.
 - **Explicit tools**: `mem0_search`, `mem0_add`, `mem0_get`, `mem0_update`, `mem0_delete`, `mem0_status`, plus `mem0_profile_get`, `mem0_profile_update`, `mem0_profile_reset` for the memory summary.
-- **Switchable backends**: Platform, self-hosted server and local OSS sidecar share the same tools and automatic memory logic.
+- **Switchable backends**: Platform, self-hosted server and the local SQLite backend share the same tools and automatic memory logic.
 - **Verifiable memory activity**: the settings page shows the last automatic capture / recall status and the most recently written memories (text, ID, time); it can open a **Memory library** to search every memory stored for the current user. **Last recalled memories** shows the texts that the most recent recall actually matched.
 - **Foreground status icon**: below the chat composer there is a hollow globe made of dots of different sizes. It rolls along a tilted direction while automatic capture/recall is active, turns light blue and keeps rolling on success, and turns red on failure. The silhouette stays circular while rolling and never squashes. It uses dark dots in light themes and light dots in dark themes.
 - **Bilingual UI and memory text**: labels follow DSH's language setting. With `translateMemories` on (off by default), stored memory text is translated into the page language with the current DSH model, cached, and falls back to the original text when no model is available.
-- **Security boundaries**: the sidecar listens only on a random `127.0.0.1` port with a random token; common secrets are redacted before capture/recall; `mem0_status` never returns the API key.
+- **Security boundaries**: the local backend opens no port and runs no extra process; common secrets are redacted before capture/recall; `mem0_status` never returns an API key.
 
 ## UI
 
@@ -41,7 +41,7 @@ Each backend has its own fields and guidance:
 
 ![Local OSS configuration](assets/screenshots/en/04-settings-oss.png)
 
-The **Test connection** button calls the same read-only health check as `mem0_status`, showing the current backend, collection, Python/Mem0/Qdrant/Embedder status, and never the API key.
+The **Test connection** button calls the same read-only health check as `mem0_status`, showing the current backend, where memories are stored, the store / embedder / extraction LLM status, and never an API key.
 
 **Memory summary** is the editable summary injected before relevant memories. It is shown as structured sections; use **Edit summary** to edit it and **Rebuild from memories** to regenerate it from the store. Manual edits survive weekly hygiene.
 
@@ -132,11 +132,13 @@ DSH Agent
   │                                     ▼
   │                          backend adapter (one of)
   │                          ├─ Mem0RestClient (platform / server)
-  │                          └─ Mem0SidecarClient (oss)
+  │                          └─ Mem0NativeClient (oss)
   │                          (shared HTTP, timeouts, circuit breaker: lib/http.js)
   │                                     │
-  │                                     ▼
-  │                          Mem0 Platform / self-hosted server / local Python Mem0
+  │                     ┌───────────────┴──────────────┐
+  │                     ▼                              ▼
+  │          Mem0 Platform / server        SQLite store (node:sqlite, WAL)
+  │                                        + your embedder + your LLM
 ```
 
 ## Installation
@@ -222,115 +224,71 @@ config:
 
 `authType` supports `apiKey` (`X-API-Key`), `bearer`, `token` and `none` (for local services with `AUTH_DISABLED=true`).
 
-#### OSS Python sidecar (Qdrant server / bge-m3)
+<a id="local-backend"></a>
+#### Local backend (SQLite, no Python)
 
-First prepare a Mem0 OSS config file, for example `~/.dsh/mem0/oss.json`; see [examples/oss-config.example.json](examples/oss-config.example.json).
+`backend: oss` keeps memories in one SQLite file, by default `~/.dsh/mem0/memory.sqlite` (Windows: `%USERPROFILE%\.dsh\mem0\memory.sqlite`). It uses `node:sqlite`, which is built into the Node that DSH ships (Node 24.9 or later); nothing is installed. You bring two models:
 
-```yaml
-config:
-  backend: oss
-  pythonPath: "~/.dsh/mem0/venv/bin/python"
-  mem0ConfigPath: "~/.dsh/mem0/oss.json"
-  collectionName: "dsh_mem0"
-  userId: "your-user-id"
-  # Optional: extra environment variables the sidecar may see (see below)
-  # sidecarEnv: ["MY_GATEWAY_API_KEY"]
-```
+- an **embedding model**: any OpenAI-compatible `/embeddings` endpoint (oMLX, LM Studio, vLLM, OpenAI, …) or Ollama (`/api/embed`);
+- an **extraction LLM**: any OpenAI-compatible `/chat/completions` endpoint (DeepSeek, a local gateway, …).
 
-The Python environment needs:
-
-```bash
-python3 -m venv ~/.dsh/mem0/venv
-~/.dsh/mem0/venv/bin/pip install "mem0ai>=2.0.10,<3" qdrant-client openai
-```
-
-On Windows (PowerShell):
-
-```powershell
-py -3.11 -m venv $env:USERPROFILE\.dsh\mem0\venv
-& $env:USERPROFILE\.dsh\mem0\venv\Scripts\pip.exe install "mem0ai>=2.0.10,<3" qdrant-client openai
-```
-
-**Which Python is used.** A `pythonPath` you set always wins. Without one the plugin looks for the venv in `~/.dsh/mem0/venv`: on Windows `Scripts\python.exe`, then `bin\python.exe` and `bin\python`; elsewhere `bin/python3`, then `bin/python`. Only when none exists does it fall back to `python` (Windows) or `python3` from PATH, and `mem0_status`, the **OSS sidecar** block and `sidecar.log` say so. When that interpreter has no `mem0` (on Windows often the Microsoft Store Python), the start fails at once with `ModuleNotFoundError: No module named 'mem0'` and the interpreter's path, and the failure card shows that instead of "sidecar failed to start recently".
-
-<a id="qdrant-server-only"></a>
-#### Qdrant: server only
-
-The OSS backend needs a **Qdrant server**: set `vector_store.config.url` (or `host` and `port`) in `oss.json`. Embedded Qdrant (`vector_store.config.path`, no server) is **not supported**: the sidecar opens Qdrant twice (a read path and a write path), and embedded Qdrant locks its folder for one client only ([#23](https://github.com/light-cheng/DSH-Mem0/issues/23)). With only `path`, the plugin stops before starting Python with "Embedded Qdrant is not supported", shows it as a configuration error of the vector store, and does not try again until `oss.json` changes. With both `path` and `url`, `url` is used and `path` is ignored (a warning in `sidecar.log`).
-
-Shortest way to run a local Qdrant server:
-
-1. Download the release for your platform from [Qdrant releases](https://github.com/qdrant/qdrant/releases) (for Windows, `qdrant-x86_64-pc-windows-msvc.zip`) and unpack it, for example into `~/.dsh/mem0/qdrant/`.
-2. Next to it, create `config.yaml`. It listens on loopback only; on Windows use ports above 15000 that are outside the reserved ranges (see [Windows troubleshooting](#windows-troubleshooting)):
-
-   ```yaml
-   storage:
-     storage_path: ./qdrant-storage
-   service:
-     host: 127.0.0.1
-     http_port: 15333
-     grpc_port: 15334
-   telemetry_disabled: true
-   ```
-
-3. Start it from that folder: `./qdrant --config-path config.yaml` (Windows: `.\qdrant.exe --config-path config.yaml`). Check it with `curl http://127.0.0.1:15333/collections`.
-4. In `oss.json`:
-
-   ```json
-   "vector_store": { "provider": "qdrant", "config": { "url": "http://127.0.0.1:15333", "embedding_model_dims": 1024 } }
-   ```
-
-To start it at login on Windows, a Task Scheduler task that runs the command above works.
-
-**Keeping plugin settings out of DSH's reach.** DSH's settings sync can rewrite the profile's `cordis.patch.yml` and drop plugin settings (seen when a plugin was installed: the dsh-mem0 block was cut down to `backend`). Settings can also live in a `dsh_mem0` block at the top of `oss.json`, which DSH never rewrites. They apply when the profile does not set them (a value equal to the default counts as not set); the profile wins otherwise:
+Configure them in the `dsh_mem0` block of `~/.dsh/mem0/oss.json`, which DSH's settings sync never rewrites (see [examples/oss-config.example.json](examples/oss-config.example.json)):
 
 ```json
 {
-  "dsh_mem0": { "pythonPath": "~/.dsh/mem0/venv/Scripts/python.exe", "collectionName": "dsh_mem0", "userId": "your-user-id" },
-  "oss": { "…": "…" }
+  "dsh_mem0": {
+    "userId": "your-user-id",
+    "embedderProvider": "openai",
+    "embedderBaseUrl": "http://127.0.0.1:8000/v1",
+    "embedderModel": "bge-m3",
+    "embedderDims": 1024,
+    "embedderApiKeyRef": "MEM0_EMBEDDER_API_KEY",
+    "llmBaseUrl": "https://api.deepseek.com/v1",
+    "llmModel": "deepseek-chat",
+    "llmApiKeyRef": "MEM0_LLM_API_KEY"
+  }
 }
 ```
 
-Allowed keys: `pythonPath`, `collectionName`, `userId`, `agentId`, `historyDbPath`, `translateMemories`, `captureStrataFolds`. `oss.json` is found at `mem0ConfigPath`, or at the default `~/.dsh/mem0/oss.json` when that setting is gone too.
+Keys are referenced by name (`embedderApiKeyRef`, `llmApiKeyRef`) and looked up in DSH credentials (`~/.dsh/.credentials.yaml`), then in the environment, on every request: they never sit in `oss.json` or the profile. An `oss.json` in Mem0's own format (`oss.embedder` / `oss.llm` with a literal `api_key`) still works as a fallback; the `oss.vector_store` block is ignored. The same fields can be set in the profile config; the profile wins over the `dsh_mem0` block, and a value equal to the default counts as not set.
 
-The plugin also notices a rewrite: it records which key settings were set the last time it ran fine (names only, in `<DSH profile>/dsh-mem0/config-fingerprint.json`). When some of them disappear, the settings page and `mem0_status` say "dsh-mem0 settings look rewritten; missing: …". Settings kept in the `dsh_mem0` block do not count as missing. If you removed one on purpose, delete `config-fingerprint.json`.
-
-This version **does not silently install** Python or Qdrant when the plugin loads, and does not modify the system Python. The settings page shows connection errors; prefer Platform, or prepare the local environment manually with the commands above. A better future flow is a guided **environment check + explicit one-click venv creation** in the settings page, rather than automatic execution at plugin install time.
-
-The sidecar reads `oss.llm`, `oss.embedder` and `oss.vector_store` from `mem0ConfigPath` and overrides the collection name with `collectionName`; other Mem0 clients can keep using their own collections.
-
-**Fact-extraction output budget.** Two keys in `oss.llm.config` control Mem0's fact-extraction call:
-
-| Key | Default | Meaning |
+| `dsh_mem0` key | Default | Meaning |
 | --- | --- | --- |
-| `max_tokens` | `8000` (when unset) | Output budget of each extraction call. Mem0's own default is 2000, but a hybrid reasoning model (e.g. DeepSeek V4.1 Flash) spends part of that budget on thinking; measured through magpie, 2 of 3 extractions of a 1.4K-character fold summary stopped at `finish_reason=length` with 2000. A value you set is always used. |
-| `reasoning_effort` | not sent | Sent with every extraction call when set. Mem0 itself sends it only to models it knows as reasoning models (o1/o3/gpt-5), so for other models the sidecar adds it. `"none"` turns thinking off on gateways that support it (magpie's `workbuddy/deepseek-v4.1-flash`: no reasoning tokens, about 850 output tokens, roughly twice as fast). Leave it unset if your endpoint rejects the parameter. |
+| `storePath` | `~/.dsh/mem0/memory.sqlite` | The SQLite file |
+| `embedderProvider` | `openai` | `openai` (any OpenAI-compatible server) or `ollama` |
+| `embedderBaseUrl` | Ollama: `http://localhost:11434` | e.g. `http://127.0.0.1:8000/v1` |
+| `embedderModel` | — | e.g. `bge-m3` |
+| `embedderDims` | from the model | Sent as `dimensions` (OpenAI-compatible only) when set |
+| `embedderApiKeyRef` | — | Credential name of the embedder key |
+| `llmBaseUrl`, `llmModel`, `llmApiKeyRef` | — | The extraction LLM |
+| `llmMaxTokens` | `8000` | Output budget of each extraction call (Mem0's own default is 2000; hybrid reasoning models spend part of it on thinking) |
+| `llmTemperature` | `0` | Mem0 sends 0 (and `top_p` 0.1) |
+| `llmReasoningEffort` | not sent | e.g. `"none"` to turn thinking off on gateways that support it |
+| `userId`, `agentId`, `translateMemories`, `captureStrataFolds` | | Plugin settings, as in the table below |
 
-```json
-{ "oss": { "llm": { "provider": "openai", "config": {
-  "model": "workbuddy/deepseek-v4.1-flash",
-  "openai_base_url": "http://127.0.0.1:3425/v1",
-  "max_tokens": 8000,
-  "reasoning_effort": "none"
-} } } }
-```
+**How it works.** Adds follow Mem0 2.2.1's V3 additive pipeline: the last 10 messages of the conversation scope, the 10 most similar memories, one LLM call with Mem0's own extraction prompt (copied verbatim, with "answer in the language of the input" on), then only ADD: new facts whose md5 matches an existing or another new fact are skipped. Adds of one user/agent run one after another. Search embeds the query, compares it with every stored vector (cosine, brute force; a few thousand memories take milliseconds) and drops scores below 0.1. Vectors are cached in memory; another DSH process writing the same file is noticed through SQLite's `data_version`. WAL mode and a 5 s busy timeout let several DSH profiles share the file. See [NOTICE](NOTICE) for what is derived from Mem0.
 
-When an extraction answer is still cut off (`finish_reason=length`), the capture is retried once with twice the output budget (up to 65536). A failed extraction records its `finish_reason`, output budget and prompt / output / reasoning token counts in the failure history, the Memory activity card and `sidecar.log` (numbers only, never text). Extraction failures (cut off, refusal, not JSON, empty) do not count toward the circuit breaker: the LLM answered, so pausing memory would not help. Only connection, timeout, auth and server failures do.
+**Changing the embedding model.** The store remembers which embedder (model and dimension) wrote its vectors. With another one configured, recall and capture stop with a clear `EMBEDDER_MISMATCH` configuration error instead of mixing vectors. Switch back, or recompute the vectors with the new model (a re-embed action; the settings-page button comes with the setup wizard). An empty store simply takes the new embedder.
 
-The sidecar does not inherit DSH's whole environment. It gets `PATH`, `HOME`, locale, proxy and CA-bundle variables, Python/virtualenv/Conda variables, model-cache variables (`HF_*`, `TRANSFORMERS_*`, `TORCH_*` …) and the provider prefixes Mem0 OSS falls back to when `oss.json` has no `api_key` (`OPENAI_*`, `AZURE_*`, `ANTHROPIC_*`, `GOOGLE_*`, `GEMINI_*`, `AWS_*`, `OLLAMA_*`, `DEEPSEEK_*`, `GROQ_*`, `TOGETHER_*`, `MISTRAL_*`, `LITELLM_*`, `QDRANT_*` and similar). `MEM0_API_KEY` and `OPENROUTER_API_KEY` are not passed. If your providers read a variable with another name, list it in `sidecarEnv`. The per-process token is sent on the sidecar's stdin, never as a command-line argument.
+**Extraction failures.** When an answer is cut off (`finish_reason=length`), the capture is retried once with twice the output budget (up to 65536). An answer that is not JSON or empty is retried once; a refusal is not. A failed extraction records its `finish_reason`, output budget and token counts in the failure history and the Memory activity card (numbers only, never text). Extraction failures do not count toward the circuit breaker: the LLM answered, so pausing memory would not help.
 
-**Legacy config locations.** When `mem0ConfigPath` or `pythonPath` is not set, the plugin looks in `~/.dsh/mem0/` first. For setups that predate that folder it then also checks `~/.hermes/mem0.json` and `~/.hermes/hermes-agent/venv/bin/python` (read-only). New installs never need these; set the two options, or move the files into `~/.dsh/mem0/`, to stop using them. The list lives in [lib/legacy-paths.js](lib/legacy-paths.js).
+**Errors.** SQLite errors are attributed to the vector store with a short code: `busy` (another process held the file too long; retried with the next call), `readonly`, `corrupt`, `disk_full`, `cantopen`, `ioerr`, or `schema_newer` (written by a newer DSH-Mem0). Configuration errors (no embedder configured, embedder mismatch, newer schema) are not retried until the settings or `oss.json` change.
 
-When the sidecar is still starting (first use, or after it crashed), automatic recall skips that turn instead of waiting and the sidecar keeps starting in the background; tools and capture wait for it (startup is bounded at 15 s).
+**File permissions.** On macOS and Linux the file and its `-wal` / `-shm` companions are set to mode 0600. On Windows they inherit the ACL of `%USERPROFILE%\.dsh\mem0`, which by default only your account, SYSTEM and Administrators can read; keep the folder out of synced or shared folders.
+
+**Keeping plugin settings out of DSH's reach.** DSH's settings sync can rewrite the profile's `cordis.patch.yml` and drop plugin settings (seen when a plugin was installed: the dsh-mem0 block was cut down to `backend`). Everything in the `dsh_mem0` block of `oss.json` survives that. The plugin also notices a rewrite: it records which key settings were set the last time it ran fine (names only, in `<DSH profile>/dsh-mem0/config-fingerprint.json`). When some of them disappear, the settings page and `mem0_status` say "dsh-mem0 settings look rewritten; missing: …". Settings kept in the `dsh_mem0` block do not count as missing. If you removed one on purpose, delete `config-fingerprint.json`.
+
+<a id="migrating-from-qdrant"></a>
+**Coming from the Python sidecar (0.3.x).** The Python sidecar, Qdrant and the fallback paths of earlier versions have been removed. Old settings (`pythonPath`, `mem0ConfigPath`, `historyDbPath`, `sidecarEnv`) are ignored with a debug line, never an error, and do not trigger the "settings look rewritten" warning. Reconfigure with the settings-page wizard. Memories stored in Qdrant are not read by this version; the wizard's migration step copies them into the SQLite store. Until then they stay untouched in Qdrant.
 
 #### Low-spec machines (CPU-only embeddings)
 
-Measured on a hybrid setup (cloud LLM for extraction, local bge-m3 embeddings, local Qdrant). Extraction runs in the cloud, so the local embedding model is what decides whether recall stays fast.
+Extraction usually runs in the cloud, so the local embedding model is what decides whether recall stays fast.
 
 - **Keep the embedding model loaded.** Ollama unloads a model after 5 idle minutes by default. The first recall after a break then waits for a cold load: about 2.5 s for bge-m3 on an i5-13500H, longer when memory is tight. Set `OLLAMA_KEEP_ALIVE=-1` (never unload) or a long value such as `24h` in the environment of the Ollama service. On Windows, add it as a user environment variable, then quit Ollama from the tray and start it again. bge-m3 needs about 1.2 GB of RAM while loaded.
-- **`recallTimeoutMs`:** the default is 5000. If the model can still be unloaded (no keep-alive, or memory pressure), use 8000. A recall that times out only skips memories for that turn. Until it finishes, though, the sidecar keeps working on it, so the next recall can time out too.
+- **`recallTimeoutMs`:** the default is 5000. If the model can still be unloaded (no keep-alive, or memory pressure), use 8000. A recall that times out only skips memories for that turn.
 - **`addTimeoutMs`:** the default 120000 is plenty. With a cloud extraction model, captures took under 10 s in our tests.
-- **Embedding model:** keep bge-m3 if you write in Chinese. Smaller English-centric models (`nomic-embed-text`, `all-minilm`) recall Chinese poorly. Switching models also changes the vector size, so it needs a new `collectionName`, and the old memories stay in the old collection.
+- **Embedding model:** keep bge-m3 if you write in Chinese. Smaller English-centric models (`nomic-embed-text`, `all-minilm`) recall Chinese poorly. Switching models needs the vectors recomputed (see above).
 
 
 ### All options
@@ -342,10 +300,7 @@ Measured on a hybrid setup (cloud LLM for extraction, local bge-m3 embeddings, l
 | `apiKeyEnv` | `MEM0_API_KEY` | Name of the API key in DSH credentials, or of the environment variable |
 | `baseUrl` | Platform: `https://api.mem0.ai`; server: `http://127.0.0.1:8888` | API endpoint |
 | `authType` | `apiKey` (Platform is fixed to token) | `apiKey` / `bearer` / `token` / `none` |
-| `pythonPath` | auto-discovered | OSS-mode Python interpreter |
-| `mem0ConfigPath` | `~/.dsh/mem0/oss.json` | OSS-mode Mem0 config file |
-| `collectionName` | `dsh_mem0` | OSS-mode Qdrant collection |
-| `historyDbPath` | `~/.dsh/mem0/history.db` | OSS sidecar local history database |
+| `storePath` | `~/.dsh/mem0/memory.sqlite` | Local backend: the SQLite file. Embedder and LLM settings: see [Local backend](#local-backend) |
 | `userId` | `dsh-user` | Memory owner |
 | `agentId` | `dsh` | Agent identifier attached on DSH writes; recall currently filters by `userId`, not `agentId` |
 | `autoRecall` | `true` | Automatic recall |
@@ -367,7 +322,6 @@ Measured on a hybrid setup (cloud LLM for extraction, local bge-m3 embeddings, l
 | `timeoutMs` | `30000` | Timeout for each backend request on every backend (Platform, server and OSS): tools, listing, hygiene. Writes and automatic recall use the two settings below |
 | `recallTimeoutMs` | `5000` | Timeout for automatic recall, 100–60000; on timeout the turn continues without recalled memories |
 | `addTimeoutMs` | `120000` | Timeout for storing memories (capture and `mem0_add`), which may run LLM fact extraction, 1000–600000 |
-| `sidecarEnv` | `[]` | OSS: names of extra environment variables passed to the sidecar, on top of the built-in allowlist |
 | `enabled` | `true` | Master switch |
 
 Changes saved in the settings page or the profile config apply on their own: the plugin restarts itself when the loader commits new values (`loader/volatile-update`), so no manual reload or DSH restart is needed. With `backend: auto`, storing or removing the key in DSH credentials restarts it too.
@@ -375,19 +329,16 @@ Changes saved in the settings page or the profile config apply on their own: the
 <a id="windows-troubleshooting"></a>
 ## Windows troubleshooting
 
-Most OSS failures on Windows come from three things: a port taken by a Windows reserved range, a service that is not running, or plugin settings that DSH rewrote. Look in that order: ports, processes, settings.
+Most local-backend failures on Windows come from three things: a port taken by a Windows reserved range, a model server that is not running, or plugin settings that DSH rewrote. Look in that order: ports, processes, settings.
 
-**Reserved ports.** Hyper-V, WSL2 and Docker Desktop make Windows (WinNAT) reserve TCP port ranges at boot, at different places each time. A service whose port falls inside one cannot listen: its process runs, but the port is silent. Its own log says `os error 10013` or "An attempt was made to access a socket in a way forbidden by its access permissions". The plugin then reports, for example, "Qdrant unreachable at 127.0.0.1:15333 (connection refused)" with this hint.
+**Reserved ports.** Hyper-V, WSL2 and Docker Desktop make Windows (WinNAT) reserve TCP port ranges at boot, at different places each time. A service whose port falls inside one cannot listen: its process runs, but the port is silent. Its own log says `os error 10013` or "An attempt was made to access a socket in a way forbidden by its access permissions". The plugin then reports, for example, "Embedder Ollama unreachable at 127.0.0.1:11434 (connection refused)" with this hint.
 
 ```powershell
 netsh int ipv4 show excludedportrange protocol=tcp   # reserved ranges
 netsh int ipv4 show dynamicport tcp                  # dynamic port range (default: start 49152)
 ```
 
-If the dynamic range starts low (for example at 1024), reserved ranges can land on any common port (6333, 11434, 8080). Put Qdrant and Ollama on ports above 15000 that are outside every listed range, for example 15333 (Qdrant REST; gRPC 15334) and 15434 (Ollama):
-
-- Qdrant: `http_port` / `grpc_port` in its `config.yaml`, and `vector_store.config.url` in `oss.json`.
-- Ollama: the user environment variable `OLLAMA_HOST=127.0.0.1:15434` (quit Ollama from the tray and start it again; programs started before the change, DSH included, keep the old value until restarted), and `embedder.config.ollama_base_url` in `oss.json`.
+If the dynamic range starts low (for example at 1024), reserved ranges can land on any common port (11434, 8000, 8080). Put the embedding server on a port above 15000 that is outside every listed range, for example 15434 for Ollama: the user environment variable `OLLAMA_HOST=127.0.0.1:15434` (quit Ollama from the tray and start it again; programs started before the change, DSH included, keep the old value until restarted), and `"embedderBaseUrl": "http://127.0.0.1:15434"` in `oss.json`.
 
 Optional, needs an administrator shell: move the dynamic range back to the Windows default so reservations land above 49152. This briefly stops Windows NAT, which cuts network access for Hyper-V/WSL2/Docker until it is started again, and the tool that changed the range may change it again:
 
@@ -397,22 +348,19 @@ netsh int ipv4 set dynamicport tcp start=49152 num=16384
 net start winnat
 ```
 
-**Services.** A running process is not a working service; check the ports:
+**Services.** A running process is not a working service; check the port:
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:15333/collections -UseBasicParsing   # Qdrant
-Invoke-RestMethod  http://127.0.0.1:15434/api/tags                      # Ollama
+Invoke-RestMethod http://127.0.0.1:15434/api/tags   # Ollama
 ```
 
-**Python.** `ModuleNotFoundError: No module named 'mem0'` means the sidecar ran an interpreter without Mem0, usually because `pythonPath` was lost and the PATH python was used. Check that `~\.dsh\mem0\venv\Scripts\python.exe` exists (the plugin finds it without `pythonPath`), or set `pythonPath` again.
+**The store file.** `readonly` or `cantopen` means the plugin cannot write `%USERPROFILE%\.dsh\mem0\memory.sqlite`: check that the folder exists and is yours, and that it is not inside OneDrive or another synced folder. `busy` means another DSH process held the file for more than 5 seconds; it is retried with the next memory call.
 
 **After installing or updating a plugin**, check memory once:
 
 1. Look at the memory status under the composer: no red **Memory failed**.
-2. Ask the agent to run `mem0_status`: `status: ready`, `qdrant: ok`, `embedder: ok`, and no `warning: dsh-mem0 settings look rewritten`.
-3. If settings were rewritten, set them again on the plugin settings page (or restore `cordis.patch.yml` from the `.bak-<time>` copy DSH writes next to it), and consider moving them into the `dsh_mem0` block of `oss.json`. If `mem0_status` names a start failure, fix that first; the sidecar starts again with the next memory call once the restart backoff (30 s) or the circuit breaker (2 min) has passed, or at once after reloading the plugin.
-
-The sidecar's own log is `<DSH profile>\dsh-mem0\sidecar.log` (for example `Get-Content $env:USERPROFILE\.dsh\profiles\<profile>\dsh-mem0\sidecar.log -Tail 30`).
+2. Ask the agent to run `mem0_status`: `status: ready`, `store: ok (sqlite)`, `embedder: ok`, and no `warning: dsh-mem0 settings look rewritten`.
+3. If settings were rewritten, set them again on the plugin settings page (or restore `cordis.patch.yml` from the `.bak-<time>` copy DSH writes next to it), and consider moving them into the `dsh_mem0` block of `oss.json`.
 
 ## Tools
 
@@ -432,15 +380,16 @@ The sidecar's own log is `<DSH profile>\dsh-mem0\sidecar.log` (for example `Get-
 
 ```bash
 pnpm install --ignore-scripts
-npm run check   # node --check on every .js/.mjs/.cjs file
-node --test     # tests that need a local port skip with a reason where binding is not allowed
+npm run check              # node --check on every .js/.mjs/.cjs file
+npm test                   # Node >= 24.9; tests that need a local port skip with a reason where binding is not allowed
+node scripts/smoke-store.mjs   # the SQLite store end to end in a temporary folder (CI runs it on Windows, macOS, Linux)
 
-# Python tests: config building and the HTTP handler (fake service, no mem0ai needed)
-PYTHONPYCACHEPREFIX="$PWD/.pycache" \
-  python3 -m unittest discover -s python/tests -v
+# Manual: the native backend against real embedder and LLM endpoints, in a
+# temporary HOME (never your ~/.dsh); see the script header for the variables.
+node scripts/smoke-native.mjs
 
-# Real local OSS smoke test (creates and deletes a temporary Qdrant collection)
-node scripts/smoke-sidecar.mjs
+# Has mem0ai released a version whose prompts or pipeline differ from 2.2.1?
+npm run upstream
 ```
 
 ## Privacy and data
@@ -451,7 +400,7 @@ node scripts/smoke-sidecar.mjs
 |---|---|---|
 | Platform | Captured conversation text (user and assistant messages, redacted and truncated; with `captureStrataFolds`, also redacted dsh-strata fold summaries with metadata `via`, `fold`, `tier`), recall queries, `userId`/`agentId`, metadata `source`, `channel`, `session_id` | `https://api.mem0.ai` (or your `baseUrl`) |
 | Server | The same | Your self-hosted Mem0 server |
-| OSS | The same, via a loopback-only sidecar | The LLM, embedder and vector store in your `oss.json`; if those are cloud APIs (e.g. OpenAI), the text goes there |
+| Local (OSS) | Conversation text and recalled queries to the extraction LLM; memory text and queries to the embedder | The endpoints in your `oss.json`; if those are cloud APIs (e.g. DeepSeek, OpenAI), the text goes there. Nothing else leaves the machine |
 | Memory translation (`translateMemories`, off by default) | Memory text shown on the settings page, up to the full list when the memory browser opens | DSH's current default model, which may be a cloud model |
 
 The working directory is not sent. With `backend: auto`, an inherited `MEM0_API_KEY` alone selects the Platform; check "backend choice" in `mem0_status` or the settings page.
@@ -460,17 +409,16 @@ The working directory is not sent. With `backend: auto`, an inherited `MEM0_API_
 
 - `<DSH profile>/dsh-mem0/maintenance.json` (mode 0600): the memory summary text and hygiene reports. Reports keep only memory ids, counts and reasons, not the text of deleted memories.
 - `<DSH profile>/dsh-mem0/failures.json` (mode 0600): the last 20 memory failures (time, kind, backend, cause, failing component, duration, short message). Messages are redacted and shortened before they are stored: no API keys, tokens, memory text or home-directory paths. Delete the file to clear the history.
-- `<DSH profile>/dsh-mem0/sidecar.log` (mode 0600, OSS backend only): the sidecar's stderr plus its start and exit events (exit code or signal, uptime). Each line is redacted before it is written (keys, tokens; home-directory paths shortened to `~`). LLM answers are never logged (only their length and how they start), and Mem0 warnings that quote memory or message text are scrubbed. Capped at 512 KB, with one rotated copy `sidecar.log.1`. Delete both files to clear it.
 - `<DSH profile>/dsh-mem0/translation-cache.json` (mode 0600, only when translation is on): memory text and its translation in plain form. Entries are dropped when a memory is deleted through `mem0_delete` or hygiene; memories deleted elsewhere stay until the cache evicts them (2,000 entries max). Delete the file to clear it.
-- OSS mode: `historyDbPath` (`~/.dsh/mem0/history.db`) and the Qdrant data of your OSS setup.
+- Local backend: `~/.dsh/mem0/memory.sqlite` (mode 0600 on macOS/Linux) with the memories, their vectors, and the last 10 messages of each conversation scope (Mem0 uses them as context for the next extraction). Nothing is written to `~/.mem0` and no telemetry is sent.
 
 **Other notes**
 
 - In Platform/server mode, memories are stored by the corresponding service; read that service's privacy and retention policy.
-- In OSS mode, memories are stored in the Qdrant/embedder/LLM services you configure.
+- In local mode, memories stay in the SQLite file; the embedder and LLM you configure see the text they process.
 - `autoCapture` is enabled by default; set it to `false` if you do not want automatic saving. The default `captureFilter: heuristic` only skips clearly low-value turns; common secrets (API keys such as `sk-`, `tvly-`, `AIza…`, JWTs, `Bearer` tokens, passwords in URLs, `password=` / `密码：` phrasing, private keys) are still redacted before writing, but regular expressions are not a substitute for full secret management.
 - Weekly hygiene deletes duplicates and over-budget memories written by this plugin, and only after you have confirmed one manual run. Deletion is real and there is no recycle bin; if you want full manual control, set `hygieneEnabled: false`. The profile is still built when missing, but memories are not automatically deleted.
-- The sidecar listens only on loopback, with a random port and random token; the token reaches the sidecar on stdin (not visible in `ps`), and the sidecar gets an allowlisted environment rather than all of DSH's; `mem0_status` never returns the API key.
+- The local backend opens no port and starts no process; embedder and LLM keys are read from DSH credentials by name on each request; `mem0_status` never returns an API key.
 
 ## Marketplace notes
 
@@ -478,7 +426,7 @@ The working directory is not sent. With `backend: auto`, an inherited `MEM0_API_
 - Marketplace inclusion requires a public GitHub repository, the `dsh-plugin` topic, a repository at least 1 day old, and a `data/plugins/<owner>__<repo>.yml` entry in `awesome-dsh-plugin` with category `memory`.
 - The repository is linked through `repository` / `homepage`: `https://github.com/light-cheng/DSH-Mem0`. It includes `screenshots.json` with eight marketplace screenshots, plus localized sets under `assets/screenshots/` (Chinese) and `assets/screenshots/en/` (English). The market reads `screenshots.json` from this repository; only the plugin YAML is submitted to awesome-dsh-plugin.
 - The plugin ships a visual settings page (`dsh.client` + `plugins.bundle.config`). A GUI is not required for listing, but this plugin provides one so users can configure all three backends and test the connection right after installation.
-- OSS mode depends on external Python/Qdrant/embedding services; the README states this clearly and does not describe the plugin as "zero dependencies".
+- Local mode needs an embedding model and an extraction LLM endpoint; the README states this clearly and does not describe the plugin as "zero dependencies".
 
 ## Release notes
 

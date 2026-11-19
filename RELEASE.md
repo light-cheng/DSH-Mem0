@@ -6,6 +6,16 @@ English is the default; the Chinese version follows below.
 
 ### Unreleased
 
+- **Breaking: the local backend is now native Node, on SQLite. The Python sidecar and Qdrant are gone.** The old fallback paths have been removed; please reconfigure with the settings-page wizard.
+  - `backend: oss` keeps memories in `~/.dsh/mem0/memory.sqlite` (`node:sqlite`, built into DSH's Node; WAL and a busy timeout so several DSH profiles can share it; mode 0600 on macOS/Linux). Search is brute-force cosine over an in-memory vector cache that follows other processes' writes through `data_version`.
+  - Adds follow Mem0 2.2.1's V3 additive pipeline, ported to JavaScript: last 10 messages of the scope, the 10 most similar memories, one LLM call with Mem0's extraction prompt copied verbatim (with "answer in the input language" on), ADD only, md5 de-duplication. Adds of one scope run one after another. The prompt is checked byte for byte against Mem0 2.2.1's own helpers. See NOTICE (Apache-2.0).
+  - Two embedders: any OpenAI-compatible `/embeddings` server, or Ollama `/api/embed`. The store records which embedder wrote its vectors; another one is a clear `EMBEDDER_MISMATCH` configuration error instead of mixed vectors (an empty store takes the new one).
+  - Configuration lives in the `dsh_mem0` block of `~/.dsh/mem0/oss.json` (`embedderProvider`, `embedderBaseUrl`, `embedderModel`, `embedderDims`, `embedderApiKeyRef`, `llmBaseUrl`, `llmModel`, `llmApiKeyRef`, `llmMaxTokens`, `llmTemperature`, `llmReasoningEffort`, `storePath`). Keys are credential names looked up in DSH credentials, then the environment; a Mem0-format `oss.json` with literal keys keeps working.
+  - SQLite errors are attributed to the vector store with a code (`busy`, `corrupt`, `readonly`, `disk_full`, …). `mem0_status` shows `store: ok (sqlite)`; health keeps the old `qdrant` field for earlier settings pages.
+  - Removed: `python/`, the sidecar client and log, `pythonPath`, `mem0ConfigPath`, `historyDbPath`, `sidecarEnv`, the legacy `~/.hermes` paths, the Qdrant checks and the Python CI steps. Old settings are ignored with a debug line, never an error, and do not trigger "settings look rewritten". Memories in Qdrant are not read by this version; the wizard's migration copies them.
+  - Background calls to DSH's own model (memory translation) use the default model selection without a session, so they create no session file.
+  - Requires Node >= 24.9 (DSH ships 24.21). CI runs on Windows, macOS and Linux; a weekly workflow reports new mem0ai releases whose prompts or pipeline differ from 2.2.1.
+  - The earlier Unreleased entries below about the Python sidecar, its interpreter discovery, embedded Qdrant and `sidecar.log` describe code this release removes.
 - **Hygiene and summary data-safety fixes** (external review of b93f4a0):
   - *Duplicates are exact copies only.* Deletion compares a hash of the full text after case and whitespace normalisation. Before, punctuation was dropped and only the first 240 characters compared, so `dose 1.5 mg` and `dose 15 mg`, or two long notes with opposite endings, were "duplicates" and one was deleted. Look-alikes are now reported as suspected duplicates and kept.
   - *A confirmed cleanup runs once.* The preview returns a `planId`; the confirmation must send it with an idempotency key, is never retried by the page, and deletes only the plan's memories that still exist unchanged. A resend returns the first result. Before, a lost response made the page resend, and the plugin computed a new plan: a 100-memory preview could delete 200. `POST /dsh-mem0/gui/hygiene` without `dryRun: true` now needs `planId` and `idempotencyKey` (HTTP 409 otherwise).
@@ -140,6 +150,16 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 ### 未发布
 
+- **不兼容变更：本地后端改为原生 Node + SQLite，去掉了 Python sidecar 和 Qdrant。** 旧版回退路径已移除，请用设置页向导重新配置。
+  - `backend: oss` 把记忆存在 `~/.dsh/mem0/memory.sqlite`（DSH 自带 Node 内置的 `node:sqlite`；WAL 加 busy timeout，多个 DSH profile 可以共用；macOS/Linux 上权限 0600）。检索是对内存向量缓存做暴力余弦比较，通过 `data_version` 跟上其他进程的写入。
+  - 写入流程按 Mem0 2.2.1 的 V3 追加式流程移植到 JavaScript：该范围最近 10 条消息、最相似的 10 条记忆、一次使用 Mem0 原文抽取 prompt 的 LLM 调用（开启「按输入语言回答」）、只做 ADD、md5 去重。同一范围的写入依次执行。prompt 与 Mem0 2.2.1 自己的函数逐字节对照测试。见 NOTICE（Apache-2.0）。
+  - 两种 embedding：任意 OpenAI 兼容的 `/embeddings` 服务，或 Ollama `/api/embed`。存储记录写入向量的 embedding；配置成另一个时给出明确的 `EMBEDDER_MISMATCH` 配置错误，不会混用向量（空存储直接采用新的）。
+  - 配置写在 `~/.dsh/mem0/oss.json` 的 `dsh_mem0` 段（`embedderProvider`、`embedderBaseUrl`、`embedderModel`、`embedderDims`、`embedderApiKeyRef`、`llmBaseUrl`、`llmModel`、`llmApiKeyRef`、`llmMaxTokens`、`llmTemperature`、`llmReasoningEffort`、`storePath`）。密钥写凭据名，先查 DSH 凭据再查环境变量；带明文密钥的 Mem0 格式 `oss.json` 仍然可用。
+  - SQLite 错误归到向量库并带代码（`busy`、`corrupt`、`readonly`、`disk_full` 等）。`mem0_status` 显示 `store: ok (sqlite)`；健康检查保留旧的 `qdrant` 字段，兼容旧设置页。
+  - 移除：`python/`、sidecar 客户端和日志、`pythonPath`、`mem0ConfigPath`、`historyDbPath`、`sidecarEnv`、旧的 `~/.hermes` 路径、Qdrant 检查和 CI 里的 Python 步骤。旧设置会被忽略，只记 debug 日志，不报错，也不会触发「配置疑似被重写」。这个版本不读取 Qdrant 里的记忆；向导的迁移步骤会复制它们。
+  - 插件在后台调用 DSH 自己的模型（记忆翻译）时使用默认模型选择、不带会话，不会生成会话文件。
+  - 需要 Node >= 24.9（DSH 自带 24.21）。CI 在 Windows、macOS、Linux 上运行；每周的工作流会在 mem0ai 发布 prompt 或流程与 2.2.1 不同的新版本时提醒。
+  - 下面几条更早的「未发布」条目（Python sidecar、解释器查找、内嵌 Qdrant、`sidecar.log`）描述的代码已在本次移除。
 - **巡检和摘要的数据安全修复**（外部审阅 b93f4a0）：
   - *只有完全相同才算重复*。删除前比较完整文本在大小写和空白规范化后的哈希。之前会去掉标点、只比前 240 字，`dose 1.5 mg` 和 `dose 15 mg`、或结尾结论相反的两条长记录会被判为重复并删掉一条。看起来相似的现在只列为「疑似重复」，不删除。
   - *确认的清理只执行一次*。预览返回 `planId`；确认必须带上它和幂等键，页面不会自动重发，只删除计划里仍然存在且未改动的记忆，重复提交返回第一次的结果。之前响应丢失时页面会重发，插件又重新算一份计划：预览 100 条可能删掉 200 条。`POST /dsh-mem0/gui/hygiene` 不带 `dryRun: true` 时必须带 `planId` 和 `idempotencyKey`，否则返回 HTTP 409。
