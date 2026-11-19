@@ -270,6 +270,8 @@ window.__ModuleLoader__.load({
       failureCause_config: 'Configuration error',
       failureHintUnreachable: '{component} unreachable at {endpoint}. Is it running? On Windows, a port in a reserved range fails to bind (os error 10013 in the service log): see the README, Windows troubleshooting.',
       configWarning: 'dsh-mem0 settings look rewritten (DSH settings sync); missing: {fields}',
+      upgradeLegacyQdrant: 'Earlier memories are still in Qdrant ({endpoint}, collection {collection}). This version keeps memories in SQLite and does not read them; moving them over comes with the setup wizard of a later version.',
+      upgradeNoLocalConfig: 'No local backend settings were found in ~/.dsh/mem0/oss.json. Earlier versions could fall back to the Hermes Mem0 setup; this one does not. Add the "dsh_mem0" block (README, "Local backend"), or wait for the setup wizard of a later version.',
       configWarningFix: 'Restore them above and save, or keep them in the "dsh_mem0" block of oss.json, which DSH does not rewrite. Removed on purpose: delete config-fingerprint.json next to failures.json.',
       failureRepeated: '{count} times since {since}',
       failureComponent_llm: 'LLM',
@@ -581,6 +583,8 @@ window.__ModuleLoader__.load({
       failureCause_config: '配置错误',
       failureHintUnreachable: '{component}不可达：{endpoint}。请确认服务在运行；Windows 上端口落在系统保留段时服务会绑定失败（服务日志里有 os error 10013），见 README「Windows 排障」。',
       configWarning: 'dsh-mem0 配置疑似被重写（DSH 设置同步），缺少：{fields}',
+      upgradeLegacyQdrant: '旧记忆仍在 Qdrant（{endpoint}，collection {collection}）。这个版本把记忆存在 SQLite，不读取它们；迁移会在后续版本的设置向导里提供。',
+      upgradeNoLocalConfig: '在 ~/.dsh/mem0/oss.json 里没有找到本地后端配置。旧版本可以回退读取 Hermes 的 Mem0 配置，这个版本不会。请按 README「本地后端」一节加上 "dsh_mem0" 段，或等后续版本的设置向导。',
       configWarningFix: '在上方补回并保存，或写进 oss.json 的 "dsh_mem0" 段（DSH 不会重写它）。如果是有意删除，删掉 failures.json 旁边的 config-fingerprint.json。',
       failureRepeated: '自 {since} 起共 {count} 次',
       failureComponent_llm: 'LLM',
@@ -2457,6 +2461,17 @@ window.__ModuleLoader__.load({
                 recentMemories.length > 0 ? t('activityScopeHint') : t('activityEmpty'),
               )
             : null,
+          ...(Array.isArray(data?.upgradeNotices) ? data.upgradeNotices : []).map((notice) =>
+            notice?.code === 'legacyQdrant' || notice?.code === 'noLocalConfig'
+              ? h(
+                  'p',
+                  { className: 'mem0-hint', key: `upgrade-${notice.code}` },
+                  notice.code === 'legacyQdrant'
+                    ? template(t('upgradeLegacyQdrant'), { endpoint: String(notice.endpoint ?? ''), collection: String(notice.collection ?? '') })
+                    : t('upgradeNoLocalConfig'),
+                )
+              : null,
+          ),
           data?.configWarning?.missing?.length
             ? h(
                 'div',

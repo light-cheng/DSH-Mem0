@@ -41,7 +41,7 @@ function createClient(ctx, config, logger, resolveApiKey, onReady) {
       config,
       // Embedder and LLM keys: DSH credentials (then the environment) by
       // the reference names in oss.json, looked up per request.
-      resolveSecret: (ref) => resolveSecret(ctx, ref, { logger }),
+      resolveSecret: (ref, options) => resolveSecret(ctx, ref, { ...options, logger }),
       onReady,
       logger,
     })

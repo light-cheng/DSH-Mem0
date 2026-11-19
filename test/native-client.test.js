@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { Mem0NativeClient, md5, sessionScope } from '../lib/native-client.js'
 import { SqliteStore } from '../lib/store-sqlite.js'
+import { resolveNativeSettings } from '../lib/oss-config.js'
 import { classifyFailure, attributeFailure, FailureHistory } from '../lib/failure-history.js'
 import { retryMaxTokens } from '../lib/memory-lifecycle.js'
 
@@ -24,7 +25,7 @@ function embedText(text, dims = VOCAB.length + 1) {
   return vector.slice(0, dims)
 }
 
-function setup(t, { llm, dims, embedModel = 'test-embed', provider = 'openai', apiKeyRef = '', llmKeyRef = '', secrets = {}, storePath } = {}) {
+function setup(t, { llm, dims, embedModel = 'test-embed', provider = 'openai', apiKeyRef = '', llmKeyRef = '', secrets = {}, storePath, embedGate, logger, resolveSecret } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-native-'))
   const file = storePath ?? path.join(dir, 'memory.sqlite')
   const calls = { embed: [], llm: [] }
@@ -39,6 +40,14 @@ function setup(t, { llm, dims, embedModel = 'test-embed', provider = 'openai', a
     const headers = init.headers
     if (url.endsWith('/embeddings') || url.endsWith('/api/embed')) {
       calls.embed.push({ url, body, headers })
+      // Tests hold an embedding back; a timeout or abort still ends it.
+      if (embedGate) {
+        await new Promise((resolve, reject) => {
+          const done = embedGate(body, calls.embed.length)
+          init.signal?.addEventListener('abort', () => reject(init.signal.reason ?? new Error('aborted')), { once: true })
+          Promise.resolve(done).then(resolve, reject)
+        })
+      }
       const vectors = body.input.map((text) => embedText(text, dims))
       const payload = url.endsWith('/api/embed') ? { embeddings: vectors } : { data: vectors.map((embedding, index) => ({ index, embedding })) }
       return new Response(JSON.stringify(payload), { status: 200 })
@@ -57,8 +66,9 @@ function setup(t, { llm, dims, embedModel = 'test-embed', provider = 'openai', a
   const client = new Mem0NativeClient({
     config: { backend: 'oss', userId: USER, agentId: AGENT },
     loadSettings: () => settings,
-    resolveSecret: async (ref) => secrets[ref],
+    resolveSecret: resolveSecret ?? (async (ref) => secrets[ref]),
     fetchImpl,
+    logger,
   })
   t.after(async () => {
     await client.dispose()
@@ -260,7 +270,9 @@ test('another embedder than the one in the store is a clear config error; an emp
   const error = await switched.client.search('tea', { user_id: USER }).catch((value) => value)
   assert.equal(error.code, 'EMBEDDER_MISMATCH')
   assert.equal(error.component, 'embedder')
-  assert.match(error.message, /test-embed \(13 dims\).*other-embed \(8 dims\)/)
+  assert.match(error.message, /test-embed \(13 dims\).*other-embed/)
+  // The store's meta is compared first: a mismatch costs no embedding call.
+  assert.equal(switched.calls.embed.length, 0)
   assert.equal(classifyFailure(error), 'config')
   const health = await switched.client.health()
   assert.equal(health.ok, false)
@@ -330,4 +342,88 @@ test('dispose waits for an add in flight', async (t) => {
   assert.equal(disposed, true)
   const after = await client.add([{ role: 'user', content: 'x' }]).catch((value) => value)
   assert.equal(after.code, 'DISPOSED')
+})
+
+// ---- PR #26 review ------------------------------------------------------
+
+test('dispose while a search waits on the embedder: no connection is opened again afterwards', async (t) => {
+  let release
+  let gate = false
+  const ctx = setup(t, { embedGate: () => (gate ? new Promise((resolve) => { release = resolve }) : undefined) })
+  await ctx.client.add([{ role: 'user', content: 'tea' }], { infer: false })
+  const store = ctx.client.store
+  assert.ok(store.db)
+  gate = true
+  const searching = ctx.client.search('tea', { user_id: USER }).catch((value) => value)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  await ctx.client.dispose()
+  assert.equal(store.db, undefined, 'closed when dispose() returned')
+  release()
+  const error = await searching
+  assert.equal(error.code, 'DISPOSED')
+  assert.equal(store.db, undefined, 'the late search did not reopen the file')
+  // The file can be removed at once (Windows: EPERM while it is open).
+  fs.rmSync(ctx.dir, { recursive: true, force: true })
+  assert.equal(fs.existsSync(ctx.file), false)
+})
+
+test('an add waiting behind another add of the same scope gets its full time budget', async (t) => {
+  let releaseLlm
+  const ctx = setup(t, {
+    llm: () => new Promise((resolve) => {
+      releaseLlm = () => resolve({ content: facts('User likes tea') })
+    }),
+    // Every embedding takes 60 ms.
+    embedGate: () => new Promise((resolve) => setTimeout(resolve, 60)),
+  })
+  const first = ctx.client.add([{ role: 'user', content: 'I like tea' }], { timeoutMs: 5_000 })
+  const second = ctx.client.add([{ role: 'user', content: 'coffee notes' }], { infer: false, timeoutMs: 300 })
+  // The first add holds the queue for longer than the second's budget.
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  releaseLlm()
+  assert.equal((await first).summary.add, 1)
+  const result = await second
+  assert.equal(result.results.length, 1, 'the 300 ms count from when the second add started, not from when it was queued')
+})
+
+test('startInBackground followed by dispose logs nothing and opens nothing', async (t) => {
+  const warn = []
+  const ctx = setup(t, { logger: { warn: (line) => warn.push(line), debug() {}, info() {} } })
+  ctx.client.startInBackground()
+  await ctx.client.dispose()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.deepEqual(warn, [])
+  assert.equal(fs.existsSync(ctx.file), false)
+})
+
+test('the credential lookup gets the time left of the call, at most 3 s', async (t) => {
+  const asked = []
+  const ctx = setup(t, { apiKeyRef: 'MEM0_EMBEDDER_API_KEY', resolveSecret: async (ref, options) => (asked.push({ ref, ...options }), 'embed-key') })
+  await ctx.client.search('tea', { user_id: USER }, { timeoutMs: 500 })
+  assert.equal(asked[0].ref, 'MEM0_EMBEDDER_API_KEY')
+  assert.ok(asked[0].timeoutMs > 0 && asked[0].timeoutMs <= 500, JSON.stringify(asked))
+  await ctx.client.search('tea', { user_id: USER }, { timeoutMs: 60_000 })
+  assert.equal(asked[1].timeoutMs, 3_000)
+})
+
+test('a baseUrl set in dsh_mem0 never receives the literal key of the oss block', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-native-key-'))
+  const raw = { oss: { embedder: { provider: 'openai', config: { model: 'm', api_key: 'sk-oss-literal-abcdef123456', openai_base_url: 'https://api.openai.com/v1' } } } }
+  const seen = []
+  const client = new Mem0NativeClient({
+    config: { backend: 'oss', userId: USER, agentId: AGENT },
+    loadSettings: () => resolveNativeSettings({ storePath: path.join(dir, 'memory.sqlite'), embedderBaseUrl: 'http://127.0.0.1:18001/v1', embedderModel: 'm' }, raw),
+    fetchImpl: async (url, init) => {
+      seen.push({ url, authorization: init.headers.authorization })
+      const body = JSON.parse(init.body)
+      return new Response(JSON.stringify({ data: body.input.map((text, index) => ({ index, embedding: embedText(text) })) }), { status: 200 })
+    },
+  })
+  t.after(async () => {
+    await client.dispose()
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+  await client.search('tea', { user_id: USER })
+  assert.equal(seen[0].url, 'http://127.0.0.1:18001/v1/embeddings')
+  assert.equal(seen[0].authorization, undefined)
 })

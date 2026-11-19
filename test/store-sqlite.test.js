@@ -333,3 +333,16 @@ test('helpers: Python-style UTC timestamps, expiration, payload split, item shap
   const item = rowToItem({ id: 1, text: 'T', hash: 'h', user_id: 'u', agent_id: null, metadata_json: '{}', created_at: 'c', updated_at: 'u2' }, 0.5)
   assert.deepEqual(item, { id: '1', memory: 'T', hash: 'h', metadata: null, created_at: 'c', updated_at: 'u2', score: 0.5, user_id: 'u' })
 })
+
+test('a closed store is not reopened by a later call; open() reopens it explicitly', (t) => {
+  const { make } = tempStore(t)
+  const store = make().open()
+  store.insert([record('a', 'tea', [1, 0, 0])])
+  store.close()
+  for (const call of [() => store.get('a'), () => store.count({}), () => store.insert([record('b', 'x', [0, 1, 0])])]) {
+    assert.throws(call, (error) => error instanceof StoreError && error.code === 'closed' && error.component === 'vector_store')
+    assert.equal(store.db, undefined)
+  }
+  store.open()
+  assert.equal(store.get('a').memory, 'tea')
+})

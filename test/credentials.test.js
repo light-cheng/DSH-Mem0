@@ -104,3 +104,21 @@ test('mem0_status names the key source without printing the key', async () => {
   assert.match(text, /key source: credentials/)
   assert.doesNotMatch(text, /m0-secret-value/)
 })
+
+import { lookupCredential, resetCredentialWarnings } from '../lib/credentials.js'
+
+test('a failing credential service warns once per ref every 10 minutes, then at debug level', async () => {
+  resetCredentialWarnings()
+  const warn = []
+  const debug = []
+  const logger = { warn: (line) => warn.push(line), debug: (line) => debug.push(line) }
+  const ctx = { get: () => ({ resolve: async () => { throw new Error('keychain locked') } }) }
+  for (let index = 0; index < 5; index += 1) {
+    assert.equal(await lookupCredential(ctx, 'MEM0_EMBEDDER_API_KEY', { logger }), undefined)
+  }
+  await lookupCredential(ctx, 'MEM0_LLM_API_KEY', { logger })
+  assert.equal(warn.length, 2, warn.join('\n'))
+  assert.equal(debug.length, 4)
+  assert.match(warn[0], /MEM0_EMBEDDER_API_KEY failed: keychain locked/)
+  resetCredentialWarnings()
+})

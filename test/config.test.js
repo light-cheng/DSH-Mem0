@@ -241,3 +241,89 @@ test('store paths resolve on Windows and POSIX layouts alike', () => {
   assert.equal(path.basename(path.dirname(DEFAULT_STORE_PATH)), 'mem0')
   assert.equal(path.isAbsolute(DEFAULT_STORE_PATH), true)
 })
+
+// ---- PR #26 review: keys, schema defaults, broken oss.json, upgrade notices ----
+
+import { resolveNativeSettings } from '../lib/oss-config.js'
+import { diagnosticLines, upgradeNotices } from '../lib/diagnostics.js'
+
+const MEM0_FORMAT = {
+  oss: {
+    embedder: { provider: 'openai', config: { model: 'text-embedding-3-small', api_key: 'sk-oss-embedder-literal-1234', openai_base_url: 'https://api.openai.com/v1' } },
+    llm: { provider: 'openai', config: { model: 'gpt-4.1-mini', api_key: 'sk-oss-llm-literal-5678', max_tokens: 16000, temperature: 0.2 } },
+  },
+}
+
+test('the literal key of oss.json never goes to a baseUrl set in dsh_mem0 or the profile', () => {
+  const moved = resolveNativeSettings({ embedderBaseUrl: 'https://third-party.example/v1', embedderModel: 'other', llmBaseUrl: 'https://llm.example/v1', llmModel: 'm' }, MEM0_FORMAT)
+  assert.equal(moved.embedder.apiKey, '')
+  assert.equal(moved.llm.apiKey, '')
+  // A credential ref also replaces the literal key.
+  const withRef = resolveNativeSettings({ embedderApiKeyRef: 'MEM0_EMBEDDER_API_KEY', llmApiKeyRef: 'MEM0_LLM_API_KEY' }, MEM0_FORMAT)
+  assert.equal(withRef.embedder.apiKey, '')
+  assert.equal(withRef.llm.apiKey, '')
+  // Only a model override: the URL is still oss.json's, so its key stays.
+  const sameHost = resolveNativeSettings({ embedderModel: 'text-embedding-3-large' }, MEM0_FORMAT)
+  assert.equal(sameHost.embedder.baseUrl, 'https://api.openai.com/v1')
+  assert.equal(sameHost.embedder.apiKey, 'sk-oss-embedder-literal-1234')
+  assert.equal(resolveNativeSettings({}, MEM0_FORMAT).llm.apiKey, 'sk-oss-llm-literal-5678')
+  // Another provider than oss.json's: its key is not reused either.
+  assert.equal(resolveNativeSettings({ embedderProvider: 'ollama' }, MEM0_FORMAT).embedder.apiKey, '')
+})
+
+test('schema-filled llmMaxTokens and llmTemperature do not hide max_tokens and temperature of a Mem0-format oss.json', (t) => {
+  const ossPath = tempOss(t, MEM0_FORMAT)
+  // What DSH hands the plugin: every field filled with its schema default.
+  const filled = { backend: 'oss', storePath: '', embedderProvider: '', embedderBaseUrl: '', embedderModel: '', embedderDims: 0, embedderApiKeyRef: '', llmBaseUrl: '', llmModel: '', llmApiKeyRef: '', llmMaxTokens: 8000, llmTemperature: 0, llmReasoningEffort: '' }
+  const config = resolveConfig(filled, { ossConfigPath: ossPath })
+  assert.equal(config.native.llm.maxTokens, 16000)
+  assert.equal(config.native.llm.temperature, 0.2)
+  assert.equal('llmMaxTokens' in config.nativeValues, false)
+  assert.equal(resolveNativeSettings(config.nativeValues, MEM0_FORMAT).llm.maxTokens, 16000)
+  // A value the user did set still wins.
+  const set = resolveConfig({ ...filled, llmMaxTokens: 12000, llmTemperature: 0.5 }, { ossConfigPath: ossPath })
+  assert.equal(set.native.llm.maxTokens, 12000)
+  assert.equal(set.native.llm.temperature, 0.5)
+  // Without oss.json values the defaults apply.
+  const plain = resolveConfig(filled, { ossConfigPath: tempOss(t, { dsh_mem0: { embedderBaseUrl: 'http://127.0.0.1:1/v1', embedderModel: 'e' } }) })
+  assert.equal(plain.native.llm.maxTokens, 8000)
+  assert.equal(plain.native.llm.temperature, 0)
+})
+
+test('an oss.json that is not valid JSON is CONFIG_INVALID with line and column, and no text of the file', (t) => {
+  const ossPath = tempOss(t, '{\n  "dsh_mem0": {\n    "embedderModel": "e",\n    "llmApiKey": "sk-secret-in-broken-file-999"\n  \n')
+  const config = resolveConfig({ backend: 'oss' }, { ossConfigPath: ossPath })
+  const problems = config.native.problems
+  assert.equal(problems[0].code, 'CONFIG_INVALID')
+  assert.match(problems[0].message, /oss\.json is not valid JSON \(line \d+, column \d+\)/)
+  assert.equal(problems.some((problem) => problem.code === 'CONFIG_MISSING'), false, 'no misleading "not configured"')
+  assert.equal(JSON.stringify(problems).includes('sk-secret'), false)
+  // A missing file is not "invalid".
+  const missing = resolveConfig({ backend: 'oss' }, { ossConfigPath: path.join(path.dirname(ossPath), 'none.json') })
+  assert.equal(missing.native.problems[0].code, 'CONFIG_MISSING')
+  // A UTF-8 BOM (Windows Notepad) is fine.
+  const bom = resolveConfig({ backend: 'oss' }, { ossConfigPath: tempOss(t, '﻿{"dsh_mem0":{"embedderBaseUrl":"http://127.0.0.1:1/v1","embedderModel":"e"}}') })
+  assert.equal(bom.native.embedder.model, 'e')
+})
+
+test('upgrade notices: old memories still in Qdrant (config only), and no local settings found', (t) => {
+  const ossPath = tempOss(t, {
+    oss: { vector_store: { provider: 'qdrant', config: { host: '127.0.0.1', port: 6333, collection_name: 'dsh_mem0' } } },
+    dsh_mem0: { embedderBaseUrl: 'http://127.0.0.1:1/v1', embedderModel: 'e' },
+  })
+  const config = resolveConfig({ backend: 'oss' }, { ossConfigPath: ossPath })
+  assert.deepEqual(config.legacyQdrant, { endpoint: '127.0.0.1:6333', collection: 'dsh_mem0' })
+  assert.deepEqual(upgradeNotices(config, { memoryCount: 0 }).map((notice) => notice.code), ['legacyQdrant'])
+  assert.deepEqual(upgradeNotices(config, { memoryCount: 3 }), [], 'not once the store has memories')
+  const lines = diagnosticLines({ config, memoryCount: 0 })
+  assert.ok(lines.some((line) => /still in Qdrant \(127\.0\.0\.1:6333, collection dsh_mem0\).*does not read them/.test(line)), lines.join('\n'))
+
+  // No oss.json at all: auto falls back to the Platform; say why.
+  const nothing = resolveConfig({}, { ossConfigPath: path.join(path.dirname(ossPath), 'absent.json') })
+  assert.equal(nothing.backendSource, 'auto-default')
+  assert.deepEqual(upgradeNotices(nothing).map((notice) => notice.code), ['noLocalConfig'])
+  // backend oss without an embedder: the same notice.
+  const empty = resolveConfig({ backend: 'oss' }, { ossConfigPath: tempOss(t, {}) })
+  assert.deepEqual(upgradeNotices(empty, { memoryCount: 0 }).map((notice) => notice.code), ['noLocalConfig'])
+  assert.ok(diagnosticLines({ config: empty }).some((line) => /no local backend settings were found.*Hermes/.test(line)))
+})
