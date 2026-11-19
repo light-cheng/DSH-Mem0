@@ -14,7 +14,6 @@ window.__ModuleLoader__.load({
     const STATUS_PATH = 'dsh-mem0/gui/status'
     const TEST_PATH = 'dsh-mem0/gui/test'
     const ACTIVITY_PATH = 'dsh-mem0/gui/activity'
-    const SIDECAR_LOG_PATH = 'dsh-mem0/gui/sidecar-log'
     const HYGIENE_PATH = 'dsh-mem0/gui/hygiene'
     const MEMORIES_PATH = 'dsh-mem0/gui/memories'
     const PROFILE_PATH = 'dsh-mem0/gui/profile'
@@ -52,9 +51,12 @@ window.__ModuleLoader__.load({
       statusCollection: 'Collection',
       statusUser: 'User',
       statusAgent: 'Agent',
-      statusPython: 'Python',
       statusMem0: 'Mem0',
-      statusQdrant: 'Qdrant',
+      statusMem0Native: 'native port of mem0 {version}',
+      statusStore: 'Memory store',
+      statusVectorStore: 'Vector store',
+      statusLlm: 'Extraction LLM',
+      statusLlmMissing: 'not configured',
       statusEmbedder: 'Embedder',
       statusKey: 'API key',
       keySet: 'configured',
@@ -67,7 +69,7 @@ window.__ModuleLoader__.load({
       backendAutoHint: 'API key → Platform; custom base URL → Server; local Mem0 config → OSS.',
       backendPlatformHint: 'Use the managed Mem0 Platform API. All you need is an API key.',
       backendServerHint: 'Connect to a self-hosted Mem0 REST server.',
-      backendOssHint: 'Run the local Mem0 Python sidecar with your Qdrant and embedding model.',
+      backendOssHint: 'Keep memories in a local SQLite file, with your own embedding model and extraction LLM. No Python, no Qdrant.',
       apiKey: 'API key',
       apiKeyHint: 'Stored as a secret. Leave blank to keep the current key.',
       apiKeySet: 'A key is configured. Leave blank to keep it.',
@@ -83,12 +85,9 @@ window.__ModuleLoader__.load({
       authBearer: 'Bearer token',
       authToken: 'Token',
       authNone: 'No authentication',
-      mem0ConfigPath: 'Mem0 OSS config file',
-      mem0ConfigPathHint: 'Example: ~/.dsh/mem0/oss.json',
-      pythonPath: 'Python executable',
-      pythonPathHint: 'Leave blank to auto-discover the local Mem0 environment.',
-      collectionName: 'Collection name',
-      historyDbPath: 'History database',
+      storePath: 'Memory database file',
+      storePathHint: 'Leave blank for ~/.dsh/mem0/memory.sqlite.',
+      ossConfigHint: 'The embedding model and the extraction LLM are set in the "dsh_mem0" block of ~/.dsh/mem0/oss.json (keys by credential name, e.g. "embedderApiKeyRef"). See the README, Local backend.',
       identityTitle: 'Memory owner',
       userId: 'User ID',
       agentId: 'Agent ID',
@@ -193,7 +192,7 @@ window.__ModuleLoader__.load({
       activityNothingNew: 'Nothing new',
       activityExtracting: 'Extracting',
       activitySkipped: 'Skipped',
-      activityStarting: 'Sidecar starting',
+      activityStarting: 'Opening the memory store',
       skipReason_low_value: 'Too short or not worth remembering (capture filter)',
       skipReason_empty: 'Nothing left to save after redaction',
       skipReason_queue_full: 'Capture queue full (3 waiting)',
@@ -205,7 +204,7 @@ window.__ModuleLoader__.load({
       captureFactsDeleted: ', deleted {delete}',
       captureNoFacts: 'No new facts extracted (nothing worth keeping, or already known)',
       captureEvents: 'added {add}, updated {update}, deleted {delete}',
-      retryPending: 'Not delivered (sidecar gone); retrying once',
+      retryPending: 'Not delivered; retrying once',
       retryPendingExtraction: 'LLM answer unusable ({reason}); retrying once',
       retryPendingBudget: 'LLM answer cut off at its output limit; retrying once with max_tokens {tokens}',
       extractStatsOutput: 'output {completion}/{max} tokens',
@@ -214,26 +213,16 @@ window.__ModuleLoader__.load({
       retryFailed: 'Retry failed too',
       dockCircuitOpen: 'Memory paused',
       dockCaptureSkippedShort: 'Capture skipped (too short)',
-      sidecarTitle: 'OSS sidecar',
-      sidecarRunning: 'Running · PID {pid}',
-      sidecarLauncher: 'launcher PID {pid}',
-      sidecarStopped: 'Not running (starts with the next memory call)',
-      sidecarStartingNow: 'Starting…',
-      sidecarStartedAt: 'started {at}',
-      sidecarRestarts: '{count} restarts',
-      sidecarLastExit: 'Last exit: {how} after {uptime} while {phase} ({at})',
       sidecarExitCode: 'code {code}',
       sidecarExitSignal: 'signal {signal}',
-      sidecarPhase_running: 'running',
-      sidecarPhase_startup: 'starting',
-      sidecarStoppedBy_dispose: 'stopped by the plugin',
-      sidecarStoppedBy_startup_timeout: 'killed: startup timeout',
-      sidecarLog: 'Log: {path}',
-      sidecarLogMemory: 'Log: in memory only (no profile directory)',
-      sidecarCopyLog: 'Copy last 50 log lines',
-      sidecarCopied: 'Copied {count} lines',
-      sidecarCopyFailed: 'Could not copy: {error}',
-      failureExit: 'sidecar exit {how}, up {uptime}',
+      storeTitle: 'Local memory store',
+      storeFile: 'File: {path}',
+      storeOpen: 'Open',
+      storeClosed: 'Not open yet (opens with the next memory call)',
+      storeLastFailure: 'Last failure to open ({at}, {code}): {reason}',
+      storeConfigErrorNoRetry: 'Configuration error: not retried until the settings or oss.json change.',
+      storeConfigHint: 'Embedder and LLM: "dsh_mem0" block of ~/.dsh/mem0/oss.json.',
+      failureExit: 'process exit {how}, up {uptime}',
       failureRetryFailed: 'retry failed',
       activitySearching: 'Searching',
       activityOk: 'Recalled',
@@ -277,24 +266,16 @@ window.__ModuleLoader__.load({
       extractReason_truncated: 'answer cut off (truncated JSON)',
       extractReason_refusal: 'model refused',
       failureCause_other: 'Other error',
-      failureCause_startup: 'Sidecar failed to start',
+      failureCause_startup: 'Local backend failed to start',
       failureCause_config: 'Configuration error',
       failureHintUnreachable: '{component} unreachable at {endpoint}. Is it running? On Windows, a port in a reserved range fails to bind (os error 10013 in the service log): see the README, Windows troubleshooting.',
-      sidecarPython: 'Python: {path} ({source})',
-      sidecarPythonSource_configured: 'pythonPath setting',
-      sidecarPythonSource_oss_config: 'dsh_mem0 block of oss.json',
-      sidecarPythonSource_default: 'default venv',
-      sidecarPythonSource_legacy: 'legacy location',
-      sidecarPythonSource_path: 'PATH fallback: no ~/.dsh/mem0/venv found',
-      sidecarLastStartFailure: 'Last start failure ({at}): {reason}',
-      sidecarConfigErrorNoRetry: 'Configuration error: not retried until oss.json changes.',
       configWarning: 'dsh-mem0 settings look rewritten (DSH settings sync); missing: {fields}',
-      configWarningFix: 'Restore them above and save, or keep them in the "dsh_mem0" block of oss.json, which DSH does not rewrite. Removed on purpose: delete config-fingerprint.json next to sidecar.log.',
+      configWarningFix: 'Restore them above and save, or keep them in the "dsh_mem0" block of oss.json, which DSH does not rewrite. Removed on purpose: delete config-fingerprint.json next to failures.json.',
       failureRepeated: '{count} times since {since}',
       failureComponent_llm: 'LLM',
       failureComponent_embedder: 'Embedder',
       failureComponent_vector_store: 'Vector store',
-      failureComponent_sidecar: 'OSS sidecar',
+      failureComponent_sidecar: 'Python sidecar (earlier version)',
       failureComponent_mem0_api: 'Mem0 API',
       failureComponent_unknown: 'Unknown component',
       failureStep_embed: 'embedding',
@@ -381,9 +362,12 @@ window.__ModuleLoader__.load({
       statusCollection: '集合',
       statusUser: '用户',
       statusAgent: 'Agent',
-      statusPython: 'Python',
       statusMem0: 'Mem0',
-      statusQdrant: 'Qdrant',
+      statusMem0Native: 'mem0 {version} 的原生移植',
+      statusStore: '记忆存储',
+      statusVectorStore: '向量库',
+      statusLlm: '抽取 LLM',
+      statusLlmMissing: '未配置',
       statusEmbedder: 'Embedder',
       statusKey: 'API Key',
       keySet: '已配置',
@@ -396,7 +380,7 @@ window.__ModuleLoader__.load({
       backendAutoHint: '有 API Key → Platform；自定义 Base URL → Server；找到本地 Mem0 配置 → OSS。',
       backendPlatformHint: '使用 Mem0 托管平台，只需要一个 API Key。',
       backendServerHint: '连接自建的 Mem0 REST 服务。',
-      backendOssHint: '通过本地 Mem0 Python sidecar 使用你的 Qdrant 和 embedding 模型。',
+      backendOssHint: '记忆存进本地 SQLite 文件，使用你自己的 embedding 模型和抽取 LLM。不需要 Python，也不需要 Qdrant。',
       apiKey: 'API Key',
       apiKeyHint: '作为密钥保存。留空表示保持当前 Key。',
       apiKeySet: '已配置 Key，留空保持不变。',
@@ -412,12 +396,9 @@ window.__ModuleLoader__.load({
       authBearer: 'Bearer token',
       authToken: 'Token',
       authNone: '无认证',
-      mem0ConfigPath: 'Mem0 OSS 配置文件',
-      mem0ConfigPathHint: '例如 ~/.dsh/mem0/oss.json',
-      pythonPath: 'Python 解释器',
-      pythonPathHint: '留空自动发现本地 Mem0 环境。',
-      collectionName: '集合名称',
-      historyDbPath: '历史数据库',
+      storePath: '记忆数据库文件',
+      storePathHint: '留空即 ~/.dsh/mem0/memory.sqlite。',
+      ossConfigHint: 'embedding 模型和抽取 LLM 在 ~/.dsh/mem0/oss.json 的 "dsh_mem0" 段里配置（密钥写凭据名，例如 "embedderApiKeyRef"）。见 README「本地后端」。',
       identityTitle: '记忆归属',
       userId: '用户 ID',
       agentId: 'Agent ID',
@@ -522,7 +503,7 @@ window.__ModuleLoader__.load({
       activityNothingNew: '无新内容',
       activityExtracting: '后台抽取中',
       activitySkipped: '已跳过',
-      activityStarting: 'sidecar 启动中',
+      activityStarting: '正在打开记忆存储',
       skipReason_low_value: '内容太短或不值得记（保存过滤）',
       skipReason_empty: '脱敏后没有可保存的内容',
       skipReason_queue_full: '保存队列已满（已有 3 条在等）',
@@ -534,7 +515,7 @@ window.__ModuleLoader__.load({
       captureFactsDeleted: '，删除 {delete}',
       captureNoFacts: '没有抽取到新内容（不值得记，或已经记过）',
       captureEvents: '新增 {add}，更新 {update}，删除 {delete}',
-      retryPending: '未送达（sidecar 已退出），正在重试一次',
+      retryPending: '未送达，正在重试一次',
       retryPendingExtraction: 'LLM 回复不可用（{reason}），正在重试一次',
       retryPendingBudget: 'LLM 回复达到输出上限被截断，正在以 max_tokens {tokens} 重试一次',
       extractStatsOutput: '输出 {completion}/{max} token',
@@ -543,26 +524,16 @@ window.__ModuleLoader__.load({
       retryFailed: '重试仍失败',
       dockCircuitOpen: '记忆已暂停',
       dockCaptureSkippedShort: '保存已跳过（内容太短）',
-      sidecarTitle: 'OSS sidecar',
-      sidecarRunning: '运行中 · PID {pid}',
-      sidecarLauncher: '启动器 PID {pid}',
-      sidecarStopped: '未运行（下次读写记忆时启动）',
-      sidecarStartingNow: '启动中…',
-      sidecarStartedAt: '启动于 {at}',
-      sidecarRestarts: '重启 {count} 次',
-      sidecarLastExit: '最近一次退出：{how}，运行 {uptime}，退出时处于{phase}（{at}）',
       sidecarExitCode: '退出码 {code}',
       sidecarExitSignal: '信号 {signal}',
-      sidecarPhase_running: '运行阶段',
-      sidecarPhase_startup: '启动阶段',
-      sidecarStoppedBy_dispose: '由插件停止',
-      sidecarStoppedBy_startup_timeout: '启动超时被结束',
-      sidecarLog: '日志：{path}',
-      sidecarLogMemory: '日志：仅在内存中（没有 profile 目录）',
-      sidecarCopyLog: '复制最近 50 行日志',
-      sidecarCopied: '已复制 {count} 行',
-      sidecarCopyFailed: '复制失败：{error}',
-      failureExit: 'sidecar 退出（{how}），运行了 {uptime}',
+      storeTitle: '本地记忆存储',
+      storeFile: '文件：{path}',
+      storeOpen: '已打开',
+      storeClosed: '尚未打开（下次读写记忆时打开）',
+      storeLastFailure: '最近一次打开失败（{at}，{code}）：{reason}',
+      storeConfigErrorNoRetry: '这是配置错误：设置或 oss.json 改动之前不会再重试。',
+      storeConfigHint: 'embedding 模型和 LLM：~/.dsh/mem0/oss.json 的 "dsh_mem0" 段。',
+      failureExit: '进程退出（{how}），运行了 {uptime}',
       failureRetryFailed: '重试仍失败',
       activitySearching: '召回中',
       activityOk: '已召回',
@@ -606,24 +577,16 @@ window.__ModuleLoader__.load({
       extractReason_truncated: '回复被截断（JSON 不完整）',
       extractReason_refusal: '模型拒答',
       failureCause_other: '其他错误',
-      failureCause_startup: 'sidecar 启动失败',
+      failureCause_startup: '本地后端启动失败',
       failureCause_config: '配置错误',
       failureHintUnreachable: '{component}不可达：{endpoint}。请确认服务在运行；Windows 上端口落在系统保留段时服务会绑定失败（服务日志里有 os error 10013），见 README「Windows 排障」。',
-      sidecarPython: 'Python：{path}（{source}）',
-      sidecarPythonSource_configured: 'pythonPath 设置',
-      sidecarPythonSource_oss_config: 'oss.json 的 dsh_mem0 段',
-      sidecarPythonSource_default: '默认 venv',
-      sidecarPythonSource_legacy: '旧位置',
-      sidecarPythonSource_path: '退回 PATH：没找到 ~/.dsh/mem0/venv',
-      sidecarLastStartFailure: '最近一次启动失败（{at}）：{reason}',
-      sidecarConfigErrorNoRetry: '这是配置错误：oss.json 改动之前不会再重试。',
       configWarning: 'dsh-mem0 配置疑似被重写（DSH 设置同步），缺少：{fields}',
-      configWarningFix: '在上方补回并保存，或写进 oss.json 的 "dsh_mem0" 段（DSH 不会重写它）。如果是有意删除，删掉 sidecar.log 旁边的 config-fingerprint.json。',
+      configWarningFix: '在上方补回并保存，或写进 oss.json 的 "dsh_mem0" 段（DSH 不会重写它）。如果是有意删除，删掉 failures.json 旁边的 config-fingerprint.json。',
       failureRepeated: '自 {since} 起共 {count} 次',
       failureComponent_llm: 'LLM',
       failureComponent_embedder: '向量模型',
       failureComponent_vector_store: '向量库',
-      failureComponent_sidecar: 'OSS 进程',
+      failureComponent_sidecar: 'Python sidecar（旧版本）',
       failureComponent_mem0_api: 'Mem0 API',
       failureComponent_unknown: '未知组件',
       failureStep_embed: '向量化',
@@ -825,10 +788,7 @@ window.__ModuleLoader__.load({
       'apiKeyEnv',
       'baseUrl',
       'authType',
-      'pythonPath',
-      'mem0ConfigPath',
-      'collectionName',
-      'historyDbPath',
+      'storePath',
       'userId',
       'agentId',
       'autoRecall',
@@ -859,10 +819,7 @@ window.__ModuleLoader__.load({
         apiKeyEnv: value?.apiKeyEnv ?? 'MEM0_API_KEY',
         baseUrl: value?.baseUrl ?? '',
         authType: value?.authType ?? 'apiKey',
-        pythonPath: value?.pythonPath ?? '',
-        mem0ConfigPath: value?.mem0ConfigPath ?? '',
-        collectionName: value?.collectionName ?? 'dsh_mem0',
-        historyDbPath: value?.historyDbPath ?? '',
+        storePath: value?.storePath ?? '',
         userId: value?.userId ?? 'dsh-user',
         agentId: value?.agentId ?? 'dsh',
         autoRecall: value?.autoRecall !== false,
@@ -1182,42 +1139,18 @@ window.__ModuleLoader__.load({
       return { outcome: 'deleted', message: t('memoryDeleted') }
     }
 
-    /** Lines for the OSS sidecar block: process, restarts, last exit, log. */
-    function sidecarLines(t, sidecar) {
-      if (!sidecar) return []
+    /** Lines for the local store block: file, open or not, last failure. */
+    function storeLines(t, store) {
+      if (!store) return []
       const lines = []
-      if (sidecar.running && sidecar.pid) {
-        const parts = [template(t('sidecarRunning'), { pid: sidecar.pid })]
-        if (sidecar.launcherPid) parts.push(template(t('sidecarLauncher'), { pid: sidecar.launcherPid }))
-        if (sidecar.startedAt) parts.push(template(t('sidecarStartedAt'), { at: activityTime(sidecar.startedAt) }))
-        lines.push(parts.join(' · '))
-      } else {
-        lines.push(sidecar.starting ? t('sidecarStartingNow') : t('sidecarStopped'))
+      lines.push(template(t('storeFile'), { path: store.path || '~/.dsh/mem0/memory.sqlite' }))
+      lines.push(store.running ? t('storeOpen') : t('storeClosed'))
+      const failure = store.lastStartFailure
+      if (failure && !store.running) {
+        lines.push(template(t('storeLastFailure'), { at: activityTime(failure.at), code: failure.code || '?', reason: failure.reason || '—' }))
+        if (failure.configError) lines.push(t('storeConfigErrorNoRetry'))
       }
-      if (sidecar.restarts > 0) lines.push(template(t('sidecarRestarts'), { count: sidecar.restarts }))
-      if (sidecar.python?.path) {
-        lines.push(template(t('sidecarPython'), {
-          path: sidecar.python.path,
-          source: t(`sidecarPythonSource_${String(sidecar.python.source || 'configured').replace(/-/g, '_')}`),
-        }))
-      }
-      const startFailure = sidecar.lastStartFailure
-      if (startFailure && !sidecar.running) {
-        lines.push(template(t('sidecarLastStartFailure'), { at: activityTime(startFailure.at), reason: startFailure.reason || '—' }))
-        if (startFailure.configError) lines.push(t('sidecarConfigErrorNoRetry'))
-      }
-      const exit = sidecar.lastExit
-      if (exit) {
-        let line = template(t('sidecarLastExit'), {
-          how: exitHow(t, exit),
-          uptime: formatDuration(exit.uptimeMs),
-          phase: t(`sidecarPhase_${exit.phase === 'startup' ? 'startup' : 'running'}`),
-          at: activityTime(exit.at),
-        })
-        if (exit.stoppedBy) line += ` · ${t(`sidecarStoppedBy_${String(exit.stoppedBy).replace(/-/g, '_')}`)}`
-        lines.push(line)
-      }
-      lines.push(sidecar.logPath ? template(t('sidecarLog'), { path: sidecar.logPath }) : t('sidecarLogMemory'))
+      lines.push(t('storeConfigHint'))
       return lines
     }
 
@@ -1680,30 +1613,13 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /** OSS sidecar process, restarts, last exit and its log (activity card). */
-    function SidecarStatus({ t, sidecar }) {
-      const [copyState, setCopyState] = useState('')
-      const copy = async () => {
-        try {
-          const data = await fetchJson(`${SIDECAR_LOG_PATH}?lines=50`)
-          const lines = Array.isArray(data?.lines) ? data.lines : []
-          await navigator.clipboard.writeText(lines.join('\n'))
-          setCopyState(template(t('sidecarCopied'), { count: lines.length }))
-        } catch (error) {
-          setCopyState(template(t('sidecarCopyFailed'), { error: error?.message ?? String(error) }))
-        }
-      }
+    /** The local SQLite store: file, open or not, last failure (activity card). */
+    function StoreStatus({ t, store }) {
       return h(
         'div',
         { className: 'mem0-failures-block' },
-        h('div', { className: 'mem0-activity-head', style: { marginTop: '12px' } }, h('span', { className: 'mem0-activity-title' }, t('sidecarTitle'))),
-        ...sidecarLines(t, sidecar).map((line, index) => h('p', { className: 'mem0-activity-meta', key: `s${index}` }, line)),
-        h(
-          'div',
-          { style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' } },
-          h('button', { type: 'button', className: 'mem0-secondary', onClick: copy }, t('sidecarCopyLog')),
-          copyState ? h('span', { className: 'mem0-hint' }, copyState) : null,
-        ),
+        h('div', { className: 'mem0-activity-head', style: { marginTop: '12px' } }, h('span', { className: 'mem0-activity-title' }, t('storeTitle'))),
+        ...storeLines(t, store).map((line, index) => h('p', { className: 'mem0-activity-meta', key: `s${index}` }, line)),
       )
     }
 
@@ -2113,12 +2029,17 @@ window.__ModuleLoader__.load({
         )
         const choice = backendChoiceText(t, data)
         if (choice) statusItems.push({ key: 'backendChoice', label: t('statusBackendChoice'), value: choice })
-        if (data.pythonVersion) statusItems.push({ key: 'python', label: t('statusPython'), value: data.pythonVersion })
-        if (data.mem0Version) statusItems.push({ key: 'mem0', label: t('statusMem0'), value: data.mem0Version })
-        if (data.qdrant) {
+        if (data.mem0Reference) statusItems.push({ key: 'mem0', label: t('statusMem0'), value: template(t('statusMem0Native'), { version: data.mem0Reference }) })
+        if (data.store) {
+          statusItems.push({
+            key: 'store',
+            label: t('statusStore'),
+            value: data.store.ok ? `OK (${data.store.kind ?? 'sqlite'})` : data.store.error ?? '—',
+          })
+        } else if (data.qdrant) {
           statusItems.push({
             key: 'qdrant',
-            label: t('statusQdrant'),
+            label: t('statusVectorStore'),
             value: data.qdrant.ok ? 'OK' : data.qdrant.error ?? '—',
           })
         }
@@ -2126,7 +2047,16 @@ window.__ModuleLoader__.load({
           statusItems.push({
             key: 'embedder',
             label: t('statusEmbedder'),
-            value: data.embedder.ok ? `${data.embedder.dimensions ?? '?'} dims` : data.embedder.error ?? '—',
+            value: data.embedder.ok
+              ? `${data.embedder.model ? `${data.embedder.model} · ` : ''}${data.embedder.dimensions ?? '?'} dims`
+              : data.embedder.error ?? '—',
+          })
+        }
+        if (data.llm) {
+          statusItems.push({
+            key: 'llm',
+            label: t('statusLlm'),
+            value: data.llm.configured ? data.llm.model ?? 'OK' : data.llm.error ?? t('statusLlmMissing'),
           })
         }
         statusItems.push({
@@ -2261,36 +2191,15 @@ window.__ModuleLoader__.load({
       if (draft.backend === 'oss') {
         connectionFields.push(
           h(TextField, {
-            key: 'mem0ConfigPath',
-            label: t('mem0ConfigPath'),
-            hint: t('mem0ConfigPathHint'),
-            value: draft.mem0ConfigPath,
-            placeholder: '~/.dsh/mem0/oss.json',
+            key: 'storePath',
+            label: t('storePath'),
+            hint: t('storePathHint'),
+            value: draft.storePath,
+            placeholder: '~/.dsh/mem0/memory.sqlite',
             className: 'mem0-grid-single',
-            onChange: (value) => setField('mem0ConfigPath', value),
+            onChange: (value) => setField('storePath', value),
           }),
-          h(TextField, {
-            key: 'pythonPath',
-            label: t('pythonPath'),
-            hint: t('pythonPathHint'),
-            value: draft.pythonPath,
-            placeholder: '~/.dsh/mem0/venv/bin/python',
-            className: 'mem0-grid-single',
-            onChange: (value) => setField('pythonPath', value),
-          }),
-          h(TextField, {
-            key: 'collectionName',
-            label: t('collectionName'),
-            value: draft.collectionName,
-            onChange: (value) => setField('collectionName', value),
-          }),
-          h(TextField, {
-            key: 'historyDbPath',
-            label: t('historyDbPath'),
-            value: draft.historyDbPath,
-            placeholder: '~/.dsh/mem0/history.db',
-            onChange: (value) => setField('historyDbPath', value),
-          }),
+          h('p', { key: 'ossConfigHint', className: 'mem0-hint mem0-grid-single' }, t('ossConfigHint')),
         )
       }
 
@@ -2556,7 +2465,7 @@ window.__ModuleLoader__.load({
                 h('p', null, t('configWarningFix')),
               )
             : null,
-          data?.sidecar ? h(SidecarStatus, { t, sidecar: data.sidecar }) : null,
+          data?.store ? h(StoreStatus, { t, store: data.store }) : null,
           h(FailureList, { t, failures: data?.failures }),
         ),
         h(
@@ -3107,6 +3016,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, sidecarLines, formatDuration } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration } }
   },
 })

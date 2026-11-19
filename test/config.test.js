@@ -6,16 +6,19 @@ import path from 'node:path'
 import {
   Config,
   DEFAULT_MEM0_CONFIG,
-  LEGACY_HERMES_CONFIG,
+  DEFAULT_STORE_PATH,
+  RETIRED_KEY_FIELDS,
   describeBackendChoice,
   resolveConfig,
 } from '../lib/config.js'
 
-const expectedDefaultConfig = fs.existsSync(DEFAULT_MEM0_CONFIG)
-  ? DEFAULT_MEM0_CONFIG
-  : fs.existsSync(LEGACY_HERMES_CONFIG)
-    ? LEGACY_HERMES_CONFIG
-    : DEFAULT_MEM0_CONFIG
+function tempOss(t, content) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-config-'))
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const file = path.join(dir, 'oss.json')
+  if (content !== undefined) fs.writeFileSync(file, typeof content === 'string' ? content : JSON.stringify(content))
+  return file
+}
 
 test('config defaults use automatic backend detection and an independent DSH collection', () => {
   const config = resolveConfig({})
@@ -33,15 +36,18 @@ test('config defaults use automatic backend detection and an independent DSH col
   assert.equal(config.storeMaxTokens, 20000)
   assert.equal(config.hygieneEnabled, true)
   assert.equal(config.hygieneIntervalDays, 7)
-  assert.equal(config.mem0ConfigPath, expectedDefaultConfig)
+  assert.equal(config.ossConfigPath, DEFAULT_MEM0_CONFIG)
+  assert.equal(config.storePath, DEFAULT_STORE_PATH)
+  assert.equal(DEFAULT_STORE_PATH, path.join(os.homedir(), '.dsh', 'mem0', 'memory.sqlite'))
+  assert.equal('pythonPath' in config, false)
+  assert.equal('mem0ConfigPath' in config, false)
   assert.ok(['platform', 'server', 'oss'].includes(config.backend))
 })
 
 test('config expands home and resolves relative paths', () => {
   const config = resolveConfig({
     backend: 'oss',
-    pythonPath: '~/venv/bin/python',
-    mem0ConfigPath: '~/custom-mem0.json',
+    storePath: '~/custom/memory.sqlite',
     collectionName: 'custom-mem0',
     userId: 'alice',
     agentId: 'codex',
@@ -53,8 +59,7 @@ test('config expands home and resolves relative paths', () => {
     recallTopK: 3,
   })
   assert.equal(config.backend, 'oss')
-  assert.equal(config.pythonPath, path.join(os.homedir(), 'venv', 'bin', 'python'))
-  assert.equal(config.mem0ConfigPath, path.join(os.homedir(), 'custom-mem0.json'))
+  assert.equal(config.storePath, path.join(os.homedir(), 'custom', 'memory.sqlite'))
   assert.equal(config.collectionName, 'custom-mem0')
   assert.equal(config.userId, 'alice')
   assert.equal(config.agentId, 'codex')
@@ -127,20 +132,112 @@ test('memory translation is off unless enabled', () => {
   assert.equal(resolveConfig({ translateMemories: true }).translateMemories, true)
 })
 
-test('timeouts and sidecar env have defaults and are validated (G2, G3)', () => {
+test('timeouts have defaults and are validated (G2)', () => {
   const defaults = resolveConfig({})
   assert.equal(defaults.timeoutMs, 30000)
   assert.equal(defaults.recallTimeoutMs, 5000)
   assert.equal(defaults.addTimeoutMs, 120000)
-  assert.deepEqual(defaults.sidecarEnv, [])
-  const custom = resolveConfig({ recallTimeoutMs: 1500, addTimeoutMs: 60000, sidecarEnv: [' MY_KEY ', 'MY_KEY', 'OTHER'] })
+  const custom = resolveConfig({ recallTimeoutMs: 1500, addTimeoutMs: 60000 })
   assert.equal(custom.recallTimeoutMs, 1500)
   assert.equal(custom.addTimeoutMs, 60000)
-  assert.deepEqual(custom.sidecarEnv, ['MY_KEY', 'OTHER'])
   assert.throws(() => resolveConfig({ recallTimeoutMs: 10 }), /recallTimeoutMs/)
   assert.throws(() => resolveConfig({ addTimeoutMs: 10 }), /addTimeoutMs/)
-  assert.throws(() => resolveConfig({ sidecarEnv: ['bad name'] }), /sidecarEnv/)
-  const parsed = Config({ recallTimeoutMs: 2000, sidecarEnv: ['A_B'] })
+  const parsed = Config({ recallTimeoutMs: 2000 })
   assert.equal(resolveConfig(parsed).recallTimeoutMs, 2000)
-  assert.deepEqual(resolveConfig(parsed).sidecarEnv, ['A_B'])
+})
+
+test('settings of the Python sidecar era are ignored, never an error', (t) => {
+  const ossPath = tempOss(t, { dsh_mem0: { pythonPath: '/old/venv/bin/python', historyDbPath: '/old/history.db', userId: 'from-oss' } })
+  const config = resolveConfig({
+    backend: 'oss',
+    pythonPath: 'C:\\Users\\me\\venv\\Scripts\\python.exe',
+    mem0ConfigPath: '~/.hermes/mem0.json',
+    sidecarEnv: ['OPENAI_API_KEY'],
+  }, { ossConfigPath: ossPath })
+  assert.deepEqual(config.ignoredSettings, ['pythonPath', 'mem0ConfigPath', 'sidecarEnv', 'dsh_mem0.pythonPath', 'dsh_mem0.historyDbPath'])
+  assert.equal(config.userId, 'from-oss')
+  assert.equal('pythonPath' in config, false)
+  assert.equal('sidecarEnv' in config, false)
+  // The schema keeps unknown keys without complaint, so a saved profile with
+  // the old fields still loads.
+  assert.equal(Config({ pythonPath: '/x/python', backend: 'oss' }).get().backend, 'oss')
+  assert.deepEqual(RETIRED_KEY_FIELDS, ['pythonPath', 'mem0ConfigPath', 'historyDbPath'])
+  assert.equal(config.profileFields.includes('pythonPath'), false)
+})
+
+test('the dsh_mem0 block of oss.json configures the local embedder, LLM and store', (t) => {
+  const ossPath = tempOss(t, {
+    dsh_mem0: {
+      storePath: '~/mem/memory.sqlite',
+      embedderProvider: 'openai',
+      embedderBaseUrl: 'http://127.0.0.1:8000/v1/',
+      embedderModel: 'bge-m3',
+      embedderDims: 1024,
+      embedderApiKeyRef: 'OMLX_API_KEY',
+      llmBaseUrl: 'https://api.deepseek.com/v1',
+      llmModel: 'deepseek-chat',
+      llmApiKeyRef: 'DEEPSEEK_API_KEY',
+      llmMaxTokens: 4000,
+      llmReasoningEffort: 'low',
+    },
+  })
+  const config = resolveConfig({ backend: 'auto' }, { ossConfigPath: ossPath })
+  assert.equal(config.backend, 'oss')
+  assert.equal(config.backendSource, 'auto-oss-config')
+  assert.equal(config.storePath, path.join(os.homedir(), 'mem', 'memory.sqlite'))
+  assert.deepEqual(config.native.embedder, {
+    provider: 'openai',
+    baseUrl: 'http://127.0.0.1:8000/v1',
+    model: 'bge-m3',
+    dims: 1024,
+    apiKeyRef: 'OMLX_API_KEY',
+    source: 'dsh_mem0',
+    literalKey: false,
+  })
+  assert.equal(config.native.llm.model, 'deepseek-chat')
+  assert.equal(config.native.llm.maxTokens, 4000)
+  assert.equal(config.native.llm.temperature, 0)
+  assert.equal(config.native.llm.topP, 0.1)
+  assert.equal(config.native.llm.reasoningEffort, 'low')
+  assert.equal(config.native.llm.apiKeyRef, 'DEEPSEEK_API_KEY')
+  assert.deepEqual(config.native.problems, [])
+  assert.ok(config.settingsFromOss.includes('embedderModel'))
+  // The profile wins over the block.
+  const profile = resolveConfig({ backend: 'oss', embedderModel: 'nomic-embed-text' }, { ossConfigPath: ossPath })
+  assert.equal(profile.native.embedder.model, 'nomic-embed-text')
+})
+
+test('a mem0-format oss.json (embedder/llm blocks with literal keys) keeps working', (t) => {
+  const ossPath = tempOss(t, { oss: {
+    embedder: { provider: 'ollama', config: { model: 'bge-m3', ollama_base_url: 'http://localhost:11434', embedding_dims: 1024 } },
+    llm: { provider: 'openai', config: { model: 'gpt-4.1-mini', api_key: 'sk-test-literal', openai_base_url: 'https://api.openai.com/v1' } },
+    vector_store: { provider: 'qdrant', config: { host: 'localhost', port: 6333, collection_name: 'dsh_mem0' } },
+  } })
+  const config = resolveConfig({ backend: 'oss' }, { ossConfigPath: ossPath })
+  assert.equal(config.native.embedder.provider, 'ollama')
+  assert.equal(config.native.embedder.model, 'bge-m3')
+  assert.equal(config.native.embedder.dims, 1024)
+  assert.equal(config.native.llm.model, 'gpt-4.1-mini')
+  assert.equal(config.native.llm.literalKey, true)
+  // Literal keys never reach config or status.
+  assert.equal(JSON.stringify(config).includes('sk-test-literal'), false)
+})
+
+test('a missing embedder is reported as a config problem, not thrown', (t) => {
+  const ossPath = tempOss(t, { dsh_mem0: { userId: 'x' } })
+  const config = resolveConfig({ backend: 'oss' }, { ossConfigPath: ossPath })
+  const codes = config.native.problems.map((problem) => `${problem.component}:${problem.code}`)
+  assert.ok(codes.includes('embedder:CONFIG_MISSING'))
+  assert.ok(codes.includes('llm:CONFIG_MISSING'))
+  const bad = resolveConfig({ backend: 'oss', embedderProvider: 'huggingface' }, { ossConfigPath: ossPath })
+  assert.ok(bad.native.problems.some((problem) => problem.code === 'CONFIG_INVALID'))
+})
+
+test('store paths resolve on Windows and POSIX layouts alike', () => {
+  assert.equal(path.win32.join('C:\\Users\\me', '.dsh', 'mem0', 'memory.sqlite'), 'C:\\Users\\me\\.dsh\\mem0\\memory.sqlite')
+  assert.equal(path.posix.join('/home/me', '.dsh', 'mem0', 'memory.sqlite'), '/home/me/.dsh/mem0/memory.sqlite')
+  // The real default is built with the platform's own path module.
+  assert.equal(path.basename(DEFAULT_STORE_PATH), 'memory.sqlite')
+  assert.equal(path.basename(path.dirname(DEFAULT_STORE_PATH)), 'mem0')
+  assert.equal(path.isAbsolute(DEFAULT_STORE_PATH), true)
 })

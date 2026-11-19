@@ -1,0 +1,38 @@
+DSH-Mem0
+Copyright (c) 2026 DSH Mem0 contributors. Licensed under the MIT License (see LICENSE).
+
+This product includes software derived from mem0 (https://github.com/mem0ai/mem0),
+mem0ai release 2.2.1, licensed under the Apache License, Version 2.0:
+
+  Copyright 2023 Taranjeet Singh (as stated in the mem0ai LICENSE)
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use these files except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+
+Files derived from mem0:
+
+- lib/mem0-prompts.js: ADDITIVE_EXTRACTION_PROMPT, AGENT_CONTEXT_SUFFIX and the
+  language requirement of generate_additive_extraction_prompt, copied verbatim
+  from mem0/configs/prompts.py (unmodified).
+- lib/extraction.js: JavaScript port of generate_additive_extraction_prompt and
+  its helpers (mem0/configs/prompts.py) and of parse_messages,
+  remove_code_blocks and extract_json (mem0/memory/utils.py). Modified: the
+  language requirement is always on (use_input_language=True), and the reason
+  an unusable answer failed is reported.
+- lib/native-client.js and lib/store-sqlite.js: JavaScript port of the V3
+  additive add pipeline and the search of mem0/memory/main.py (session scope,
+  last 10 messages, top 10 similar memories, md5 deduplication, ADD only;
+  search candidates and threshold). Modified: SQLite instead of a vector
+  database, no BM25 or entity boosts, adds of one scope run one at a time, and
+  the turn is not remembered when the extraction will be retried.
+- test/fixtures/mem0-2.2.1-extraction.json: output of mem0 2.2.1's own helper
+  functions, produced by scripts/mem0-extraction-fixture.py.

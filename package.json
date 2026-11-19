@@ -2,7 +2,7 @@
   "name": "dsh-mem0",
   "version": "0.3.1",
   "private": false,
-  "description": "Mem0 long-term memory for DeepSeek Harness: managed Platform, self-hosted server or local OSS, with a visual settings page, automatic recall/capture, editable memory summary, token budgets and weekly memory hygiene.",
+  "description": "Mem0 long-term memory for DeepSeek Harness: managed Platform, self-hosted server or a local SQLite store (no Python), with a visual settings page, automatic recall/capture, editable memory summary, token budgets and weekly memory hygiene.",
   "icon": "assets/icon.png",
   "type": "module",
   "main": "./index.js",
@@ -16,7 +16,6 @@
     "index.js",
     "client.js",
     "lib",
-    "python",
     "examples",
     "assets",
     "screenshots.json",
@@ -29,12 +28,14 @@
     "README.zh-CN.md",
     "RELEASE.md",
     "MARKETPLACE.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "test": "node --import ./test/fixtures/isolate-home.mjs --test",
     "check": "node scripts/check-syntax.mjs",
-    "smoke": "node scripts/smoke-sidecar.mjs"
+    "smoke": "node scripts/smoke-native.mjs",
+    "upstream": "node scripts/mem0-upstream.mjs"
   },
   "keywords": [
     "deepseek",
@@ -47,7 +48,7 @@
     "rag"
   ],
   "engines": {
-    "node": ">=22",
+    "node": ">=24.9",
     "dsh": ">=0.2.1-rc.5 <0.3.0"
   },
   "dsh": {

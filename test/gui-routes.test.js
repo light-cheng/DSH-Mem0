@@ -87,10 +87,11 @@ test('status route reports healthy backend details without the API key', async (
         return {
           ok: true,
           backend: 'oss',
-          pythonVersion: '3.11.16',
-          mem0Version: '2.0.10',
+          mem0Reference: '2.2.1',
+          store: { ok: true, kind: 'sqlite', path: '~/.dsh/mem0/memory.sqlite', schemaVersion: 1, sqliteVersion: '3.50.0' },
           qdrant: { ok: true },
-          embedder: { ok: true, dimensions: 1024 },
+          embedder: { ok: true, dimensions: 1024, model: 'bge-m3', provider: 'openai' },
+          llm: { configured: true, model: 'deepseek-chat', error: null },
         }
       },
       async list() {
@@ -102,12 +103,17 @@ test('status route reports healthy backend details without the API key', async (
   assert.equal(result.status, 200)
   assert.equal(result.body.ok, true)
   assert.equal(result.body.backend, 'oss')
-  assert.equal(result.body.collection, 'dsh_mem0')
+  assert.equal(result.body.collection, '~/.dsh/mem0/memory.sqlite')
+  assert.equal(result.body.store.kind, 'sqlite')
+  assert.equal(result.body.store.ok, true)
+  assert.equal(result.body.llm.model, 'deepseek-chat')
+  assert.equal(result.body.embedder.model, 'bge-m3')
   assert.equal(result.body.apiKeyConfigured, true)
   assert.equal(result.body.backendSource, 'configured')
   assert.equal(result.body.backendChoice, 'configured explicitly')
   assert.equal(JSON.stringify(result.body).includes('must-not-leak'), false)
-  assert.equal(result.body.pythonVersion, '3.11.16')
+  assert.equal(result.body.mem0Reference, '2.2.1')
+  assert.equal('pythonVersion' in result.body, false)
   assert.equal(result.body.activity.capture.status, 'saved')
   assert.equal(result.body.activity.recall.count, 1)
   assert.equal(result.body.recentMemories[0].id, 'm1')
@@ -434,54 +440,29 @@ test('profile route saves and resets editable long-term memory', async () => {
   assert.equal(rejected.headers.allow, 'POST')
 })
 
-// ---- OSS sidecar status and log ----
+// ---- Local store status ----
 
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { GUI_SIDECAR_LOG_PATH } from '../lib/gui-routes.js'
-import { SidecarLog } from '../lib/sidecar-log.js'
 
-test('activity route reports the sidecar process, last exit and log path (home shortened)', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.homedir(), 'dsh-mem0-route-log-'))
+test('activity route reports the local store and its last failure (home shortened, redacted)', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.homedir(), 'dsh-mem0-route-store-'))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
-  const sidecarLog = new SidecarLog({ filePath: path.join(dir, 'sidecar.log') })
   const status = {
-    running: true,
-    starting: false,
-    pid: 14536,
-    launcherPid: 10844,
-    startedAt: '2026-11-06T06:14:32.000Z',
-    starts: 2,
-    restarts: 1,
-    lastExit: { at: '2026-11-06T06:03:31.989Z', code: 1, signal: null, uptimeMs: 3_600_000, phase: 'running', pid: 4242 },
+    running: false,
+    store: { kind: 'sqlite', path: path.join(dir, 'memory.sqlite') },
+    lastStartFailure: { at: '2026-11-06T06:03:31.989Z', code: 'readonly', component: 'vector_store', reason: `cannot write ${path.join(dir, 'memory.sqlite')} api_key=sk-handwritten12345` },
   }
-  const routes = harness({ config, activity: {}, client: { status: () => status }, sidecarLog })
+  const routes = harness({ config, activity: {}, client: { status: () => status } })
   const result = await invoke(routes.get(GUI_ACTIVITY_PATH), 'GET', '/?translate=0')
-  assert.equal(result.body.sidecar.pid, 14536)
-  assert.equal(result.body.sidecar.launcherPid, 10844)
-  assert.equal(result.body.sidecar.restarts, 1)
-  assert.equal(result.body.sidecar.lastExit.code, 1)
-  assert.equal(result.body.sidecar.logPath, `~/${path.basename(dir)}/sidecar.log`)
-  // REST backends have no sidecar.
+  assert.equal(result.body.store.running, false)
+  assert.equal(result.body.store.kind, 'sqlite')
+  assert.equal(result.body.store.path, `~/${path.basename(dir)}/memory.sqlite`)
+  assert.equal(result.body.store.lastStartFailure.code, 'readonly')
+  assert.equal(result.body.store.lastStartFailure.reason.includes('sk-handwritten12345'), false)
+  assert.equal('sidecar' in result.body, false)
+  // REST backends have no local store.
   const rest = harness({ config: { ...config, backend: 'platform' }, activity: {}, client: {} })
-  assert.equal((await invoke(rest.get(GUI_ACTIVITY_PATH), 'GET', '/?translate=0')).body.sidecar, null)
-})
-
-test('sidecar-log route returns the last lines, redacted', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-route-log-'))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
-  const sidecarLog = new SidecarLog({ filePath: path.join(dir, 'sidecar.log') })
-  for (let index = 0; index < 60; index += 1) sidecarLog.write(`line ${index}`)
-  // A line edited into the file by hand is redacted on the way out too.
-  fs.appendFileSync(sidecarLog.filePath, 'manual api_key=sk-handwritten12345 at /Users/carol/x\n')
-  const routes = harness({ config, activity: {}, client: {}, sidecarLog })
-  const result = await invoke(routes.get(GUI_SIDECAR_LOG_PATH), 'GET', '/?lines=50')
-  assert.equal(result.body.ok, true)
-  assert.equal(result.body.lines.length, 50)
-  assert.match(result.body.lines.at(-1), /^manual api_key=\[REDACTED\] at ~\/x$/)
-  assert.match(result.body.lines.at(-2), /stderr line 59$/)
-  assert.equal((await invoke(routes.get(GUI_SIDECAR_LOG_PATH), 'POST')).status, 405)
-  const none = harness({ config: { ...config, backend: 'platform' }, activity: {}, client: {} })
-  assert.equal((await invoke(none.get(GUI_SIDECAR_LOG_PATH), 'GET')).body.ok, false)
+  assert.equal((await invoke(rest.get(GUI_ACTIVITY_PATH), 'GET', '/?translate=0')).body.store, null)
 })

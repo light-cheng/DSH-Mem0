@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { DEFAULT_HISTORY_DB } from '../lib/config.js'
+import { DEFAULT_STORE_PATH } from '../lib/config.js'
 import { apply } from '../index.js'
 
 function listFiles(dir) {
@@ -27,12 +27,14 @@ test('the test process runs with an isolated HOME and DSH_HOME', () => {
   assert.notEqual(os.homedir(), process.env.DSH_MEM0_TEST_REAL_HOME)
   assert.ok(home.startsWith(fs.realpathSync(os.tmpdir())) || home.startsWith(os.tmpdir()))
   assert.equal(process.env.DSH_HOME, path.join(home, '.dsh'))
-  // The default history.db (and with it the old failures.json fallback) is
-  // inside the temporary home, not the real ~/.dsh.
-  assert.ok(DEFAULT_HISTORY_DB.startsWith(home))
+  // The default memory.sqlite is inside the temporary home, never the real
+  // ~/.dsh/mem0/memory.sqlite.
+  assert.ok(DEFAULT_STORE_PATH.startsWith(home))
+  assert.equal(DEFAULT_STORE_PATH, path.join(home, '.dsh', 'mem0', 'memory.sqlite'))
+  assert.equal(process.env.MEM0_TELEMETRY, 'false')
 })
 
-test('without a profile directory nothing is written under ~/.dsh (failures, maintenance, sidecar.log)', async (t) => {
+test('without a profile directory nothing is written under ~/.dsh (failures, maintenance, store)', async (t) => {
   const original = globalThis.fetch
   globalThis.fetch = async () => {
     throw Object.assign(new Error('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) })

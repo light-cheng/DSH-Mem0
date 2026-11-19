@@ -179,3 +179,43 @@ test('a literal apiKey skips the credential service and its restart hook', async
   assert.equal(asked, 0)
   assert.equal(ctx.listeners.has('credentials/reference-updated'), false)
 })
+
+test('oss: an upgraded profile with pythonPath and other sidecar settings starts the native backend with a debug note, no warning', async (t) => {
+  blockNetwork(t)
+  const ctx = fakeContext()
+  const debug = []
+  const warn = []
+  ctx.logger = { info() {}, warn: (line) => warn.push(line), debug: (line) => debug.push(line), error() {} }
+  t.after(() => ctx.close())
+  const storePath = path.join(ctx.dir, 'store', 'memory.sqlite')
+  // A fingerprint written by 0.3.x, when the profile set the sidecar's fields.
+  fs.mkdirSync(path.join(ctx.dir, 'dsh-mem0'), { recursive: true })
+  fs.writeFileSync(path.join(ctx.dir, 'dsh-mem0', 'config-fingerprint.json'), JSON.stringify({
+    version: 1,
+    savedAt: '2026-11-01T00:00:00.000Z',
+    fields: ['backend', 'historyDbPath', 'mem0ConfigPath', 'pythonPath', 'userId'],
+  }))
+  await apply(ctx, {
+    backend: 'oss',
+    userId: 'dsh-mem0-index-test-user',
+    hygieneEnabled: false,
+    storePath,
+    embedderBaseUrl: 'http://127.0.0.1:9/v1',
+    embedderModel: 'test-embed',
+    pythonPath: '/old/venv/bin/python',
+    mem0ConfigPath: '~/.dsh/mem0/oss.json',
+    historyDbPath: '/old/history.db',
+    sidecarEnv: ['OPENAI_API_KEY'],
+  })
+  assert.ok(debug.some((line) => /ignoring settings of the removed Python sidecar: pythonPath, mem0ConfigPath, historyDbPath, sidecarEnv/.test(line)), debug.join('\n'))
+  assert.equal(warn.some((line) => /settings look rewritten/.test(line)), false, warn.join('\n'))
+  assert.ok(ctx.tools.registered.includes('mem0_status'))
+  // The store opens in the background, in the configured temporary folder.
+  for (let index = 0; index < 50 && !fs.existsSync(storePath); index += 1) await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.ok(fs.existsSync(storePath))
+  const fingerprint = JSON.parse(fs.readFileSync(path.join(ctx.dir, 'dsh-mem0', 'config-fingerprint.json'), 'utf8'))
+  assert.equal(fingerprint.fields.includes('pythonPath'), false, 'retired names are dropped once the store opened')
+  assert.ok(fingerprint.fields.includes('storePath'))
+  // DSH's model service is injected for background calls (translation).
+  assert.ok(ctx.injected.some((names) => names.includes('llm') && names.includes('agentDefaultModel')))
+})

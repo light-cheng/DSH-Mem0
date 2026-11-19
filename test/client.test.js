@@ -75,7 +75,7 @@ test('activity details: skip reasons, circuit time left and cause, extraction co
   }, now)
   assert.match(circuit[0], /熔断中/)
   assert.match(circuit[0], /1 min 30 s 后恢复/)
-  assert.match(circuit[1], /自动保存 · OSS 进程 · POST \/add failed: fetch failed/)
+  assert.match(circuit[1], /自动保存 · Python sidecar（旧版本） · POST \/add failed: fetch failed/)
   assert.deepEqual(plain(activityDetails(t, { status: 'skipped', reason: 'low-value' })), ['内容太短或不值得记（保存过滤）'])
   assert.deepEqual(plain(activityDetails(t, { status: 'saved', facts: 1, add: 0, update: 0, delete: 0, none: 1 })), ['抽取 1 条：新增 0，更新 0，已存在 1'])
   assert.deepEqual(plain(activityDetails(t, { status: 'saved', facts: 0 })), ['没有抽取到新内容（不值得记，或已经记过）'])
@@ -84,7 +84,7 @@ test('activity details: skip reasons, circuit time left and cause, extraction co
   assert.deepEqual(plain(activityDetails(t, { status: 'error', retry: 'failed' })), ['重试仍失败'])
   // LLM extraction failures: the reason, and which retry is pending.
   assert.deepEqual(plain(activityDetails(t, { status: 'saving', retry: 'pending', retryReason: 'extraction', extractReason: 'truncated' })), ['LLM 回复不可用（回复被截断（JSON 不完整）），正在重试一次'])
-  assert.deepEqual(plain(activityDetails(t, { status: 'saving', retry: 'pending' })), ['未送达（sidecar 已退出），正在重试一次'])
+  assert.deepEqual(plain(activityDetails(t, { status: 'saving', retry: 'pending' })), ['未送达，正在重试一次'])
   assert.deepEqual(plain(activityDetails(t, { status: 'error', extractReason: 'refusal' })), ['LLM 抽取失败: 模型拒答'])
   assert.deepEqual(plain(activityDetails(t, { status: 'error', extractReason: 'empty', retry: 'failed' })), ['LLM 抽取失败: 回复为空', '重试仍失败'])
   // finish_reason and token counts, and the doubled budget of the retry.
@@ -124,21 +124,21 @@ test('the dock tells "paused by the breaker" from "skipped, too short"', () => {
   assert.equal(closed.label, 'Capture skipped')
 })
 
-test('sidecar lines show PIDs, restarts, the last exit and the log path', () => {
-  const { sidecarLines, en } = loadClient().exports.__test__
-  const lines = sidecarLines(tFor(en), {
-    running: true,
-    pid: 14536,
-    launcherPid: 10844,
-    startedAt: '2026-11-06T06:14:32Z',
-    restarts: 2,
-    lastExit: { at: '2026-11-06T06:03:31Z', code: null, signal: 'SIGKILL', uptimeMs: 75_000, phase: 'running' },
-    logPath: '~/.dsh/profiles/desktop/dsh-mem0/sidecar.log',
+test('store lines show the file, whether it is open, and the last failure to open it', () => {
+  const { storeLines, en, zh } = loadClient().exports.__test__
+  const open = storeLines(tFor(en), { running: true, kind: 'sqlite', path: '~/.dsh/mem0/memory.sqlite', lastStartFailure: null })
+  assert.equal(open[0], 'File: ~/.dsh/mem0/memory.sqlite')
+  assert.equal(open[1], 'Open')
+  assert.match(open.at(-1), /dsh_mem0/)
+  const failed = storeLines((key) => zh[key] ?? key, {
+    running: false,
+    path: '~/.dsh/mem0/memory.sqlite',
+    lastStartFailure: { at: '2026-11-10T11:01:05.000Z', code: 'readonly', reason: 'the memory database file or its folder is not writable', configError: true },
   })
-  assert.match(lines[0], /PID 14536 · launcher PID 10844/)
-  assert.equal(lines[1], '2 restarts')
-  assert.match(lines[2], /signal SIGKILL after 1 min 15 s while running/)
-  assert.equal(lines[3], 'Log: ~/.dsh/profiles/desktop/dsh-mem0/sidecar.log')
+  assert.equal(failed[1], '尚未打开（下次读写记忆时打开）')
+  assert.ok(failed.some((line) => /最近一次打开失败.*readonly.*not writable/.test(line)))
+  assert.ok(failed.some((line) => /配置错误/.test(line)))
+  assert.equal(storeLines(tFor(en), null).length, 0)
 })
 
 // ---- "Nothing new" badge: a saved capture that wrote 0 memories ----
@@ -201,23 +201,15 @@ test('delete errors name the reason in the page language', () => {
   assert.equal(deleteErrorText(t, new Error('HTTP 502')), 'Could not delete the memory: HTTP 502')
 })
 
-test('failure card: startup/config causes, the unreachable hint and the sidecar start failure', () => {
-  const { failureSummary, sidecarLines, zh } = loadClient().exports.__test__
+test('failure card: startup/config causes and the unreachable hint', () => {
+  const { failureSummary, zh } = loadClient().exports.__test__
   const t = (key) => zh[key] ?? key
   const refused = failureSummary(t, {
     kind: 'recall', cause: 'connection', component: 'vector_store', provider: 'qdrant', endpoint: '127.0.0.1:15333', message: 'refused',
   })
   assert.match(refused, /Qdrant不可达：127\.0\.0\.1:15333/)
   assert.match(refused, /10013/)
-  assert.match(failureSummary(t, { kind: 'recall', cause: 'startup', component: 'sidecar', message: 'x' }), /sidecar 启动失败/)
+  assert.match(failureSummary(t, { kind: 'recall', cause: 'startup', component: 'sidecar', message: 'x' }), /本地后端启动失败/)
   assert.match(failureSummary(t, { kind: 'recall', cause: 'config', component: 'vector_store', message: 'x' }), /配置错误/)
   assert.doesNotMatch(failureSummary(t, { kind: 'recall', cause: 'startup', component: 'sidecar', message: 'x' }), /其他错误/)
-  const lines = sidecarLines(t, {
-    running: false,
-    restarts: 0,
-    python: { path: 'python', source: 'path' },
-    lastStartFailure: { at: '2026-11-10T11:01:05.000Z', reason: "ModuleNotFoundError: No module named 'mem0'", configError: false },
-  })
-  assert.ok(lines.some((line) => /退回 PATH/.test(line)))
-  assert.ok(lines.some((line) => /最近一次启动失败.*ModuleNotFoundError/.test(line)))
 })

@@ -4,7 +4,8 @@
  * Supported backends:
  *   platform — Mem0 Platform API key (managed cloud / on-prem)
  *   server   — self-hosted Mem0 REST server
- *   oss      — local Mem0 OSS Python sidecar (Qdrant + local embedding/LLM)
+ *   oss      — local memory: a SQLite file written by the plugin itself,
+ *              with your own embedder and extraction LLM (no Python)
  *
  * The plugin exposes memory tools, automatic recall before model requests and
  * automatic capture of completed turns. It works without a Web Client bundle;
@@ -12,16 +13,15 @@
  */
 import path from 'node:path'
 import { CircuitBreaker } from './lib/http.js'
-import { Mem0SidecarClient } from './lib/sidecar-client.js'
+import { Mem0NativeClient } from './lib/native-client.js'
 import { Mem0RestClient } from './lib/rest-client.js'
-import { Config, resolveConfig } from './lib/config.js'
-import { apiKeyRef, lookupApiKey } from './lib/credentials.js'
+import { Config, RETIRED_KEY_FIELDS, resolveConfig } from './lib/config.js'
+import { apiKeyRef, lookupApiKey, resolveSecret } from './lib/credentials.js'
 import { MemoryLifecycle, PROFILE_SECTION_NAME } from './lib/memory-lifecycle.js'
 import { MemoryLocalizer } from './lib/memory-localizer.js'
 import { MemoryMaintenance } from './lib/memory-maintenance.js'
 import { MaintenanceState } from './lib/maintenance-state.js'
 import { FailureHistory } from './lib/failure-history.js'
-import { SidecarLog } from './lib/sidecar-log.js'
 import { CONFIG_FINGERPRINT_FILE, ConfigGuard, describeConfigWarning } from './lib/config-guard.js'
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
@@ -35,23 +35,14 @@ export const MEM0_GUIDANCE =
   'Use mem0_search for targeted recall, mem0_add to store a lasting fact, mem0_get to read by id, mem0_update to correct a memory, and mem0_delete to forget one. ' +
   'Automatic capture stores completed turns in the configured Mem0 store; do not store secrets, transient chatter, or duplicates.'
 
-function createClient(config, logger, resolveApiKey, sidecarLog, onReady) {
+function createClient(ctx, config, logger, resolveApiKey, onReady) {
   if (config.backend === 'oss') {
-    return new Mem0SidecarClient({
-      pythonPath: config.pythonPath,
-      pythonSource: config.pythonSource,
+    return new Mem0NativeClient({
+      config,
+      // Embedder and LLM keys: DSH credentials (then the environment) by
+      // the reference names in oss.json, looked up per request.
+      resolveSecret: (ref) => resolveSecret(ctx, ref, { logger }),
       onReady,
-      mem0ConfigPath: config.mem0ConfigPath,
-      historyDbPath: config.historyDbPath,
-      collectionName: config.collectionName,
-      userId: config.userId,
-      agentId: config.agentId,
-      // timeoutMs means the same on every backend: the per-request limit.
-      // Writes (LLM extraction) use addTimeoutMs; recall uses recallTimeoutMs.
-      requestTimeoutMs: config.timeoutMs,
-      addTimeoutMs: config.addTimeoutMs,
-      extraEnv: config.sidecarEnv,
-      log: sidecarLog,
       logger,
     })
   }
@@ -92,26 +83,25 @@ export async function apply(ctx, rawConfig) {
   // still shows why memory failed after it was switched off.
   //
   // Derived files live only in the profile directory. Without one they stay
-  // in memory: the old fallback, the folder of historyDbPath, is the shared
-  // `~/.dsh/mem0`, where every profile (and every test run) would write the
-  // same file.
+  // in memory rather than in the shared `~/.dsh/mem0`, where every profile
+  // (and every test run) would write the same file.
   const dataDir = profileDir ? path.join(profileDir, 'dsh-mem0') : undefined
-  if (!dataDir) logger?.debug?.('dsh-mem0: no profile directory; failure history, maintenance state and sidecar.log stay in memory')
+  if (!dataDir) logger?.debug?.('dsh-mem0: no profile directory; failure history and maintenance state stay in memory')
+  if (config.ignoredSettings?.length) {
+    logger?.debug?.(`dsh-mem0: ignoring settings of the removed Python sidecar: ${config.ignoredSettings.join(', ')}`)
+  }
   const failures = new FailureHistory({
     filePath: dataDir ? path.join(dataDir, 'failures.json') : undefined,
     backend: config.backend,
     logger,
   })
-  // The OSS sidecar's stderr and start/exit events, redacted (sidecar.log).
-  const sidecarLog = config.backend === 'oss'
-    ? new SidecarLog({ filePath: dataDir ? path.join(dataDir, 'sidecar.log') : undefined, logger })
-    : undefined
   // Key settings that went missing since the plugin last ran fine (DSH's
   // settings sync rewriting cordis.patch.yml); see lib/config-guard.js.
   const configGuard = new ConfigGuard({
     filePath: dataDir ? path.join(dataDir, CONFIG_FINGERPRINT_FILE) : undefined,
     profileFields: config.profileFields,
     fallbackFields: config.settingsFromOss,
+    retiredFields: RETIRED_KEY_FIELDS,
     logger,
   })
   if (configGuard.status()) logger?.warn?.(describeConfigWarning(configGuard.status()))
@@ -125,7 +115,6 @@ export async function apply(ctx, rawConfig) {
     maintenance: undefined,
     localizer,
     activity,
-    sidecarLog,
   }
   ctx.inject?.(['llm', 'agentDefaultModel'], (sub) => localizer.setServices(sub))
 
@@ -162,9 +151,9 @@ export async function apply(ctx, rawConfig) {
     config.apiKeySource === 'config'
       ? undefined
       : async () => (await lookupApiKey(ctx, rawConfig, { logger }))?.value ?? process.env[config.apiKeyEnv]
-  // OSS: the settings worked once the sidecar is ready. REST backends have
-  // no start to wait for, so their settings count as in effect now.
-  const client = createClient(config, logger, resolveApiKey, sidecarLog, () => configGuard.markWorking())
+  // Local backend: the settings worked once the store opened. REST
+  // backends have nothing to open, so their settings count as in effect now.
+  const client = createClient(ctx, config, logger, resolveApiKey, () => configGuard.markWorking())
   if (config.backend !== 'oss') configGuard.markWorking()
   const breaker = new CircuitBreaker()
   const maintenanceState = new MaintenanceState(dataDir ? path.join(dataDir, 'maintenance.json') : undefined, logger)
@@ -261,8 +250,9 @@ export async function apply(ctx, rawConfig) {
     ctx.on('session/event', (session, event) => lifecycle.onSessionEvent(session, event))
   }
 
-  // Warm the OSS sidecar in the background; REST backends have no process to
-  // start. A temporarily unavailable backend remains fail-open for recall.
+  // Open the local store (and its vector cache) in the background; REST
+  // backends have nothing to open. An unavailable backend stays fail-open
+  // for recall.
   client.startInBackground()
   // A new install has no hygiene history, so the first check runs shortly
   // after startup. It is fail-open and never blocks prompt assembly.
