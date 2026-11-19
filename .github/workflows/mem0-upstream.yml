@@ -1,0 +1,38 @@
+name: mem0-upstream
+
+# Weekly (and on demand): has mem0ai released a version whose prompts or
+# add/search pipeline differ from the 2.2.1 reference the native port
+# follows? Opens an issue, or updates the open one, when it has.
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: upstream
+        run: node scripts/mem0-upstream.mjs --report "$RUNNER_TEMP/mem0-upstream.md"
+      - if: steps.upstream.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.upstream.outputs.latest }}
+        run: |
+          title="mem0ai upstream changed: ${LATEST}"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label mem0-upstream --json number --jq '.[0].number // empty')
+          if [ -z "$existing" ]; then
+            gh label create mem0-upstream --repo "$GITHUB_REPOSITORY" --color C5DEF5 --description "mem0ai release to review for the native port" 2>/dev/null || true
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label mem0-upstream --body-file "$RUNNER_TEMP/mem0-upstream.md"
+          else
+            gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/mem0-upstream.md"
+          fi

@@ -4,9 +4,17 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -14,13 +22,14 @@ jobs:
           version: 11
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - run: node --version
       - run: pnpm install --ignore-scripts --frozen-lockfile
       - run: npm run check
+      # node:sqlite tests are never skipped: a platform without it fails here.
       - run: npm test
-      - run: python -m unittest discover -s python/tests -v
-      - run: pnpm pack --pack-destination /tmp/dsh-mem0-pack
+      # The local store end to end in a temporary HOME: open, write, search,
+      # a second connection's write seen through data_version, reopen.
+      - run: node scripts/smoke-store.mjs
+      - run: npm pack --dry-run

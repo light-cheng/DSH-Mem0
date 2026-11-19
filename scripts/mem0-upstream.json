@@ -1,0 +1,21 @@
+{
+  "package": "mem0ai",
+  "version": "2.2.1",
+  "wheel": {
+    "filename": "mem0ai-2.2.1-py3-none-any.whl",
+    "sha256": "fe91bb91ac8926231993a4aa58df00a60c6c74c709e6a338fe399500776eef4d"
+  },
+  "files": {
+    "mem0/configs/prompts.py": "10bc8a34b3b5f0ce24560a2a3190c9112b979a891b981f48393bbd168d915a5c",
+    "mem0/memory/main.py": "f329ca4a17af1fbefb32ac10d4cc7ae7ddbdb7435a87eb74c30915cff98b8b7c",
+    "mem0/memory/utils.py": "f1dcbfcb0261de5717755ef41c0b9db35939d42056a4e06cdfca37650c0eb1f9"
+  },
+  "prompts": {
+    "ADDITIVE_EXTRACTION_PROMPT": "ad19187a37813ef77ee156e714c0650e6ec749e0264bdc07d499bc9b24115155",
+    "AGENT_CONTEXT_SUFFIX": "04d709c8ef32bb65ea74c5a91ca99d283d76bea2ee1b25059cb94956c96230ad",
+    "LANGUAGE_REQUIREMENT": "ef1fa4fd61aa7f4c42d30973d2f3f24ded578aa92978b8931d54485a0ec93aad"
+  },
+  "functions": {
+    "generate_additive_extraction_prompt": "9350aadbab19964bbfacb0a305ae5b271980979d86fecb4fa3beb535e8e7691f"
+  }
+}
