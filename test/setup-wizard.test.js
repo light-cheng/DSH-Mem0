@@ -1,7 +1,7 @@
 // The local setup wizard (lib/setup-wizard.js, lib/setup-routes.js) with
 // mocked embedder/LLM endpoints (fetchImpl, no network), a mocked DSH
 // credential service, and files in a temporary folder.
-import test from 'node:test'
+import test, { after } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -29,9 +29,15 @@ import { SqliteStore } from '../lib/store-sqlite.js'
 const DIMS = 6
 const vector = (text) => Array.from({ length: DIMS }, (_, index) => ((String(text).charCodeAt(index % String(text).length) || 1) % 17) + index + 1)
 
-function tempDir(t) {
+// Removed once every test in this file is done: per-test after hooks run in
+// the order they were added, so a store closed in a later hook would still
+// hold its file open on Windows when the directory is removed.
+const tempDirs = []
+after(() => { for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true }) })
+
+function tempDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-wizard-'))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  tempDirs.push(dir)
   return dir
 }
 
@@ -131,7 +137,7 @@ test('store location from the path: network and sync drives (path.win32 and path
 })
 
 test('store check on this computer: writable, nothing left behind', (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const file = path.join(dir, 'sub', 'memory.sqlite')
   const result = checkStoreLocation(file)
   assert.equal(result.writable, true)
@@ -178,7 +184,7 @@ test('LLM test: facts, and budget advice for cut-off and reasoning answers', asy
 })
 
 test('self-test writes, finds and deletes one probe of the test user; other memories untouched', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const storePath = path.join(dir, 'memory.sqlite')
   const store = new SqliteStore({ filePath: storePath })
   store.insert([{ id: 'real', text: 'a real memory', hash: md5('a real memory'), vector: vector('a real memory'), payload: { user_id: 'dsh-user' }, embedModel: 'test-embed' }])
@@ -199,7 +205,7 @@ test('self-test writes, finds and deletes one probe of the test user; other memo
 })
 
 test('self-test: a broken embedder fails at "write" and stores nothing', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const settings = resolveNativeSettings({ embedderBaseUrl: 'https://e.test/v1', embedderModel: 'x', llmBaseUrl: 'https://l.test/v1', llmModel: 'm', storePath: path.join(dir, 'm.sqlite') }, undefined)
   const result = await runSelfTest({ settings, fetchImpl: providerFetch({ status: 500 }) })
   assert.equal(result.ok, false)
@@ -210,7 +216,7 @@ test('self-test: a broken embedder fails at "write" and stores nothing', async (
 })
 
 test('oss.json: dsh_mem0 written, oss block kept, backup made, mode 600, no key', (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const file = path.join(dir, 'oss.json')
   fs.writeFileSync(file, JSON.stringify({ oss: { vector_store: { provider: 'qdrant', config: { url: 'http://127.0.0.1:6333' } } }, dsh_mem0: { userId: 'me', embedderModel: 'old', embedderDims: 99 } }))
   const out = writeOssSettings({ embedderModel: 'new', embedderApiKeyRef: 'GOOD_REF', llmApiKeyRef: 'bad ref!' }, { file, now: new Date('2026-11-20T01:02:03Z') })
@@ -238,7 +244,7 @@ test('credentials: stored through the DSH service only; read-only or missing ser
 })
 
 test('save: self-test first, keys into DSH credentials, refs only in oss.json', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const ossConfigPath = path.join(dir, 'oss.json')
   const { ctx, values } = credentialsCtx()
   const seen = []
@@ -259,7 +265,7 @@ test('save: self-test first, keys into DSH credentials, refs only in oss.json', 
 })
 
 test('save: a failing self-test writes nothing and stores no key', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const ossConfigPath = path.join(dir, 'oss.json')
   fs.writeFileSync(ossConfigPath, '{"dsh_mem0":{"userId":"me"}}')
   const { ctx, calls } = credentialsCtx()
@@ -275,7 +281,7 @@ test('save: a failing self-test writes nothing and stores no key', async (t) => 
 })
 
 test('save on a sync folder is refused before anything runs', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const { ctx } = credentialsCtx()
   const runtime = { config: { backend: 'oss', ossConfigPath: path.join(dir, 'oss.json'), profileFields: [] } }
   const result = await handleSetupAction(ctx, runtime, { action: 'save', draft: DRAFT(dir, { storePath: path.join(dir, 'Dropbox', 'm.sqlite') }) }, { fetchImpl: providerFetch() })
@@ -286,7 +292,7 @@ test('save on a sync folder is refused before anything runs', async (t) => {
 })
 
 test('wizard state: no keys, credential status, legacy Qdrant detected', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const ossConfigPath = path.join(dir, 'oss.json')
   fs.writeFileSync(ossConfigPath, JSON.stringify({ oss: { vector_store: { provider: 'qdrant', config: { url: 'http://127.0.0.1:15333', collection_name: 'dsh_mem0' } }, embedder: { provider: 'openai', config: { model: 'bge-m3', api_key: 'sk-literal-key-999' } } } }))
   const { ctx } = credentialsCtx({ initial: { DSH_MEM0_LLM_API_KEY: 'sk-stored' } })
@@ -305,7 +311,7 @@ test('wizard state: no keys, credential status, legacy Qdrant detected', async (
 })
 
 test('migration actions need the local backend; reembed runs as a job', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const { ctx } = credentialsCtx()
   const off = await handleSetupAction(ctx, { config: { backend: 'platform' } }, { action: 'migrate' })
   assert.equal(off.ok, false)
@@ -335,7 +341,7 @@ test('migration actions need the local backend; reembed runs as a job', async (t
 })
 
 test('reembed writes nothing when the memories change meanwhile (one transaction with the meta)', (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const store = new SqliteStore({ filePath: path.join(dir, 'm.sqlite') })
   t.after(() => store.close())
   store.insert([{ id: 'a', text: 'one', hash: md5('one'), vector: [1, 0], payload: {}, embedModel: 'old' }])

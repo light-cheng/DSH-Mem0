@@ -1,7 +1,7 @@
 // The one-time Qdrant → SQLite migration against a mocked Qdrant (fetchImpl,
 // no network) and SQLite files in a temporary folder. Test users and test
 // collections only; no real Qdrant is contacted.
-import test from 'node:test'
+import test, { after } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -100,9 +100,15 @@ function embedderFetch(qdrant, { failAfter } = {}) {
 
 const EMBEDDER = { provider: 'openai', baseUrl: 'http://127.0.0.1:18000/v1', model: 'test-embed', dims: undefined }
 
-function tempDir(t) {
+// Removed once every test in this file is done: per-test after hooks run in
+// the order they were added, so a store closed in a later hook would still
+// hold its file open on Windows when the directory is removed.
+const tempDirs = []
+after(() => { for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true }) })
+
+function tempDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-migrate-'))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  tempDirs.push(dir)
   return dir
 }
 
@@ -173,7 +179,7 @@ test('preflight counts only this user, never lists collections, refuses mem0 and
 })
 
 test('migrate into a new store: recomputed vectors, checks, marker, no .importing left', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const storePath = path.join(dir, 'memory.sqlite')
   const points = Array.from({ length: 300 }, (_, index) => point(index + 1))
   points.push(point(999, { user: OTHER }), { id: 'empty-1', vector: vec(1), payload: { data: '', user_id: USER } })
@@ -209,7 +215,7 @@ test('migrate into a new store: recomputed vectors, checks, marker, no .importin
 })
 
 test('migrate with copied vectors compares top-5 with Qdrant', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const storePath = path.join(dir, 'memory.sqlite')
   const qdrant = mockQdrant(Array.from({ length: 40 }, (_, index) => point(index + 1)))
   let embedCalls = 0
@@ -232,7 +238,7 @@ test('migrate with copied vectors compares top-5 with Qdrant', async (t) => {
 })
 
 test('migrate into an existing store merges in one transaction, skips ids and duplicates, and is repeatable', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const storePath = path.join(dir, 'memory.sqlite')
   const store = new SqliteStore({ filePath: storePath })
   t.after(() => store.close())
@@ -252,7 +258,7 @@ test('migrate into an existing store merges in one transaction, skips ids and du
 })
 
 test('a store of another embedder refuses the merge and stays unchanged', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const storePath = path.join(dir, 'memory.sqlite')
   const store = new SqliteStore({ filePath: storePath })
   t.after(() => store.close())
@@ -268,7 +274,7 @@ test('a store of another embedder refuses the merge and stays unchanged', async 
 })
 
 test('a failure while embedding leaves no store and no .importing file', async (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const storePath = path.join(dir, 'memory.sqlite')
   const qdrant = mockQdrant(Array.from({ length: 100 }, (_, index) => point(index + 1)))
   await assert.rejects(
@@ -279,7 +285,7 @@ test('a failure while embedding leaves no store and no .importing file', async (
 })
 
 test('the manual summary of the old Qdrant store moves to the SQLite store', (t) => {
-  const dir = tempDir(t)
+  const dir = tempDir()
   const state = new MaintenanceState(path.join(dir, 'maintenance.json'))
   const oldConfig = { backend: 'oss', userId: USER, agentId: 'dsh' }
   // The key earlier versions used: oss.json path + collection.
