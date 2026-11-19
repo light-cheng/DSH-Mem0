@@ -294,7 +294,9 @@ test('startup rebuilds a legacy flat generated profile without deleting memories
       },
     }
     const state = new MaintenanceState(path.join(dir, 'maintenance.json'))
-    const oldLastRun = '2026-11-01T00:00:00.000Z'
+    // Within the 7-day interval, so only the profile is rebuilt (a fixed date
+    // made this test fail once it was more than 7 days old).
+    const oldLastRun = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     state.write({
       version: 1,
       userId: 'dsh-user',

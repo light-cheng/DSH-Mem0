@@ -63,7 +63,7 @@ test('classifyFailure: timeout, connection, auth/quota, circuit, other', () => {
   assert.equal(classifyFailure(withCode('skipped', 'CIRCUIT_OPEN')), 'circuit')
 
   assert.equal(classifyFailure(new Mem0RestError('Mem0 POST /search failed: internal timeout handler crashed', { code: 'BACKEND_ERROR', status: 500 })), 'other')
-  assert.equal(classifyFailure(withCode('Mem0 baseUrl is not configured', 'CONFIG_MISSING')), 'other')
+  assert.equal(classifyFailure(withCode('Mem0 baseUrl is not configured', 'CONFIG_MISSING')), 'config')
   assert.equal(classifyFailure(new Error('Mem0 POST /search aborted')), 'other')
   assert.equal(classifyFailure(undefined), 'other')
   // A duration that happens to contain 401 is not an HTTP status.

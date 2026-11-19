@@ -22,6 +22,7 @@ import { MemoryMaintenance } from './lib/memory-maintenance.js'
 import { MaintenanceState } from './lib/maintenance-state.js'
 import { FailureHistory } from './lib/failure-history.js'
 import { SidecarLog } from './lib/sidecar-log.js'
+import { CONFIG_FINGERPRINT_FILE, ConfigGuard, describeConfigWarning } from './lib/config-guard.js'
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
 
@@ -34,10 +35,12 @@ export const MEM0_GUIDANCE =
   'Use mem0_search for targeted recall, mem0_add to store a lasting fact, mem0_get to read by id, mem0_update to correct a memory, and mem0_delete to forget one. ' +
   'Automatic capture stores completed turns in the configured Mem0 store; do not store secrets, transient chatter, or duplicates.'
 
-function createClient(config, logger, resolveApiKey, sidecarLog) {
+function createClient(config, logger, resolveApiKey, sidecarLog, onReady) {
   if (config.backend === 'oss') {
     return new Mem0SidecarClient({
       pythonPath: config.pythonPath,
+      pythonSource: config.pythonSource,
+      onReady,
       mem0ConfigPath: config.mem0ConfigPath,
       historyDbPath: config.historyDbPath,
       collectionName: config.collectionName,
@@ -103,8 +106,18 @@ export async function apply(ctx, rawConfig) {
   const sidecarLog = config.backend === 'oss'
     ? new SidecarLog({ filePath: dataDir ? path.join(dataDir, 'sidecar.log') : undefined, logger })
     : undefined
+  // Key settings that went missing since the plugin last ran fine (DSH's
+  // settings sync rewriting cordis.patch.yml); see lib/config-guard.js.
+  const configGuard = new ConfigGuard({
+    filePath: dataDir ? path.join(dataDir, CONFIG_FINGERPRINT_FILE) : undefined,
+    profileFields: config.profileFields,
+    fallbackFields: config.settingsFromOss,
+    logger,
+  })
+  if (configGuard.status()) logger?.warn?.(describeConfigWarning(configGuard.status()))
   const runtime = {
     config,
+    configGuard,
     failures,
     client: undefined,
     breaker: undefined,
@@ -149,7 +162,10 @@ export async function apply(ctx, rawConfig) {
     config.apiKeySource === 'config'
       ? undefined
       : async () => (await lookupApiKey(ctx, rawConfig, { logger }))?.value ?? process.env[config.apiKeyEnv]
-  const client = createClient(config, logger, resolveApiKey, sidecarLog)
+  // OSS: the settings worked once the sidecar is ready. REST backends have
+  // no start to wait for, so their settings count as in effect now.
+  const client = createClient(config, logger, resolveApiKey, sidecarLog, () => configGuard.markWorking())
+  if (config.backend !== 'oss') configGuard.markWorking()
   const breaker = new CircuitBreaker()
   const maintenanceState = new MaintenanceState(dataDir ? path.join(dataDir, 'maintenance.json') : undefined, logger)
   const maintenance = new MemoryMaintenance({
@@ -205,7 +221,7 @@ export async function apply(ctx, rawConfig) {
     )
   }
 
-  const tools = createMem0Tools(client, config, { maintenance, localizer, activity })
+  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
     return () => {
