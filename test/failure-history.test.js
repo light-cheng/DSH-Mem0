@@ -1,4 +1,5 @@
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -75,7 +76,7 @@ test('classifyFailure: timeout, connection, auth/quota, circuit, other', () => {
 
 async function startMock() {
   const script = new URL('../scripts/mock-mem0-server.mjs', import.meta.url)
-  const child = spawn(process.execPath, [script.pathname], {
+  const child = spawn(process.execPath, [fileURLToPath(script)], {
     env: { ...process.env, MOCK_MEM0_PORT: '0', MOCK_MEM0_KEY: '', MOCK_MEM0_USER: 'dsh-mem0-failure-test-user' },
     stdio: ['ignore', 'pipe', 'inherit'],
   })

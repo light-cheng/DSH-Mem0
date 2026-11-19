@@ -458,7 +458,7 @@ test('activity route reports the local store and its last failure (home shortene
   const result = await invoke(routes.get(GUI_ACTIVITY_PATH), 'GET', '/?translate=0')
   assert.equal(result.body.store.running, false)
   assert.equal(result.body.store.kind, 'sqlite')
-  assert.equal(result.body.store.path, `~/${path.basename(dir)}/memory.sqlite`)
+  assert.equal(result.body.store.path, ['~', path.basename(dir), 'memory.sqlite'].join(path.sep))
   assert.equal(result.body.store.lastStartFailure.code, 'readonly')
   assert.equal(result.body.store.lastStartFailure.reason.includes('sk-handwritten12345'), false)
   assert.equal('sidecar' in result.body, false)

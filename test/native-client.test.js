@@ -270,6 +270,8 @@ test('another embedder than the one in the store is a clear config error; an emp
   const result = await switched.client.reembed()
   assert.deepEqual(result, { updated: 1, model: 'other-embed', dims: 8 })
   assert.equal((await switched.client.search('tea', { user_id: USER })).results.length, 1)
+  // switched uses first's file: close it before first's folder is removed.
+  await switched.client.dispose()
 
   // An empty store with old embedder info: the new embedder takes over.
   const empty = setup(t)
