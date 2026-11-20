@@ -11,7 +11,6 @@ import {
   estimateTokens,
   memoryScore,
   rankMemories,
-  selectForBudget,
   shouldCaptureConversation,
 } from '../lib/memory-maintenance.js'
 import { MaintenanceState } from '../lib/maintenance-state.js'
@@ -23,8 +22,6 @@ function config(overrides = {}) {
     profileEnabled: true,
     profileBudgetTokens: 200,
     memoryBudgetTokens: 2200,
-    storeMaxMemories: 2,
-    storeMaxTokens: 20_000,
     hygieneEnabled: true,
     hygieneIntervalDays: 7,
     ...overrides,
@@ -94,17 +91,33 @@ test('dedupe and profile builder keep one copy and respect the profile budget', 
   assert.ok(profile.items >= 1)
 })
 
-test('budget selection removes the lowest-ranked items', () => {
-  const memories = [
-    memory('a', 'short'),
-    memory('b', 'a much longer memory that costs more tokens to include'),
-    memory('c', 'medium memory'),
-  ]
-  const result = selectForBudget(memories, { maxItems: 1, maxTokens: 1000 })
-  assert.equal(result.keep.length, 1)
-  assert.equal(result.remove.length, 2)
-  // Same age: length only breaks the tie, and shorter wins.
-  assert.equal(result.keep[0].id, 'a')
+test('above the safety limit hygiene only warns: nothing is deleted for size', async () => {
+  const { dir, state } = tempState('dsh-mem0-over-limit-')
+  try {
+    const rows = Array.from({ length: 1_005 }, (_, index) => memory(`m${index}`, `Distinct fact number ${index}`))
+    const client = fakeClient(rows)
+    const warnings = []
+    const maintenance = new MemoryMaintenance({
+      client,
+      config: config({ backend: 'oss', storeSafetyLimit: 1_000 }),
+      state,
+      activity: {},
+      logger: { warn: (message) => warnings.push(message), debug() {}, info() {} },
+    })
+    const report = await maintenance.run('manual')
+    assert.equal(report.overLimit, true)
+    assert.equal(report.safetyLimit, 1_000)
+    assert.equal(report.deleted, 0)
+    assert.equal(report.planned, 0)
+    assert.deepEqual(client.removed, [])
+    assert.ok(warnings.some((message) => /above the safety limit of 1000/.test(message)))
+    assert.equal(maintenance.status().lastReport.overLimit, true)
+    // Within the limit: no warning.
+    const fine = new MemoryMaintenance({ client: fakeClient(rows.slice(0, 10)), config: config(), state: tempState('dsh-mem0-under-limit-').state, activity: {}, logger: { warn() {}, debug() {}, info() {} } })
+    assert.equal((await fine.run('manual')).overLimit, false)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('ranking prefers short recent facts over long old ones', () => {
@@ -119,9 +132,7 @@ test('ranking prefers short recent facts over long old ones', () => {
   const old = memory('old', `Long background ${'y'.repeat(400)}`, {
     created_at: new Date(Date.now() - 400 * day).toISOString(),
   })
-  const budget = selectForBudget([old, recent], { maxItems: 1, maxTokens: 10_000 })
-  assert.deepEqual(budget.keep.map((m) => m.id), ['recent'])
-  assert.deepEqual(budget.remove.map((m) => m.id), ['old'])
+  assert.deepEqual(rankMemories([old, recent]).map((m) => m.id), ['recent', 'old'])
   const profile = buildProfile([old, recent], 12)
   assert.deepEqual(profile.memoryIds, ['recent'])
   // pinned still beats freshness
@@ -144,7 +155,7 @@ test('hygiene never deletes memories without the dsh source tag', async () => {
     ])
     const maintenance = new MemoryMaintenance({
       client,
-      config: config({ storeMaxMemories: 1 }),
+      config: config(),
       state,
       activity: {},
       logger: { warn() {}, debug() {} },
@@ -153,8 +164,8 @@ test('hygiene never deletes memories without the dsh source tag', async () => {
     assert.equal(report.dryRun, false)
     assert.equal(report.own, 3)
     assert.equal(report.foreign, 5)
-    // d1 duplicates a foreign memory; d3 is over the own-memory budget.
-    assert.deepEqual(client.removed.sort(), ['d1', 'd3'])
+    // d1 duplicates a foreign memory; foreign copies (f4) are never removed.
+    assert.deepEqual(client.removed.sort(), ['d1'])
     for (const id of client.removed) assert.match(id, /^d/)
     assert.match(maintenance.profileBlock(), /Foreign fact two/)
   } finally {
@@ -168,7 +179,7 @@ test('first automatic hygiene run is a preview and deletes nothing', async () =>
     const client = fakeClient([memory('a', 'Likes tea'), memory('b', 'LIKES TEA'), memory('c', 'Works on DSH plugins')])
     const maintenance = new MemoryMaintenance({
       client,
-      config: config({ storeMaxMemories: 1 }),
+      config: config(),
       state,
       activity: {},
       logger: { warn() {}, debug() {} },
@@ -177,8 +188,8 @@ test('first automatic hygiene run is a preview and deletes nothing', async () =>
     const report = await maintenance.maybeRun('startup')
     assert.equal(report.dryRun, true)
     assert.equal(report.deleted, 0)
-    assert.equal(report.planned, 2)
-    assert.deepEqual(report.plannedDetails.map((item) => item.id).sort(), ['b', 'c'])
+    assert.equal(report.planned, 1)
+    assert.deepEqual(report.plannedDetails.map((item) => item.id).sort(), ['b'])
     assert.deepEqual(client.removed, [])
     const saved = maintenance.status()
     assert.equal(saved.lastRunAt, null)
@@ -196,7 +207,7 @@ test('first automatic hygiene run is a preview and deletes nothing', async () =>
     assert.equal(maintenance.isDue(later), true)
     const confirmed = await maintenance.run('manual')
     assert.equal(confirmed.dryRun, false)
-    assert.deepEqual(client.removed.sort(), ['b', 'c'])
+    assert.deepEqual(client.removed.sort(), ['b'])
     assert.ok(maintenance.status().lastRunAt)
     assert.equal(maintenance.status().previewOnly, false)
   } finally {
@@ -228,7 +239,7 @@ test('manual dry run returns the plan without deleting or writing state', async 
   }
 })
 
-test('hygiene dedupes, prunes, writes profile state and exposes status', async () => {
+test('hygiene dedupes, writes profile state and exposes status', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-maintenance-'))
   try {
     const removed = []
@@ -259,17 +270,17 @@ test('hygiene dedupes, prunes, writes profile state and exposes status', async (
     const report = await maintenance.run('manual')
     assert.equal(report.scanned, 4)
     assert.equal(report.duplicates, 1)
-    assert.equal(report.deleted, 2)
-    assert.equal(report.storeCount, 2)
+    assert.equal(report.deleted, 1)
+    assert.equal(report.storeCount, 3)
     assert.equal(report.storeBefore, 4)
     assert.equal(report.duplicateDetails.length, 1)
-    assert.equal(report.deletedDetails.length, 2)
+    assert.equal(report.deletedDetails.length, 1)
     assert.deepEqual(report.failedDetails, [])
     assert.ok(report.durationMs >= 0)
     assert.ok(report.startedAt)
     assert.ok(report.finishedAt)
-    // 'b' duplicates 'a'; of the rest, the longest same-age fact is pruned.
-    assert.deepEqual(removed.sort(), ['b', 'c'])
+    // 'b' duplicates 'a'; nothing is pruned for size.
+    assert.deepEqual(removed.sort(), ['b'])
     assert.match(maintenance.profileBlock(), /Another fact/)
     const status = maintenance.status()
     assert.equal(status.enabled, true)
@@ -321,7 +332,7 @@ test('startup rebuilds a legacy flat generated profile without deleting memories
     const report = await maintenance.maybeRun('startup')
     assert.ok(report)
     assert.equal(report.deleted, 0)
-    assert.equal(report.pruned, 0)
+    assert.equal(report.merged, 0)
     assert.equal(report.profileItems, 2)
     assert.deepEqual(removed, [])
     assert.match(maintenance.profileBlock(), /^## /m)
@@ -356,7 +367,7 @@ test('hygiene disabled still builds a profile without deleting memories', async 
     })
     const report = await maintenance.run('manual')
     assert.equal(report.deleted, 0)
-    assert.equal(report.pruned, 0)
+    assert.equal(report.merged, 0)
     assert.equal(report.profileItems, 2)
     assert.deepEqual(removed, [])
     assert.match(maintenance.profileBlock(), /Likes tea/)
@@ -415,7 +426,7 @@ test('manual long-term memory persists across hygiene and can be rebuilt', async
     const state = new MaintenanceState(path.join(dir, 'maintenance.json'))
     const maintenance = new MemoryMaintenance({
       client,
-      config: config({ storeMaxMemories: 10 }),
+      config: config(),
       state,
       activity: {},
       logger: { warn() {}, debug() {} },
@@ -462,19 +473,20 @@ test('stored hygiene reports keep ids and reasons but no memory text', async () 
     assert.ok(activity.maintenance.plannedDetails.every((item) => !('preview' in item)))
 
     const report = await maintenance.run('manual')
-    assert.equal(report.deleted, 2)
-    for (const key of ['duplicateDetails', 'prunedDetails', 'deletedDetails']) {
+    assert.equal(report.deleted, 1)
+    for (const key of ['duplicateDetails', 'deletedDetails']) {
       for (const item of report[key]) {
         assert.deepEqual(Object.keys(item).sort(), ['id', 'reason'])
-        assert.ok(['duplicate', 'budget'].includes(item.reason))
+        assert.ok(['duplicate', 'model', 'merged'].includes(item.reason))
       }
     }
     const raw = fs.readFileSync(path.join(dir, 'maintenance.json'), 'utf8')
-    assert.equal(raw.includes('Private fact'), false)
+    // The deleted copy's text is in no stored report (kept memories may be
+    // in the summary, which is built from what is still stored).
     assert.equal(raw.includes('LIKES TEA'), false)
-    assert.equal(maintenance.status().lastReport.deletedDetails.length, 2)
+    assert.equal(maintenance.status().lastReport.deletedDetails.length, 1)
     // Translation cache entries of deleted memories are dropped.
-    assert.equal(forgotten.length, 2)
+    assert.equal(forgotten.length, 1)
     assert.ok(forgotten.includes('LIKES TEA'))
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })

@@ -363,7 +363,7 @@ test('maintenance failures record summary vs maintenance kind', async () => {
   }
   const maintenance = new MemoryMaintenance({
     client,
-    config: { userId: 'dsh-mem0-failure-test-user', hygieneEnabled: true, profileEnabled: true, storeMaxMemories: 10, storeMaxTokens: 1000, profileBudgetTokens: 400 },
+    config: { userId: 'dsh-mem0-failure-test-user', hygieneEnabled: true, profileEnabled: true, profileBudgetTokens: 400 },
     activity: {},
     logger: { warn() {}, debug() {} },
     failures,
