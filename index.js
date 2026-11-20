@@ -25,6 +25,7 @@ import { FailureHistory } from './lib/failure-history.js'
 import { CONFIG_FINGERPRINT_FILE, ConfigGuard, describeConfigWarning } from './lib/config-guard.js'
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
+import { ProjectResolver } from './lib/project-scope.js'
 
 export const name = 'dsh-mem0'
 export const inject = ['tools', 'systemPrompt']
@@ -185,7 +186,15 @@ export async function apply(ctx, rawConfig) {
     // DSH injects the model services after startup: passes wait for them.
     awaitModel: typeof ctx.inject === 'function',
   })
+  // Partitions (global / project / session) are stored by the local
+  // backend; REST backends keep every memory global. The project comes from
+  // the session's working directory (DSH's workingDirectory service).
+  const projects =
+    config.backend === 'oss'
+      ? new ProjectResolver({ logger, workingDirectory: () => ctx.get?.('workingDirectory') })
+      : undefined
   const lifecycle = new MemoryLifecycle({
+    projects,
     client,
     config,
     logger,
@@ -201,6 +210,7 @@ export async function apply(ctx, rawConfig) {
   runtime.breaker = breaker
   runtime.lifecycle = lifecycle
   runtime.maintenance = maintenance
+  runtime.projects = projects
 
   ctx.effect(() => () => {
     lifecycle.dispose()
@@ -229,7 +239,7 @@ export async function apply(ctx, rawConfig) {
     )
   }
 
-  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard })
+  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard, projects })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
     return () => {

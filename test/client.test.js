@@ -255,3 +255,40 @@ test('setup wizard: a stored key only for its own server; errors in the page lan
   // Same keys in both languages.
   assert.deepEqual(Object.keys(en).filter((key) => key.startsWith('wz')).sort(), Object.keys(zh).filter((key) => key.startsWith('wz')).sort())
 })
+
+test('memory page helpers: report rows show current text or "deleted"; the tree lists partitions', () => {
+  const { reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, zh, en } = loadClient().exports.__test__
+  const t = (key) => zh[key] ?? key
+  const report = {
+    mergedDetails: [{ id: 'new1', ids: ['a', 'b'] }, { id: null, ids: ['c'], pending: true }],
+    reviewDetails: [{ id: 'd', reason: 'importance', level: 4 }],
+  }
+  assert.equal(JSON.stringify(reportMemoryIds(report)), JSON.stringify(['new1', 'a', 'b', 'c', 'd']))
+  const texts = { new1: { memory: '合并后的记忆' }, a: null, b: null, c: null, d: { memory: '喜欢绿茶' } }
+  assert.equal(mergeLine(t, texts, report.mergedDetails[0]), '合并后的记忆 ← 已删除 · 已删除')
+  assert.equal(mergeLine(t, texts, report.mergedDetails[1]), '合并待完成 ← 已删除')
+  assert.equal(importanceLine(t, texts, report.reviewDetails[0]), '喜欢绿茶 · 重要度 4')
+  assert.equal(reportBody(t, null, 'd'), 'd', 'before the lookup answers: the id')
+  assert.equal(reportBody((key) => en[key], { x: null }, 'x'), 'deleted')
+
+  const tree = {
+    partitioned: true,
+    total: 6,
+    global: 2,
+    projects: [{ id: 'p0123456789abcdef', key: 'project:p0123456789abcdef', name: 'alpha', count: 3, sessions: [{ id: 'S1abcdefgh', key: 'session:S1abcdefgh', count: 1 }] }],
+    sessions: [{ id: 'S2', key: 'session:S2', count: 1 }],
+  }
+  const rows = treeEntries(t, tree)
+  assert.deepEqual(JSON.parse(JSON.stringify(rows.map((row) => [row.key, row.label, row.depth]))), [
+    ['', '全部', 0],
+    ['global', '全局', 0],
+    [null, '项目', 0],
+    ['project:p0123456789abcdef', 'alpha', 1],
+    ['session:S1abcdefgh', '会话 S1abcdef', 2],
+    [null, '不属于项目的会话', 0],
+    ['session:S2', '会话 S2', 1],
+  ])
+  assert.equal(treeEntries(t, { partitioned: false }).length, 0)
+  assert.equal(scopeLabel(t, { scope: 'project', projectId: 'p0123456789abcdef' }, tree), '项目 alpha')
+  assert.equal(scopeLabel(t, { scope: 'global' }, tree), '全局')
+})

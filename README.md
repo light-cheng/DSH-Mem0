@@ -47,7 +47,7 @@ The **Test connection** button calls the same read-only health check as `mem0_st
 
 **Memory activity** records the latest automatic capture and recall results; **Recent memories** reads the backend directly and shows real memory text, ID and time. This makes it clear whether automatic capture actually worked. A capture that ran but wrote nothing (no memory added, updated or deleted) shows a grey **Nothing new** badge instead of the green **Saved**, and the composer status says **Nothing new to remember**. Platform and server answers that report no counts keep the **Saved** badge.
 
-**View all memories** opens the **Memory library**, where every memory stored for the current user can be searched by content or ID. Memories this plugin wrote (`metadata.source = "dsh"`) have a **Delete** button. It first shows the memory's full text and ID and asks for confirmation; only then is that one memory deleted, its cached translation dropped and the list reloaded. Memories written by other apps or for another Mem0 user have no button, and the plugin's route (`DELETE /dsh-mem0/gui/memories?id=…`) refuses them with HTTP 403 and the reason. There is no bulk delete, clear-all or delete-by-filter. **Last recalled memories** shows the texts, IDs, count and latency of the most recent automatic recall:
+**View all memories** opens the **Memory library**, where every memory stored for the current user can be searched by content or ID. Memories this plugin wrote (`metadata.source = "dsh"`) have a **Delete** button. It first shows the memory's full text and ID and asks for confirmation; only then is that one memory deleted, its cached translation dropped and the list reloaded. Memories written by other apps or for another Mem0 user have no button, and the plugin's route (`DELETE /dsh-mem0/gui/memories?id=…`) refuses them with HTTP 403 and the reason. There is no bulk delete, clear-all or delete-by-filter. On the local backend the library has a tree on the left (all, global, each project with its sessions) to browse one partition; each memory shows its partition, and a project memory of this plugin has **Make global** (there is no other move and no editing). In the hygiene report, merge and importance rows show the memories' text, read by id; one no longer there shows **deleted**. **Last recalled memories** shows the texts, IDs, count and latency of the most recent automatic recall:
 
 ![Memory library](assets/screenshots/en/10-memory-library.png)
 
@@ -77,6 +77,18 @@ When **Test connection** succeeds, the status card shows a green **Connected** c
 
 The UI follows DSH's language setting. When `translateMemories` is on (off by default, see [Privacy and data](#privacy-and-data)), the visible memory text, memory summary and recall preview are translated into the page language with the current DSH model; otherwise, or when translation is unavailable, the original text is shown. A Chinese screenshot is available in the [Chinese README](README.zh-CN.md).
 
+## Memory partitions
+
+On the local backend (`backend: oss`) memories live in three partitions: **global** (everywhere), **project** (one repository or folder) and **session** (one DSH session).
+
+- *Which project.* The project of a session comes from its working directory (DSH's `workingDirectory` service, then the session header): the hash of the normalised git `origin` URL (ssh and https forms of one remote are one project; credentials, port and `.git` dropped), else of the repository root, else of the working directory. On Windows drive letter case and backslashes do not matter. Only the hash and a display name (the repository or folder name) are stored, never a path or remote URL. git is asked with a 2-second timeout; without git the folder is the project.
+- *Recall* reads global memories plus the current project's and session's, never another project's. Project and session scores are multiplied by `projectRecallBoost` (default 1.1, range 1–2).
+- *Capture* writes to the current project. `mem0_add` writes to the project by default (`scope: "global"` or `"session"` to choose); `mem0_search` reads the current partitions (`scope: "global"`, `"project"` or `"all"` to choose).
+- *No project known* (background work, a session without a working directory, a tool call without a session): captures and adds go to global, and a fold of a session's turns uses the project seen earlier in that session, else global. Hygiene and summaries use each memory's own partition.
+- *Old memories* (written before partitions, moved from Qdrant) have no partition and count as global; nothing rewrites them.
+- Hygiene merges and replaces only within one partition (an action across partitions is dropped and counted). The summary in the system prompt has a **Global** part and a part for the current **Project**, each written separately (see below).
+- The Mem0 Platform and self-hosted server backends have no partitions: everything is global and the tools have no `scope` parameter.
+
 ## Memory maintenance
 
 The **Memory maintenance** section separates several budgets that are easy to confuse:
@@ -100,7 +112,7 @@ Hygiene runs every 7 days by default and can be set to 1–90 days. It runs once
 
 **Deleting or editing a memory and the summary.** When a memory is deleted or updated (the `mem0_delete` / `mem0_update` tools or the library's **Delete**), a generated summary built from it stops being injected at once and is rebuilt in the background, also when hygiene is off. A manual summary is your text and keeps being injected; if it was edited from a generated summary that used the memory (or its sources are unknown), the Memory summary card says it may contain deleted or outdated content until you edit or rebuild it. Summaries are redacted like captures, before they are saved and again before they are injected, and the plugin's own block tags are removed from them. Recall and `mem0_search` queries are redacted the same way before they reach the backend or the activity view.
 
-The generated memory summary uses local deterministic logic without extra model calls. Facts are grouped into sections by topic. You can edit it at any time; manual edits are stored in `maintenance.json` and are not overwritten by hygiene. Use **Rebuild from memories** to return to the generated version. Section headings follow the dominant language of the memories (Chinese when most facts are Chinese, English otherwise).
+Each hygiene pass writes the generated summaries (one global, one per project; session memories are left out) with your DSH model, at most 6 calls per pass, each from that partition's memories ranked by importance and freshness (redacted, about 3000 input tokens); a summary whose sources did not change is kept without a call. With model-led hygiene off, or when the model is unavailable or answers badly, the local deterministic summary is used instead (no model call; facts grouped into sections by topic). Deleting or editing a memory marks the summaries built from it stale at once, as above. You can edit it at any time; manual edits are stored in `maintenance.json` and are not overwritten by hygiene. Use **Rebuild from memories** to return to the generated version. Section headings follow the dominant language of the memories (Chinese when most facts are Chinese, English otherwise).
 
 To keep DeepSeek's prefix cache warm, the summary is a system-prompt section (`plugin:dsh-mem0:profile`) that changes only when the stored summary changes. The per-turn `<mem0-relevant-memories>` block is a runtime context (`mem0:recall`), which DSH appends next to the latest user message, so it never rewrites earlier history.
 
@@ -350,6 +362,7 @@ Extraction usually runs in the cloud, so the local embedding model is what decid
 | `hygieneEnabled` | `true` | Enable memory hygiene |
 | `modelHygiene` | `true` | Hygiene asks the model currently set in DSH (billed to that provider, not in DSH usage statistics); `false` runs the script checks only |
 | `importanceWeight` | `0.2` | How much hygiene's importance reorders recall, 0–1 (0 = off) |
+| `projectRecallBoost` | `1.1` | Recall score factor for the current project's and session's memories, 1–2 (local backend) |
 | `hygieneIntervalDays` | `7` | Hygiene interval in days, 1–90 |
 | `translateMemories` | `false` | Translate memory text on the settings page with the DSH default model (sends memory text to that model) |
 | `captureStrataFolds` | `false` | Also save dsh-strata's tier-1 fold summaries (needs `autoCapture` and dsh-strata). A second, cleaner copy of turns already captured; see [dsh-strata](#dsh-strata) |

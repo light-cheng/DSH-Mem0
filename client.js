@@ -119,6 +119,8 @@ window.__ModuleLoader__.load({
       storeSafetyLimitHint: 'Above this count hygiene warns; it never deletes for size. Default 20000.',
       importanceWeight: 'Importance weight in recall',
       importanceWeightHint: 'How much the importance rated by hygiene reorders recall, 0–1 (0 = off). Default 0.2.',
+      projectRecallBoost: 'Current project weight in recall',
+      projectRecallBoostHint: 'Recall reads the current project and global memories together; the project’s scores are multiplied by this, 1–2 (1 = no preference). Default 1.1.',
       modelHygiene: 'Model-led hygiene',
       modelHygieneHint: 'Hygiene asks the model currently set in DSH to merge, retire and rate memories; scripts dedupe and check every action. The calls are billed to your provider in DSH and do not appear in DSH usage statistics; each report shows the tokens used. Off: script checks only.',
       hygieneEnabled: 'Weekly memory hygiene',
@@ -504,6 +506,21 @@ window.__ModuleLoader__.load({
       memoryPinnedTag: 'Pinned',
       memoryImportance: 'Importance {level}',
       memoryPinError: 'Could not change the pin',
+      memoryMakeGlobal: 'Make global',
+      memoryMakeGlobalError: 'Could not move the memory',
+      memorySource: 'source {source}',
+      memoryTreeTitle: 'Memory page',
+      memoryTreeHint: 'Memories by where they apply: global (everywhere), a project (one repository or folder) or a session. Browse, search, pin and delete; memories cannot be edited here.',
+      treeAll: 'All',
+      treeProjects: 'Projects',
+      treeSessions: 'Sessions without a project',
+      scopeGlobal: 'Global',
+      scopeProject: 'Project {name}',
+      scopeSession: 'Session {id}',
+      reportDeleted: 'deleted',
+      reportPending: 'merge pending',
+      projectSummaries: 'Project summaries: {list}',
+      projectSummaryStale: 'being rebuilt',
       memoryDeleting: 'Deleting…',
       memoryDeleteConfirm: 'Permanently delete this memory? This cannot be undone.\n\nID: {id}\n\n{memory}',
       memoryDeleted: 'Deleted',
@@ -516,7 +533,7 @@ window.__ModuleLoader__.load({
       profileStale: 'A memory this summary was built from was deleted or changed; the summary is not injected until it is rebuilt.',
       recallPreviewTitle: 'Last recalled memories',
       profileSummaryTitle: 'Memory summary',
-      profileSummaryHint: 'Editable memory summary, injected before relevant memories during recall.',
+      profileSummaryHint: 'Editable global memory summary, injected with the current project’s summary during recall. Hygiene has the model rewrite summaries whose memories changed; a delete or an edit stops a summary until it is rebuilt.',
       profileSummaryEmpty: 'No memory summary yet. It is generated after the next maintenance pass.',
       profileSummaryDisabled: 'Memory summary is disabled.',
       profileSummaryItems: 'items',
@@ -632,6 +649,8 @@ window.__ModuleLoader__.load({
       storeSafetyLimitHint: '超过后巡检只提醒，不会因为条数多而删除记忆。默认 20000。',
       importanceWeight: '召回时的重要度权重',
       importanceWeightHint: '巡检评出的重要度对召回排序的影响，0–1（0 表示不用）。默认 0.2。',
+      projectRecallBoost: '召回时当前项目的权重',
+      projectRecallBoostHint: '召回同时读取当前项目和全局的记忆，当前项目的分数乘以这个系数，1–2（1 表示不偏向）。默认 1.1。',
       modelHygiene: '模型巡检',
       modelHygieneHint: '巡检会调用你当前在 DSH 配置的模型，判断哪些记忆该合并、删除，并评出重要度；脚本负责去重，并逐条校验模型给出的动作。费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计；每次巡检报告都会显示用了多少 token。关闭后只做脚本巡检。',
       hygieneEnabled: '每周记忆卫生巡检',
@@ -1017,6 +1036,21 @@ window.__ModuleLoader__.load({
       memoryPinnedTag: '已置顶',
       memoryImportance: '重要度 {level}',
       memoryPinError: '置顶操作失败',
+      memoryMakeGlobal: '改为全局',
+      memoryMakeGlobalError: '移动记忆失败',
+      memorySource: '来源 {source}',
+      memoryTreeTitle: '记忆',
+      memoryTreeHint: '按适用范围浏览记忆：全局（处处适用）、项目（一个仓库或文件夹）或会话。可以搜索、置顶和删除，这里不能编辑记忆。',
+      treeAll: '全部',
+      treeProjects: '项目',
+      treeSessions: '不属于项目的会话',
+      scopeGlobal: '全局',
+      scopeProject: '项目 {name}',
+      scopeSession: '会话 {id}',
+      reportDeleted: '已删除',
+      reportPending: '合并待完成',
+      projectSummaries: '项目摘要：{list}',
+      projectSummaryStale: '重建中',
       memoryDeleting: '正在删除…',
       memoryDeleteConfirm: '永久删除这条记忆吗？删除后无法恢复。\n\nID：{id}\n\n{memory}',
       memoryDeleted: '已删除',
@@ -1029,7 +1063,7 @@ window.__ModuleLoader__.load({
       profileStale: '生成这份摘要的记忆中有被删除或修改的，摘要重建前不会注入。',
       recallPreviewTitle: '上次召回的记忆',
       profileSummaryTitle: '记忆摘要',
-      profileSummaryHint: '可编辑的记忆摘要，召回时优先注入。',
+      profileSummaryHint: '可编辑的全局记忆摘要，召回时和当前项目的摘要一起注入。巡检时由模型重写记忆有变化的摘要；删改记忆后，相关摘要会先停用，等待重建。',
       profileSummaryEmpty: '尚未生成记忆摘要；下次维护后会自动生成。',
       profileSummaryDisabled: '记忆摘要已关闭。',
       profileSummaryItems: '条',
@@ -1134,6 +1168,15 @@ window.__ModuleLoader__.load({
       .mem0-memory-delete:hover:not(:disabled){color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}
       .mem0-section-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
       .mem0-search-row{display:flex;align-items:center;gap:8px;margin:10px 0}
+      .mem0-explorer{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:16px;align-items:start}
+      .mem0-explorer-flat{display:block}
+      .mem0-tree{display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--dsw-alias-border-l1);padding-right:12px}
+      .mem0-tree-row{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:4px 8px;font-size:12px;color:var(--dsw-alias-label-primary);cursor:pointer}
+      .mem0-tree-row:hover{background:var(--dsw-alias-fill-l1,rgba(127,127,127,.08))}
+      .mem0-tree-row[aria-current="true"]{background:var(--dsw-alias-fill-l2,rgba(127,127,127,.16));font-weight:600}
+      .mem0-tree-head{font-size:11px;color:var(--dsw-alias-label-tertiary);padding:8px 8px 2px}
+      .mem0-tree-count{color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+      @media (max-width:640px){.mem0-explorer{grid-template-columns:1fr}.mem0-tree{border-right:0;border-bottom:1px solid var(--dsw-alias-border-l1);padding:0 0 8px}}
       .mem0-search-row .mem0-input{flex:1;min-width:0}
       .mem0-recall-preview{margin-top:9px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
       .mem0-profile{margin:10px 0 0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto}
@@ -1198,6 +1241,7 @@ window.__ModuleLoader__.load({
       'memoryBudgetTokens',
       'storeSafetyLimit',
       'importanceWeight',
+      'projectRecallBoost',
       'hygieneIntervalDays',
     ])
     const FIELD_ORDER = [
@@ -1226,6 +1270,7 @@ window.__ModuleLoader__.load({
       'hygieneEnabled',
       'modelHygiene',
       'importanceWeight',
+      'projectRecallBoost',
       'hygieneIntervalDays',
       'translateMemories',
       'captureStrataFolds',
@@ -1258,6 +1303,7 @@ window.__ModuleLoader__.load({
         hygieneEnabled: value?.hygieneEnabled !== false,
         modelHygiene: value?.modelHygiene !== false,
         importanceWeight: Number(value?.importanceWeight ?? 0.2),
+        projectRecallBoost: Number(value?.projectRecallBoost ?? 1.1),
         hygieneIntervalDays: Number(value?.hygieneIntervalDays ?? 7),
         translateMemories: value?.translateMemories === true,
         captureStrataFolds: value?.captureStrataFolds === true,
@@ -1627,6 +1673,73 @@ window.__ModuleLoader__.load({
                 ? template(t('hygieneItemImportance'), { level: item.level ?? '?' })
                 : ''
       return reason ? `${item?.id ?? '—'} · ${reason}` : String(item?.id ?? '—')
+    }
+
+    // Ids of the memories a report's merge and importance rows name.
+    function reportMemoryIds(report) {
+      const ids = new Set()
+      for (const item of [...(Array.isArray(report?.mergedDetails) ? report.mergedDetails : []), ...(Array.isArray(report?.mergePlan) ? report.mergePlan : [])]) {
+        if (item?.id) ids.add(String(item.id))
+        for (const id of Array.isArray(item?.ids) ? item.ids : []) ids.add(String(id))
+      }
+      for (const item of Array.isArray(report?.reviewDetails) ? report.reviewDetails : []) if (item?.id) ids.add(String(item.id))
+      return [...ids].slice(0, 60)
+    }
+
+    // The current text of a memory a report names (looked up by id), or
+    // "deleted" when it is gone; the id while the lookup has not answered.
+    function reportBody(t, texts, id) {
+      if (!texts || !Object.hasOwn(texts, String(id))) return String(id ?? '—')
+      const entry = texts[String(id)]
+      const text = String(entry?.memory ?? '').trim()
+      if (!entry || !text) return t('reportDeleted')
+      return text.length > 120 ? `${text.slice(0, 119)}…` : text
+    }
+
+    function mergeLine(t, texts, item) {
+      const head = item?.preview ? item.preview : item?.id ? reportBody(t, texts, item.id) : item?.pending ? t('reportPending') : ''
+      const sources = (Array.isArray(item?.ids) ? item.ids : []).map((id) => reportBody(t, texts, id)).join(' · ')
+      return head ? `${head} ← ${sources}` : sources
+    }
+
+    function importanceLine(t, texts, item) {
+      return `${reportBody(t, texts, item?.id)} · ${template(t('hygieneItemImportance'), { level: item?.level ?? '?' })}`
+    }
+
+    function shortId(id) {
+      return String(id ?? '').slice(0, 8)
+    }
+
+    // Rows of the memory page's tree: all, global, projects (with their
+    // sessions), sessions without a project. Headers are not selectable.
+    function treeEntries(t, tree) {
+      if (!tree?.partitioned) return []
+      const rows = [
+        { key: '', label: t('treeAll'), count: tree.total ?? 0, depth: 0 },
+        { key: 'global', label: t('scopeGlobal'), count: tree.global ?? 0, depth: 0 },
+      ]
+      const projects = Array.isArray(tree.projects) ? tree.projects : []
+      if (projects.length > 0) rows.push({ key: null, label: t('treeProjects'), header: true, depth: 0 })
+      for (const project of projects) {
+        rows.push({ key: project.key, label: project.name || shortId(project.id), count: project.count ?? 0, depth: 1 })
+        for (const session of Array.isArray(project.sessions) ? project.sessions : []) {
+          rows.push({ key: session.key, label: template(t('scopeSession'), { id: shortId(session.id) }), count: session.count ?? 0, depth: 2 })
+        }
+      }
+      const loose = Array.isArray(tree.sessions) ? tree.sessions : []
+      if (loose.length > 0) rows.push({ key: null, label: t('treeSessions'), header: true, depth: 0 })
+      for (const session of loose) rows.push({ key: session.key, label: template(t('scopeSession'), { id: shortId(session.id) }), count: session.count ?? 0, depth: 1 })
+      return rows
+    }
+
+    // The partition chip of one memory on the memory page.
+    function scopeLabel(t, memory, tree) {
+      if (memory?.scope === 'project') {
+        const project = (tree?.projects ?? []).find((item) => item.id === memory.projectId)
+        return template(t('scopeProject'), { name: project?.name || shortId(memory.projectId) })
+      }
+      if (memory?.scope === 'session') return template(t('scopeSession'), { id: shortId(memory.sessionId) })
+      return t('scopeGlobal')
     }
 
     function backendChoiceText(t, data) {
@@ -2788,6 +2901,11 @@ window.__ModuleLoader__.load({
       const [hygieneMessage, setHygieneMessage] = useState('')
       const [browserOpen, setBrowserOpen] = useState(false)
       const [memoryQuery, setMemoryQuery] = useState('')
+      // The memory page's tree and the partition it shows ('' = all).
+      const [memoryTree, setMemoryTree] = useState(null)
+      const [memoryPartition, setMemoryPartition] = useState('')
+      // Current text of the memories the last hygiene report names, by id.
+      const [reportTexts, setReportTexts] = useState(null)
       const [memoryState, setMemoryState] = useState({ phase: 'idle', data: null, message: '' })
       const [deleteState, setDeleteState] = useState({ id: null, outcome: 'idle', message: '' })
       const [profileDraft, setProfileDraft] = useState(null)
@@ -2856,11 +2974,19 @@ window.__ModuleLoader__.load({
         }
       }, [status, profileEditing])
 
-      const loadMemories = useCallback(async (query) => {
+      const loadTree = useCallback(async () => {
+        try {
+          setMemoryTree(await fetchJson(`${MEMORIES_PATH}?tree=1`))
+        } catch {
+          setMemoryTree(null)
+        }
+      }, [])
+
+      const loadMemories = useCallback(async (query, partition = '') => {
         const q = String(query ?? '').trim()
         setMemoryState((current) => ({ phase: 'loading', data: current.data, message: '' }))
         try {
-          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(ctx)}`)
+          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(ctx)}&partition=${encodeURIComponent(partition)}`)
           setMemoryState({ phase: 'ready', data, message: '' })
         } catch (error) {
           setMemoryState({ phase: 'error', data: null, message: error.message })
@@ -2875,7 +3001,8 @@ window.__ModuleLoader__.load({
           request: fetchJson,
           confirm: (text) => window.confirm(text),
           reload: async () => {
-            await loadMemories(memoryQuery)
+            await loadMemories(memoryQuery, memoryPartition)
+            void loadTree()
             void refreshStatus({ translate: false })
           },
         })
@@ -2892,14 +3019,38 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ id, pinned }),
           })
           if (!outcome?.ok) throw new Error(outcome?.error || t('memoryPinError'))
-          await loadMemories(memoryQuery)
+          await loadMemories(memoryQuery, memoryPartition)
         } catch (error) {
           setDeleteState({ id: null, outcome: 'error', message: `${t('memoryPinError')}: ${error.message}` })
         }
       }
 
+      // Move a project memory to global (text unchanged; no other edit).
+      const makeGlobal = async (id) => {
+        try {
+          const outcome = await fetchJson(MEMORIES_PATH, {
+            method: 'POST',
+            retry: false,
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id, scope: 'global' }),
+          })
+          if (!outcome?.ok) throw new Error(outcome?.error || t('memoryMakeGlobalError'))
+          await Promise.all([loadMemories(memoryQuery, memoryPartition), loadTree()])
+        } catch (error) {
+          setDeleteState({ id: null, outcome: 'error', message: `${t('memoryMakeGlobalError')}: ${error.message}` })
+        }
+      }
+
+      const selectPartition = (key) => {
+        setMemoryPartition(key)
+        void loadMemories(memoryQuery, key)
+      }
+
       const toggleBrowser = () => {
-        if (!browserOpen) void loadMemories(memoryQuery)
+        if (!browserOpen) {
+          void loadMemories(memoryQuery, memoryPartition)
+          void loadTree()
+        }
         setBrowserOpen((open) => !open)
       }
 
@@ -3161,6 +3312,25 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const reportIdsKey = reportMemoryIds(status.data?.maintenance?.lastReport ?? null).join(',')
+      useEffect(() => {
+        // Stored reports keep ids only: read the current text by id.
+        if (!reportIdsKey) {
+          setReportTexts(null)
+          return undefined
+        }
+        let cancelled = false
+        fetchJson(`${MEMORIES_PATH}?ids=${encodeURIComponent(reportIdsKey)}`)
+          .then((data) => {
+            if (!cancelled) setReportTexts(data?.ok ? data.texts ?? {} : null)
+          })
+          .catch(() => {
+            if (!cancelled) setReportTexts(null)
+          })
+        return () => {
+          cancelled = true
+        }
+      }, [reportIdsKey])
       if (snapshot.status === 'unavailable') {
         return h('div', { className: 'mem0-page' }, h('p', { className: 'mem0-empty' }, t('unavailable')))
       }
@@ -3234,6 +3404,14 @@ window.__ModuleLoader__.load({
           profileMeta.push(`${t('profileSummaryUpdated')} ${activityTime(maintenance.profile.updatedAt)}`)
         }
       }
+      // Project summaries (partition L0): name, size, whether being rebuilt.
+      const projectSummaryLine = Array.isArray(maintenance?.projectProfiles) && maintenance.projectProfiles.length > 0
+        ? template(t('projectSummaries'), {
+            list: maintenance.projectProfiles
+              .map((item) => `${item.name || shortId(item.projectId)} (${item.items ?? 0} · ${item.tokens ?? 0} tok${item.stale ? ` · ${t('projectSummaryStale')}` : ''})`)
+              .join(', '),
+          })
+        : ''
       const maintenanceMeta = []
       if (maintenance?.lastRunAt) {
         maintenanceMeta.push(`${t('hygieneLastRun')} ${activityTime(maintenance.lastRunAt)}`)
@@ -3466,6 +3644,7 @@ window.__ModuleLoader__.load({
             profileMeta.length > 0 ? h('span', { className: 'mem0-hint' }, profileMeta.join(' · ')) : null,
           ),
           h('p', { className: 'mem0-section-hint' }, t('profileSummaryHint')),
+          projectSummaryLine ? h('p', { className: 'mem0-hint' }, projectSummaryLine) : null,
           profileEditing
             ? h('textarea', {
                 className: 'mem0-profile-edit',
@@ -3710,14 +3889,43 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'mem0-section-head' },
-                h('h3', { className: 'mem0-section-title' }, t('memoryBrowserTitle')),
+                h('h3', { className: 'mem0-section-title' }, memoryTree?.partitioned ? t('memoryTreeTitle') : t('memoryBrowserTitle')),
                 h(
                   'button',
                   { type: 'button', className: 'mem0-secondary', onClick: toggleBrowser },
                   t('memoryBrowserClose'),
                 ),
               ),
-              h('p', { className: 'mem0-section-hint' }, t('memoryBrowserHint')),
+              h('p', { className: 'mem0-section-hint' }, memoryTree?.partitioned ? t('memoryTreeHint') : t('memoryBrowserHint')),
+              h(
+                'div',
+                { className: memoryTree?.partitioned ? 'mem0-explorer' : 'mem0-explorer mem0-explorer-flat' },
+                memoryTree?.partitioned
+                  ? h(
+                      'nav',
+                      { className: 'mem0-tree', 'aria-label': t('memoryTreeTitle') },
+                      treeEntries(t, memoryTree).map((row, index) =>
+                        row.header
+                          ? h('div', { key: `head-${index}`, className: 'mem0-tree-head' }, row.label)
+                          : h(
+                              'button',
+                              {
+                                key: row.key || 'all',
+                                type: 'button',
+                                className: 'mem0-tree-row',
+                                style: { paddingLeft: `${8 + row.depth * 12}px` },
+                                'aria-current': memoryPartition === row.key ? 'true' : 'false',
+                                onClick: () => selectPartition(row.key),
+                              },
+                              h('span', null, row.label),
+                              h('span', { className: 'mem0-tree-count' }, String(row.count ?? 0)),
+                            ),
+                      ),
+                    )
+                  : null,
+              h(
+                'div',
+                null,
               h(
                 'div',
                 { className: 'mem0-search-row' },
@@ -3730,7 +3938,7 @@ window.__ModuleLoader__.load({
                   onKeyDown: (event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault()
-                      void loadMemories(memoryQuery)
+                      void loadMemories(memoryQuery, memoryPartition)
                     }
                   },
                 }),
@@ -3739,7 +3947,7 @@ window.__ModuleLoader__.load({
                   {
                     type: 'button',
                     className: 'mem0-primary',
-                    onClick: () => void loadMemories(memoryQuery),
+                    onClick: () => void loadMemories(memoryQuery, memoryPartition),
                     disabled: memoryState.phase === 'loading',
                   },
                   t('memorySearch'),
@@ -3793,9 +4001,18 @@ window.__ModuleLoader__.load({
                                       typeof memory.score === 'number'
                                         ? h('span', { className: 'mem0-hint' }, `${t('memoryScore')} ${memory.score.toFixed(3)}`)
                                         : null,
+                                      memoryTree?.partitioned ? h('span', { className: 'mem0-chip' }, scopeLabel(t, memory, memoryTree)) : null,
                                       memory.pinned ? h('span', { className: 'mem0-chip' }, t('memoryPinnedTag')) : null,
                                       Number.isInteger(memory.importance)
                                         ? h('span', { className: 'mem0-hint' }, template(t('memoryImportance'), { level: memory.importance }))
+                                        : null,
+                                      memory.source ? h('span', { className: 'mem0-hint' }, template(t('memorySource'), { source: memory.source })) : null,
+                                      memory.id && memory.globalizable
+                                        ? h(
+                                            'button',
+                                            { type: 'button', className: 'mem0-secondary', onClick: () => void makeGlobal(memory.id) },
+                                            t('memoryMakeGlobal'),
+                                          )
                                         : null,
                                       memory.id && memory.pinnable
                                         ? h(
@@ -3826,6 +4043,8 @@ window.__ModuleLoader__.load({
                             : h('p', { className: 'mem0-empty' }, t('memoryEmpty')),
                         )
                       : h('p', { className: 'mem0-hint' }, t('memoryBrowserHint')),
+              ),
+              ),
             )
           : null,
         h(
@@ -4041,6 +4260,13 @@ window.__ModuleLoader__.load({
               onChange: (value) => setField('importanceWeight', value === '' ? '' : Number(value)),
             }),
             h(TextField, {
+              label: t('projectRecallBoost'),
+              hint: t('projectRecallBoostHint'),
+              type: 'number',
+              value: draft.projectRecallBoost,
+              onChange: (value) => setField('projectRecallBoost', value === '' ? '' : Number(value)),
+            }),
+            h(TextField, {
               label: t('hygieneIntervalDays'),
               hint: t('hygieneIntervalDaysHint'),
               type: 'number',
@@ -4083,8 +4309,8 @@ window.__ModuleLoader__.load({
                         : null,
                       reportDetail(t, t('hygieneDuplicateDetails'), lastReport.duplicateDetails, (item) => reportItem(t, item)),
                       Array.isArray(lastReport.prunedDetails) ? reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => reportItem(t, item)) : null,
-                      reportDetail(t, t('hygieneMergeDetails'), lastReport.dryRun ? lastReport.mergePlan : lastReport.mergedDetails, (item) => `${item.preview ? `${item.preview} ← ` : item.id ? `${item.id} ← ` : ''}${(item.ids ?? []).join(', ')}`),
-                      reportDetail(t, t('hygieneImportanceDetails'), lastReport.reviewDetails, (item) => reportItem(t, item)),
+                      reportDetail(t, t('hygieneMergeDetails'), lastReport.dryRun ? lastReport.mergePlan : lastReport.mergedDetails, (item) => mergeLine(t, reportTexts, item)),
+                      reportDetail(t, t('hygieneImportanceDetails'), lastReport.reviewDetails, (item) => importanceLine(t, reportTexts, item)),
                       reportDetail(t, t('hygieneDeletedDetails'), lastReport.deletedDetails, (item) => reportItem(t, item)),
                       reportDetail(t, t('hygieneFailedDetails'), lastReport.failedDetails, (item) => `${item.id}: ${item.error}`),
                     )
@@ -4231,6 +4457,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel } }
   },
 })

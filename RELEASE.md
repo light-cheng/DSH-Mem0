@@ -6,6 +6,11 @@ English is the default; the Chinese version follows below.
 
 ### Unreleased
 
+- **Memory partitions: global, project and session** (local backend).
+  - A session's project is the hash of its normalised git `origin` (ssh and https forms match), else the repository root, else the working directory; Windows drive case and backslashes do not matter. Only the hash and the repository or folder name are stored.
+  - Recall reads global plus the current project and session, project and session scores × `projectRecallBoost` (new option, default 1.1, 1–2). Captures go to the current project; `mem0_add` and `mem0_search` take a `scope`. Without a known project (background work, no working directory) writes go to global. Memories from before partitions count as global and are not rewritten. Hygiene merges and replaces only within one partition. REST backends have no partitions.
+- **Memory page.** The memory library has a partition tree (all, global, projects and their sessions) with search, pin, delete and **Make global** for this plugin's project memories; no editing. The hygiene report's merge and importance rows show the memories' text, read by id, or **deleted**.
+- **Partition summaries written by the model.** The system-prompt summary has a global part and one for the current project. Hygiene writes each with the DSH model (at most 6 calls per pass, ranked memories, redacted), keeps one whose sources did not change, and falls back to the script summary. A delete or edit marks the summaries using that memory stale at once (#24 rules). The global summary now covers global memories only.
 - **Model-led memory hygiene, on by default** (scripts check every step).
   - The pass asks the model currently set in DSH (`ctx.llm`, the background default model, no session; lowest reasoning effort, an explicit output cap of 1536 tokens, doubled once when cut off; an answer that is not valid JSON is asked again once) about one group of memories at a time: the memories new or changed since the last review, each with its most similar older ones. The model answers one JSON object of `merge`, `delete`, `keep` and `importance` (1–5) actions, each with a reason and the record ids of the group. Scripts remove exact duplicates, pick and group the candidates, and check each action: ids must belong to the group, delete and merge only touch this plugin's own memories (`source=dsh`) and never pinned ones, no memory is used twice, a delete's `by` record must be newer than what it replaces, merged text must be plain text, a memory whose text had a secret redacted is never merged. A merged memory takes the highest importance given to its sources. Anything else is dropped and counted. A merge writes one new memory (`metadata.merged_from`) and deletes its sources.
   - All #24 safety rules stay: automatic passes only preview deletes and merges until you confirm one manual run; a confirmed preview runs once (planId + idempotency key) and only on memories still unchanged; at most 100 memories go per pass; the store's scope is kept; dispose stops the pass; deleted memories invalidate the summary. Importance is stored by every pass except a manual preview (it deletes nothing).
@@ -171,6 +176,11 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 ### 未发布
 
+- **记忆分区：全局、项目、会话**（本地后端）。
+  - 会话的项目取规范化后 git `origin` 的哈希（ssh 和 https 写法一致），没有就取仓库根目录，再没有取工作目录；Windows 盘符大小写和反斜杠不影响。只保存哈希和仓库或文件夹名。
+  - 召回读取全局加当前项目和会话，项目和会话记忆分数乘以 `projectRecallBoost`（新选项，默认 1.1，范围 1–2）。自动保存写入当前项目；`mem0_add`、`mem0_search` 支持 `scope` 参数。不知道项目时（后台任务、没有工作目录）写入全局。分区之前的旧记忆算作全局，不改写。巡检只在同一分区内合并和取代。REST 后端没有分区。
+- **记忆页。** 记忆库加了分区树（全部、全局、各项目及其会话），可搜索、置顶、删除，本插件的项目记忆可「改为全局」；不能编辑。巡检报告的合并和重要度明细按 id 显示记忆正文，已删的显示「已删除」。
+- **分区摘要由模型生成。** 系统提示词里的摘要分为全局和当前项目两部分。巡检用 DSH 的模型分别生成（每次最多 6 次调用，按排序取记忆并脱敏），来源没变就保留，失败时退回脚本摘要。删除或修改记忆后，用到它的摘要立即失效（#24 规则）。全局摘要现在只包含全局记忆。
 - **记忆巡检改成以模型为主，默认开启**（脚本逐步校验）。
   - 巡检调用你当前在 DSH 配置的模型（`ctx.llm`，后台默认模型，不带会话；推理强度取最低一档，输出上限 1536 token，被截断时加倍重试一次；回答不是合法 JSON 时再问一次），每次只看一组记忆：上次审阅之后新增或改过的记忆，各自带上最相似的旧记忆。模型返回一个 JSON 对象，里面是 `merge`、`delete`、`keep`、`importance`（1–5）几种动作，每个动作都带理由和本组记录的 id。脚本负责精确去重、挑选和分组候选，并逐条校验：id 必须属于本组；删除和合并只碰本插件写入的记忆（`source=dsh`），不碰置顶的记忆；同一条记忆不能用在两个动作里；删除时 `by` 指的记录必须比被删的更新；合并后的正文必须是纯文本；正文里有密钥被脱敏的记忆不参与合并。不合规的动作直接丢弃并计数。合并的做法是写入一条新记忆（带 `metadata.merged_from`），再删除原来的几条；新记忆取原记忆得到的最高重要度。
   - #24 的安全机制全部保留：确认过一次手动巡检之前，自动巡检只预览删除和合并；确认的预览只执行一次（planId 加幂等键），只处理预览后没改过的记忆；每次最多处理 100 条；按记忆库隔离；停用插件时中止巡检；删除记忆后摘要失效。重要度不删除任何东西，除手动预览外每次巡检都会写入。

@@ -1,6 +1,6 @@
 # Mem0 Memory
 
-Long-term memory for DeepSeek Harness, powered by [Mem0](https://mem0.ai). It recalls relevant facts before each turn, saves new facts after each turn, and keeps an editable memory summary in the system prompt.
+Long-term memory for DeepSeek Harness, powered by [Mem0](https://mem0.ai). It recalls relevant facts before each turn, saves new facts after each turn, and keeps an editable memory summary in the system prompt. On the local backend memories are kept per project (by git repository or folder) plus global ones, and each part has its own summary.
 
 A weekly hygiene pass removes exact duplicates, and your current DSH model reviews new memories to merge or drop stale ones and rate importance. Only this plugin's own, unpinned memories are changed, and only after you confirm one manual pass. The model calls are billed to your provider; every report shows the tokens, and one switch turns the model review off.
 
