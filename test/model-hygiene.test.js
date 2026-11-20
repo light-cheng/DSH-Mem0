@@ -22,6 +22,8 @@ import {
 import { SqliteStore } from '../lib/store-sqlite.js'
 import { createMem0Tools } from '../lib/tools.js'
 import { addUsage, completeText } from '../lib/dsh-llm.js'
+import { mem0Guidance } from '../index.js'
+import { CATCH_UP_MS, MAX_MODEL_DELETES, memoryScore } from '../lib/memory-maintenance.js'
 
 const USER = 'dsh-mem0-p2-test-user'
 const SECRET = 'sk-abcdefghijklmnop123456'
@@ -232,11 +234,12 @@ test('grouping: changed memories with their neighbours, oldest first, watermark 
   const near = { n1: ['old1'] }
   const plan = await planReview({ memories, watermark: { version: at(5), id: '' }, neighborsOf: async (item) => near[item.id] ?? [] })
   assert.equal(plan.changed, 3)
+  // Clusters share calls with clusters, single memories with singles.
   assert.deepEqual(plan.groups.map((group) => group.map((item) => item.id)), [['old1', 'n1'], ['n2', 'n3']])
   assert.deepEqual(plan.advanceTo, { version: at(12), id: 'n3' })
   assert.equal(plan.complete, true)
-  const capped = await planReview({ memories, watermark: { version: at(5), id: '' }, neighborsOf: async (item) => near[item.id] ?? [], maxCalls: 1 })
-  assert.deepEqual(capped.advanceTo, { version: at(10), id: 'n1' })
+  const capped = await planReview({ memories, watermark: { version: at(5), id: '' }, neighborsOf: async (item) => near[item.id] ?? [], maxCalls: 0 })
+  assert.equal(capped.advanceTo, null)
   assert.equal(capped.complete, false)
   assert.equal((await planReview({ memories, watermark: { version: at(30), id: '' }, neighborsOf: async () => [] })).groups.length, 0)
 })
@@ -287,9 +290,9 @@ test('an authorised pass merges, deletes the outdated and stores importance; tok
   assert.equal(report.model.status, 'ok')
   assert.equal(report.model.deletes, 1)
   assert.equal(report.model.rejected.protected, 1)
-  assert.equal(report.model.calls, 2)
-  assert.deepEqual(report.model.usage, { inputTokens: 600, outputTokens: 120, totalTokens: 720 })
-  assert.equal(activity.maintenance.model.usage.totalTokens, 720)
+  assert.equal(report.model.calls, 1, 'both groups share one call')
+  assert.deepEqual(report.model.usage, { inputTokens: 300, outputTokens: 60, totalTokens: 360 })
+  assert.equal(activity.maintenance.model.usage.totalTokens, 360)
   assert.deepEqual(report.mergedDetails, [{ id: 'new1', ids: ['a', 'b'] }])
   assert.equal(JSON.stringify(report).includes('green tea'), false, 'the stored report has no memory text')
   assert.equal(failures.records.length, 0)
@@ -301,11 +304,10 @@ test('an authorised pass merges, deletes the outdated and stores importance; tok
 test('before the first confirmed run an automatic pass only previews: no delete, no merge; importance is stored', async (t) => {
   const store = memoryStore([memory('a', 'Prefers tea'), memory('b', 'Likes tea'), memory('c', 'Uses pnpm')], { neighbors: { a: ['b'] } })
   const llm = fakeLlm((records) => ({
-    actions: refOf(records, 'Likes tea')
-      ? [
-          { type: 'merge', ids: [refOf(records, 'Prefers tea'), refOf(records, 'Likes tea')], text: 'Prefers tea', reason: 'same' },
-        ]
-      : [{ type: 'importance', ids: [refOf(records, 'Uses pnpm')], level: 3, reason: 'project fact' }],
+    actions: [
+      ...(refOf(records, 'Likes tea') ? [{ type: 'merge', ids: [refOf(records, 'Prefers tea'), refOf(records, 'Likes tea')], text: 'Prefers tea', reason: 'same' }] : []),
+      ...(refOf(records, 'Uses pnpm') ? [{ type: 'importance', ids: [refOf(records, 'Uses pnpm')], level: 3, reason: 'project fact' }] : []),
+    ],
   }))
   const { maintenance } = maintenanceWith(t, store, llm)
   const report = await maintenance.maybeRun('startup')
@@ -323,9 +325,10 @@ test('a manual preview becomes a plan: confirming it merges once; a resend repla
   const rows = [memory('a', 'Prefers tea'), memory('b', 'Likes tea'), memory('c', 'Likes coffee'), memory('d', 'Drinks coffee')]
   const store = memoryStore(rows, { neighbors: { a: ['b'], c: ['d'] } })
   const llm = fakeLlm((records) => ({
-    actions: refOf(records, 'Likes tea')
-      ? [{ type: 'merge', ids: [refOf(records, 'Prefers tea'), refOf(records, 'Likes tea')], text: 'Prefers tea', reason: 'same' }]
-      : [{ type: 'merge', ids: [refOf(records, 'Likes coffee'), refOf(records, 'Drinks coffee')], text: 'Likes and drinks coffee', reason: 'same' }],
+    actions: [
+      ...(refOf(records, 'Likes tea') ? [{ type: 'merge', ids: [refOf(records, 'Prefers tea'), refOf(records, 'Likes tea')], text: 'Prefers tea', reason: 'same' }] : []),
+      ...(refOf(records, 'Likes coffee') ? [{ type: 'merge', ids: [refOf(records, 'Likes coffee'), refOf(records, 'Drinks coffee')], text: 'Likes and drinks coffee', reason: 'same' }] : []),
+    ],
   }))
   const { maintenance } = maintenanceWith(t, store, llm)
   const preview = await maintenance.run('manual', { dryRun: true })
@@ -446,25 +449,55 @@ test('a merged memory takes the highest importance the model gave its sources', 
   assert.deepEqual(store.log.attributes, [{ id: 'new1', importance: 4 }])
 })
 
-test('the watermark moves past answered groups when a later group had a bad answer', async (t) => {
+/** Clusters of four long memories (one call each: 4 × ~624 estimated tokens). */
+function longClusters(topics) {
   const at = (day) => `2026-11-${String(day).padStart(2, '0')}T00:00:00.000000+00:00`
-  const store = memoryStore([
-    memory('a', 'Likes tea', { updated_at: at(1) }), memory('b', 'Likes green tea', { updated_at: at(1) }),
-    memory('c', 'Uses npm', { updated_at: at(2) }), memory('d', 'Uses pnpm', { updated_at: at(2) }),
-    memory('e', 'Lives in Lisbon', { updated_at: at(3) }), memory('f', 'Lives in Porto', { updated_at: at(3) }),
-  ], { neighbors: { a: ['b'], c: ['d'], e: ['f'] } })
+  const rows = []
+  const neighbors = {}
+  topics.forEach((topic, index) => {
+    const ids = [0, 1, 2, 3].map((n) => `${topic}${n}`)
+    ids.forEach((id, n) => rows.push(memory(id, `${topic} fact ${n} `.repeat(300), { updated_at: at(index + 1) })))
+    neighbors[ids[0]] = ids.slice(1)
+  })
+  return { rows, neighbors }
+}
+
+test('the watermark moves past answered calls when a later call had a bad answer', async (t) => {
+  const { rows, neighbors } = longClusters(['tea', 'npm', 'city'])
+  const store = memoryStore(rows, { neighbors })
   let broken = true
-  const llm = fakeLlm((records) => (broken && refOf(records, 'Uses npm') ? 'not json' : { actions: [] }))
+  const topicOf = (records) => records[0].text.split(' ')[0]
+  const llm = fakeLlm((records) => (broken && topicOf(records) === 'npm' ? 'not json' : { actions: [] }))
   const { maintenance } = maintenanceWith(t, store, llm)
   await authorise(maintenance)
   const first = maintenance.activity.maintenance.model
+  assert.equal(first.groups, 3)
   assert.equal(first.badAnswers, 1)
   assert.equal(first.complete, false)
   broken = false
   const before = llm.calls.length
   await maintenance.run('schedule')
-  const asked = llm.calls.slice(before).flatMap((call) => call.records.map((record) => record.text))
-  assert.deepEqual(asked.sort(), ['Lives in Lisbon', 'Lives in Porto', 'Uses npm', 'Uses pnpm'], 'the tea group was done; the bad group and the ones after it are asked again')
+  const asked = [...new Set(llm.calls.slice(before).map((call) => topicOf(call.records)))]
+  assert.deepEqual(asked, ['npm', 'city'], 'the tea call was done; the bad call and the ones after it are asked again')
+})
+
+test('a call that fails twice with the same members is skipped and the watermark moves past it', async (t) => {
+  const { rows, neighbors } = longClusters(['tea', 'npm'])
+  const store = memoryStore(rows, { neighbors })
+  const topicOf = (records) => records[0].text.split(' ')[0]
+  const llm = fakeLlm((records) => (topicOf(records) === 'npm' ? 'not json' : { actions: [] }))
+  const { maintenance } = maintenanceWith(t, store, llm)
+  await authorise(maintenance)
+  await maintenance.run('schedule', { dryRun: false })
+  const second = maintenance.activity.maintenance.model
+  assert.equal(second.badAnswers, 1, 'the second failure')
+  const before = llm.calls.length
+  await maintenance.run('schedule', { dryRun: false })
+  const third = maintenance.activity.maintenance.model
+  assert.equal(llm.calls.length, before, 'a call that failed twice is not paid for again')
+  assert.equal(third.skippedGroups, 1)
+  assert.equal(third.complete, true)
+  assert.equal(maintenance.status().pending, 0)
 })
 
 test('a delete "by" an older record is dropped: the replacing record must be newer', () => {
@@ -475,12 +508,12 @@ test('a delete "by" an older record is dropped: the replacing record must be new
   // Seen live at the lowest effort: the newer fact deleted by the older one.
   const wrong = validateActions([{ type: 'delete', ids: ['m2'], by: 'm1', reason: 'contradicts m1' }], records)
   assert.deepEqual(wrong.accepted, [])
-  assert.deepEqual(wrong.rejected, [{ type: 'delete', reason: 'older-by' }])
   const right = validateActions([{ type: 'delete', ids: ['m1'], by: 'm2', reason: 'switched editors' }], records)
   assert.deepEqual(right.accepted, [{ type: 'delete', ids: ['old'], by: 'new', reason: 'switched editors' }])
-  // The same time is no order either.
+  assert.deepEqual(wrong.rejected, [{ type: 'delete', reason: 'stale-by' }])
+  // The same time is allowed (date(by) >= date(target)).
   const same = groupRecords([memory('a', 'x'), memory('b', 'y')])
-  assert.deepEqual(validateActions([{ type: 'delete', ids: ['m1'], by: 'm2', reason: 'r' }], same).rejected, [{ type: 'delete', reason: 'older-by' }])
+  assert.equal(validateActions([{ type: 'delete', ids: ['m1'], by: 'm2', reason: 'r' }], same).accepted.length, 1)
 })
 
 test('records carry their time to the minute, so same-day facts still have an order', () => {
@@ -584,9 +617,12 @@ test('mem0_pin pins and unpins an owned memory; other backends say so', async ()
   assert.equal(store.rows.get('a').pinned, true)
   assert.match(await tools.get('mem0_pin').execute({ memory_id: 'a', pinned: false }, {}), /Unpinned/)
   const { setAttributes, ...rest } = store
+  // A backend that cannot pin is not offered the tool, nor told about it.
   const restTools = new Map(createMem0Tools(rest, { userId: USER }).map((tool) => [tool.name, tool]))
-  assert.match(await restTools.get('mem0_pin').execute({ memory_id: 'a', pinned: true }, {}), /local memory backend/)
+  assert.equal(restTools.has('mem0_pin'), false)
   assert.equal(typeof setAttributes, 'function')
+  assert.match(mem0Guidance({ pin: true }), /mem0_pin/)
+  assert.equal(mem0Guidance({ pin: false }).includes('mem0_pin'), false)
 })
 
 test('llm layer: prepareCall picks the lowest effort with the cap; a prepare error is a code; usage adds up', async () => {
@@ -596,4 +632,320 @@ test('llm layer: prepareCall picks the lowest effort with the cap; a prepare err
   const failing = { llm: { listProviders: () => ['mock'], async prepareCall() { throw Object.assign(new Error('no adapter registered'), { code: 'NO_ADAPTER' }) }, async *stream() {} }, agentDefaultModel: llm.services.agentDefaultModel }
   await assert.rejects(completeText(failing, { prompt: 'x', leastEffort: true }), { code: 'NO_ADAPTER' })
   assert.deepEqual(addUsage(addUsage(null, { inputTokens: 1, outputTokens: 2, totalTokens: 3 }), { inputTokens: 4, outputTokens: 5 }), { inputTokens: 5, outputTokens: 7, totalTokens: 12 })
+})
+
+// ------------------------------------------------------------- review fixes (PR #28 review)
+
+/** A time just after now: memories written after the first review's baseline. */
+const soon = (ms = 1_000) => new Date(Date.now() + ms).toISOString()
+
+/** Make rows new or changed since the baseline (later than the first pass). */
+function touch(store, ids, ms = 1_000) {
+  for (const id of ids) store.rows.get(id).updated_at = soon(ms)
+}
+
+test('B1: a memory pinned while the model is asked is not deleted', async (t) => {
+  const store = memoryStore([memory('a', 'Uses npm'), memory('b', 'Uses pnpm now')], { neighbors: { a: ['b'] } })
+  let armed = false
+  const llm = fakeLlm((records) => (armed ? { actions: [{ type: 'delete', ids: [refOf(records, 'Uses npm')], by: refOf(records, 'Uses pnpm now'), reason: 'switched' }] } : { actions: [] }), {
+    gate: () => {
+      if (armed) store.rows.get('a').pinned = true
+    },
+  })
+  const { maintenance } = maintenanceWith(t, store, llm)
+  await authorise(maintenance)
+  touch(store, ['a'], 1_000)
+  touch(store, ['b'], 2_000)
+  armed = true
+  const report = await maintenance.run('schedule')
+  assert.deepEqual(store.log.removed, [], 'pinned during the call: kept')
+  assert.ok(report.skippedDetails.some((item) => item.id === 'a' && item.reason === 'pinned'))
+})
+
+test('B1: a merge source edited while the model is asked skips the whole merge', async (t) => {
+  const store = memoryStore([memory('a', 'Likes tea'), memory('b', 'Likes green tea')], { neighbors: { a: ['b'] } })
+  let armed = false
+  const llm = fakeLlm(() => (armed ? { actions: [{ type: 'merge', ids: ['m1', 'm2'], text: 'Likes (green) tea', reason: 'same' }] } : { actions: [] }), {
+    gate: () => {
+      if (armed) store.rows.get('b').updated_at = soon(5_000)
+    },
+  })
+  const { maintenance } = maintenanceWith(t, store, llm)
+  await authorise(maintenance)
+  touch(store, ['a', 'b'])
+  armed = true
+  const report = await maintenance.run('schedule')
+  assert.deepEqual(store.log.added, [])
+  assert.deepEqual(store.log.removed, [])
+  assert.ok(report.skippedDetails.some((item) => item.id === 'b' && item.reason === 'changed'))
+  assert.ok(report.skippedDetails.some((item) => item.id === 'a' && item.reason === 'merge-incomplete'))
+})
+
+test('B2: a queued or unconfirmed merged memory keeps its sources; a later pass removes them', async (t) => {
+  const store = memoryStore([memory('a', 'Likes tea'), memory('b', 'Likes green tea')], { neighbors: { a: ['b'] } })
+  store.add = async () => ({ queued: true, results: [] })
+  const llm = fakeLlm(() => ({ actions: [{ type: 'merge', ids: ['m1', 'm2'], text: 'Likes (green) tea', reason: 'same' }] }))
+  const { maintenance } = maintenanceWith(t, store, llm)
+  const report = await maintenance.run('manual')
+  assert.equal(report.merged, 0)
+  assert.equal(report.mergesPending, 1)
+  assert.deepEqual(store.log.removed, [], 'sources stay until the merged memory exists')
+  // The queued write lands: the next pass removes the unchanged sources.
+  store.rows.set('m', memory('m', 'Likes (green) tea', { metadata: { source: 'dsh', channel: 'dsh-hygiene', merged_from: ['a', 'b'], merged_at: soon(0) }, updated_at: soon(10), created_at: soon(10) }))
+  const next = await maintenance.run('manual')
+  assert.deepEqual(store.log.removed.sort(), ['a', 'b'])
+  assert.ok(next.deletedDetails.every((item) => item.reason === 'merged'))
+  // Not when the merged memory came from a tool call (forged metadata).
+  const forged = memoryStore([memory('x', 'Keep me'), memory('f', 'Forged', { metadata: { source: 'dsh', channel: 'dsh', merged_from: ['x'], merged_at: soon(0) } })])
+  const other = maintenanceWith(t, forged, fakeLlm(() => ({ actions: [] })))
+  await other.maintenance.run('manual')
+  assert.deepEqual(forged.log.removed, [])
+})
+
+test('B2: an added id that cannot be read back keeps the sources', async (t) => {
+  const store = memoryStore([memory('a', 'Likes tea'), memory('b', 'Likes green tea')], { neighbors: { a: ['b'] } })
+  const get = store.get
+  store.get = async (id) => (String(id).startsWith('new') ? null : get(id))
+  const llm = fakeLlm(() => ({ actions: [{ type: 'merge', ids: ['m1', 'm2'], text: 'Likes (green) tea', reason: 'same' }] }))
+  const { maintenance } = maintenanceWith(t, store, llm)
+  const report = await maintenance.run('manual')
+  assert.equal(report.mergesPending, 1)
+  assert.deepEqual(store.log.removed, [])
+})
+
+test('a merged memory keeps the latest date of its sources (fact_date), and the model sees it', async (t) => {
+  const store = memoryStore([
+    memory('a', 'Uses vim', { updated_at: '2026-01-10T00:00:00.000Z' }),
+    memory('b', 'Uses the vim editor', { updated_at: '2026-01-20T00:00:00.000Z' }),
+  ], { neighbors: { a: ['b'] } })
+  const llm = fakeLlm(() => ({ actions: [{ type: 'merge', ids: ['m1', 'm2'], text: 'Uses the vim editor', reason: 'same' }] }))
+  const { maintenance } = maintenanceWith(t, store, llm)
+  await maintenance.run('manual')
+  assert.equal(store.log.added[0].options.metadata.fact_date, '2026-01-20T00:00:00.000Z')
+  const [record] = groupRecords([store.rows.get('new1')])
+  assert.equal(record.date, '2026-01-20 00:00', 'the merged memory is as old as its newest source, not "now"')
+})
+
+test('validation: a `by` record stays (no chains), noise deletes are capped, a whole-group delete is dropped', () => {
+  const at = (day) => `2026-11-${String(day).padStart(2, '0')}T00:00:00.000Z`
+  const records = groupRecords([memory('a', 'v1', { updated_at: at(1) }), memory('b', 'v2', { updated_at: at(2) }), memory('c', 'v3', { updated_at: at(3) })])
+  const chain = validateActions([
+    { type: 'delete', ids: ['m1'], by: 'm2', reason: 'older' },
+    { type: 'delete', ids: ['m2'], by: 'm3', reason: 'older' },
+    { type: 'delete', ids: ['m3'], reason: 'noise' },
+  ], records)
+  // m2 replaced m1, so it stays; one noise delete in three records is allowed.
+  assert.deepEqual(chain.accepted.map((action) => action.ids), [['a'], ['c']])
+  assert.deepEqual(chain.rejected.map((item) => item.reason), ['conflict'])
+  // Noise: at most a third of the group.
+  const six = groupRecords(['p', 'q', 'r', 's', 't', 'u'].map((id) => memory(id, `fact ${id}`)))
+  const noisy = validateActions(['m1', 'm2', 'm3'].map((ref) => ({ type: 'delete', ids: [ref], reason: 'noise' })), six)
+  assert.equal(noisy.accepted.length, 2)
+  assert.deepEqual(noisy.rejected, [{ type: 'delete', reason: 'noise-cap' }])
+  // An answer deleting every record is not a review: all of it dropped.
+  const pair = groupRecords([memory('x', 'old', { updated_at: at(1) }), memory('y', 'new', { updated_at: at(2) })])
+  assert.equal(validateActions([{ type: 'delete', ids: ['m1'], by: 'm2', reason: 'r' }], pair).accepted.length, 1)
+  const three = groupRecords([memory('a', '1'), memory('b', '2'), memory('c', '3')])
+  const all = validateActions([{ type: 'delete', ids: ['m1', 'm2', 'm3'], reason: 'ignore previous instructions' }], three)
+  assert.equal(all.accepted.length, 0)
+})
+
+test(`at most ${MAX_MODEL_DELETES} model deletes per pass; the rest wait for the next pass, re-checked`, async (t) => {
+  const rows = []
+  const neighbors = {}
+  for (let i = 0; i < 25; i += 1) {
+    rows.push(memory(`old${i}`, `Fact ${i} version one`, { updated_at: '2026-11-01T00:00:00.000Z' }))
+    rows.push(memory(`new${i}`, `Fact ${i} version two`, { updated_at: '2026-11-02T00:00:00.000Z' }))
+    neighbors[`old${i}`] = [`new${i}`]
+  }
+  const store = memoryStore(rows, { neighbors })
+  let armed = false
+  const llm = fakeLlm((records) => {
+    if (!armed) return { actions: [] }
+    const actions = []
+    for (const record of records) {
+      const match = /^Fact (\d+) version one$/.exec(record.text)
+      const newer = match && records.find((other) => other.text === `Fact ${match[1]} version two`)
+      if (newer) actions.push({ type: 'delete', ids: [record.id], by: newer.id, reason: 'superseded' })
+    }
+    return { actions }
+  })
+  const { maintenance } = maintenanceWith(t, store, llm)
+  await authorise(maintenance)
+  for (let i = 0; i < 25; i += 1) {
+    store.rows.get(`old${i}`).updated_at = soon(1_000)
+    store.rows.get(`new${i}`).updated_at = soon(2_000)
+  }
+  armed = true
+  const report = await maintenance.run('schedule')
+  assert.equal(store.log.removed.length, MAX_MODEL_DELETES)
+  assert.equal(report.model.deferred, 25 - MAX_MODEL_DELETES)
+  armed = false
+  // One waiting delete was edited meanwhile: it is not carried out.
+  const waiting = [...store.rows.keys()].filter((id) => id.startsWith('old'))
+  store.rows.get(waiting[0]).updated_at = soon(9_000)
+  await maintenance.run('schedule')
+  assert.equal(store.log.removed.length, 24)
+  assert.equal(store.rows.has(waiting[0]), true)
+})
+
+test('two lanes: new or changed memories first, the backlog with what is left; other apps only as neighbours', async () => {
+  const at = (day) => `2026-11-${String(day).padStart(2, '0')}T00:00:00.000Z`
+  const memories = [
+    memory('old1', 'a', { updated_at: at(1) }),
+    memory('old2', 'b', { updated_at: at(2) }),
+    memory('fo', 'foreign', { updated_at: at(11), metadata: { source: 'other-app' } }),
+    memory('n1', 'c', { updated_at: at(11) }),
+    memory('n2', 'd', { updated_at: at(12) }),
+  ]
+  const plan = await planReview({ memories, watermark: null, baseline: { version: at(10), id: '' }, backlog: null, neighborsOf: async (item) => (item.id === 'n1' ? ['fo'] : []), maxChanged: 3 })
+  assert.equal(plan.fresh.total, 2)
+  assert.equal(plan.backlog.total, 2)
+  assert.deepEqual(plan.groups.map((group) => [group.lane, group.map((item) => item.id).sort()]), [['fresh', ['fo', 'n1']], ['fresh', ['n2']], ['backlog', ['old1']]])
+  // A cluster and single memories never share a call: singles go together.
+  assert.deepEqual(plan.fresh.advanceTo, { version: at(12), id: 'n2' })
+  assert.deepEqual(plan.backlog.advanceTo, { version: at(1), id: 'old1' })
+  assert.equal(plan.backlog.complete, false)
+})
+
+/** 100 memories written after the first review (no neighbours: packed 12 per call). */
+async function catchUpSetup(t, llm, { authorised = true } = {}) {
+  const store = memoryStore([memory('seed', 'Seed fact')])
+  const setup = maintenanceWith(t, store, llm)
+  if (authorised) await authorise(setup.maintenance)
+  else await setup.maintenance.maybeRun('startup')
+  for (let i = 0; i < 100; i += 1) store.rows.set(`f${i}`, memory(`f${i}`, `Fresh fact ${i}`, { updated_at: soon(1_000 + i) }))
+  return { store, ...setup }
+}
+
+test('catch-up: with new memories left over, the next pass comes in a day; once done, the normal interval', async (t) => {
+  const llm = fakeLlm(() => ({ actions: [] }))
+  const { maintenance } = await catchUpSetup(t, llm)
+  const first = await maintenance.run('schedule')
+  assert.equal(first.model.changed, 100)
+  assert.equal(first.pending, 4, '100 new, 96 per pass')
+  assert.equal(first.catchUp, true)
+  const status = maintenance.status()
+  assert.equal(status.pending, 4)
+  assert.equal(status.catchUp, true)
+  const now = Date.now()
+  assert.equal(maintenance.isDue(new Date(now + CATCH_UP_MS - 60_000)), false)
+  assert.equal(maintenance.isDue(new Date(now + CATCH_UP_MS + 60_000)), true)
+  const second = await maintenance.run('schedule')
+  assert.equal(second.model.changed, 4)
+  assert.equal(second.pending, 0)
+  assert.equal(second.catchUp, false)
+  assert.equal(maintenance.isDue(new Date(Date.now() + 2 * CATCH_UP_MS)), false, 'back to the 7-day interval')
+  assert.equal(maintenance.isDue(new Date(Date.now() + 8 * CATCH_UP_MS)), true)
+})
+
+test('catch-up: before the first confirmed run the early pass only previews, on its own cursor', async (t) => {
+  const llm = fakeLlm(() => ({ actions: [] }))
+  const { maintenance, store } = await catchUpSetup(t, llm, { authorised: false })
+  const first = await maintenance.run('schedule', { dryRun: true })
+  assert.equal(first.dryRun, true)
+  assert.equal(first.pending, 4)
+  assert.equal(maintenance.status().catchUp, true)
+  assert.equal(maintenance.status().previewOnly, true)
+  // Due again in a day, not a week; still a preview, going on where the last stopped.
+  assert.equal(maintenance.isDue(new Date(Date.now() + CATCH_UP_MS + 60_000)), true)
+  const calls = llm.calls.length
+  const second = await maintenance.run('schedule', { dryRun: true })
+  assert.equal(second.dryRun, true)
+  assert.equal(second.pending, 0)
+  assert.deepEqual(store.log.removed, [])
+  assert.equal(llm.calls.slice(calls).flatMap((call) => call.records).length, 4, 'only the 4 left over are asked')
+})
+
+test('catch-up: a degraded pass keeps the normal interval', async (t) => {
+  const llm = fakeLlm(() => ({ actions: [] }))
+  const { maintenance } = await catchUpSetup(t, llm)
+  llm.services.llm.stream = async function* () {
+    yield { type: 'finish', reason: { kind: 'error', failure: { code: 'TRANSPORT', message: 'down' } } }
+  }
+  const report = await maintenance.run('schedule')
+  assert.equal(report.model.status, 'degraded')
+  assert.equal(report.pending, 100)
+  assert.equal(report.catchUp, false)
+  assert.equal(maintenance.isDue(new Date(Date.now() + 2 * CATCH_UP_MS)), false, 'no daily retries while the model is down')
+})
+
+test('degraded mid-pass: calls answered before keep their actions; the rest waits', async (t) => {
+  const { rows, neighbors } = longClusters(['tea', 'npm'])
+  const store = memoryStore(rows, { neighbors })
+  let call = 0
+  const llm = fakeLlm((records) => ({ actions: [{ type: 'importance', ids: [records[0].id], level: 4, reason: 'kept' }] }))
+  const stream = llm.services.llm.stream
+  llm.services.llm.stream = async function* (options) {
+    call += 1
+    if (call === 2) {
+      yield { type: 'finish', reason: { kind: 'error', failure: { code: 'RATE_LIMIT', message: 'slow down' } } }
+      return
+    }
+    yield* stream(options)
+  }
+  const { maintenance } = maintenanceWith(t, store, llm)
+  const report = await maintenance.run('manual')
+  assert.equal(report.model.status, 'degraded')
+  assert.equal(report.model.partial, true)
+  assert.deepEqual(store.log.attributes, [{ id: 'tea0', importance: 4 }])
+})
+
+test('a manual run while another pass runs is busy, never that pass\'s result', async (t) => {
+  let release
+  const llm = fakeLlm(() => ({ actions: [] }), { gate: () => new Promise((resolve) => { release = resolve }) })
+  const { maintenance } = maintenanceWith(t, memoryStore([memory('a', 'Likes tea')]), llm)
+  const running = maintenance.run('schedule')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(maintenance.status().running, true)
+  await assert.rejects(maintenance.run('manual', { dryRun: true }), { code: 'busy' })
+  release()
+  await running
+})
+
+test('startup: the pass waits for the model services injected after it started', async (t) => {
+  const llm = fakeLlm(() => ({ actions: [] }))
+  const { maintenance } = maintenanceWith(t, memoryStore([memory('a', 'Likes tea')]), null)
+  const pass = maintenance.maybeRun('startup')
+  setTimeout(() => maintenance.setLlmServices(llm.services), 20)
+  const report = await pass
+  assert.equal(report.model.status, 'ok')
+  assert.equal(llm.calls.length, 1)
+})
+
+test('a route that refuses temperature is asked once more without it', async (t) => {
+  const llm = fakeLlm(() => ({ actions: [] }))
+  const stream = llm.services.llm.stream
+  let call = 0
+  llm.services.llm.stream = async function* (options) {
+    call += 1
+    if (call === 1) {
+      yield { type: 'finish', reason: { kind: 'error', failure: { code: 'LLM_FAILED', message: "Unsupported parameter: 'temperature' is not supported with this model." } } }
+      return
+    }
+    yield* stream(options)
+  }
+  const { maintenance } = maintenanceWith(t, memoryStore([memory('a', 'Likes tea')]), llm)
+  const report = await maintenance.run('manual')
+  assert.equal(report.model.status, 'ok')
+  assert.equal(report.model.calls, 2)
+  assert.equal(llm.prepared[0].temperature, 0)
+  assert.equal('temperature' in llm.prepared[1], false)
+})
+
+test('ranking: an unrated memory counts as 3; ratings 1–2 never push a fresh fact out', () => {
+  const now = Date.parse('2026-11-20T00:00:00.000Z')
+  const fresh = memory('fresh', 'x', { updated_at: '2026-11-19T00:00:00.000Z' })
+  const oldLow = memory('old', 'y', { updated_at: '2026-10-01T00:00:00.000Z', importance: 2 })
+  const freshLow = memory('freshLow', 'z', { updated_at: '2026-11-19T00:00:00.000Z', importance: 1 })
+  assert.ok(memoryScore(fresh, now) > memoryScore(oldLow, now))
+  assert.ok(memoryScore(fresh, now) > memoryScore(freshLow, now))
+  assert.ok(memoryScore(memory('r5', 'w', { updated_at: '2026-11-19T00:00:00.000Z', importance: 5 }), now) > memoryScore(fresh, now))
+})
+
+test('packing: single memories share calls with each other, not with clusters', async () => {
+  const memories = ['a1', 'a2', 's1', 'b1', 'b2', 's2'].map((id, index) => memory(id, id, { updated_at: `2026-11-0${index + 1}T00:00:00.000Z` }))
+  const pairs = { a1: ['a2'], b1: ['b2'] }
+  const plan = await planReview({ memories, watermark: null, baseline: null, backlog: null, neighborsOf: async (item) => pairs[item.id] ?? [] })
+  assert.deepEqual(plan.groups.map((group) => group.map((item) => item.id).sort()), [['a1', 'a2', 'b1', 'b2'], ['s1', 's2']])
 })

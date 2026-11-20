@@ -122,7 +122,7 @@ window.__ModuleLoader__.load({
       modelHygiene: 'Model-led hygiene',
       modelHygieneHint: 'Hygiene asks the model currently set in DSH to merge, retire and rate memories; scripts dedupe and check every action. The calls are billed to your provider in DSH and do not appear in DSH usage statistics; each report shows the tokens used. Off: script checks only.',
       hygieneEnabled: 'Weekly memory hygiene',
-      hygieneEnabledHint: 'Runs at startup when due and hourly checks afterwards. Automatic passes only preview deletes and merges until you confirm a manual run.',
+      hygieneEnabledHint: 'Runs at startup when due and hourly checks afterwards. Automatic passes only preview deletes and merges until you confirm a manual run; while previewing they still rate importance, which only changes the order.',
       hygieneIntervalDays: 'Hygiene interval (days)',
       hygieneIntervalDaysHint: 'Default 7 days, 1–90.',
       hygieneLastRun: 'Last run',
@@ -150,7 +150,24 @@ window.__ModuleLoader__.load({
       hygieneModelReason_QUOTA: 'the provider quota is used up',
       hygieneModelReason_ACCOUNT_QUOTA: 'the provider account has no balance',
       hygieneModelReason_BAD_JSON: 'the model did not answer in the required format',
-      hygieneOverLimit: '{count} memories are stored, above the safety limit of {limit}. Nothing was deleted for size; review them in the memory list.',
+      hygieneModelReason_UNKNOWN_MODEL: 'the model selected in DSH does not exist',
+      hygieneModelReason_CONTEXT_WINDOW_EXCEEDED: 'a group of memories is too long for the model',
+      hygieneModelReason_UNSUPPORTED_REASONING_EFFORT: 'the model refused the reasoning setting',
+      hygieneModelReason_MAX_TOKENS: 'the model answer was cut off',
+      hygieneModelReason_LLM_FAILED: 'the model call failed',
+      hygieneModelReasonOther: 'the model call failed (code {code})',
+      hygieneModelPartial: 'Calls answered before that were used.',
+      hygieneModelBad: '{count} calls answered in the wrong format and were skipped.',
+      hygieneModelSkipped: '{count} calls failed twice and are skipped until their memories change.',
+      hygieneModelUnmetered: 'Some calls reported no token usage; the total is incomplete.',
+      hygieneModelSuspicious: '{count} answers wanted to delete a whole group and were dropped.',
+      hygieneModelDeferred: '{count} deletes wait for the next pass (at most 20 per pass).',
+      hygienePending: '{count} new or changed memories still to review; the next pass comes in a day.',
+      hygienePendingSlow: '{count} new or changed memories still to review.',
+      hygieneMergesPending: '{count} merges are written but not confirmed yet; their sources stay until a later pass.',
+      hygieneScanLimited: 'Only the first {limit} memories were scanned (this backend lists one page); the safety limit is checked on the local backend only.',
+      hygieneBusy: 'A hygiene pass is running. Try again when it has finished.',
+      hygieneOverLimit: 'More than {limit} memories are stored (the safety limit). Nothing was deleted for size; review them in the memory list.',
       hygieneMergeDetails: 'Merges',
       hygieneImportanceDetails: 'Importance',
       hygieneLastReport: 'Last hygiene report',
@@ -617,7 +634,7 @@ window.__ModuleLoader__.load({
       modelHygiene: '模型巡检',
       modelHygieneHint: '巡检会调用你当前在 DSH 配置的模型，判断哪些记忆该合并、删除，并评出重要度；脚本负责去重，并逐条校验模型给出的动作。费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计；每次巡检报告都会显示用了多少 token。关闭后只做脚本巡检。',
       hygieneEnabled: '每周记忆卫生巡检',
-      hygieneEnabledHint: '到期时在启动后运行，之后每小时检查。确认过一次手动巡检之前，自动巡检只出预览，不删除也不合并。',
+      hygieneEnabledHint: '到期时在启动后运行，之后每小时检查。确认过一次手动巡检之前，自动巡检只出预览，不删除也不合并；预览期间会评重要度，只影响排序。',
       hygieneIntervalDays: '巡检间隔（天）',
       hygieneIntervalDaysHint: '默认 7 天，范围 1–90。',
       hygieneLastRun: '上次运行',
@@ -645,7 +662,24 @@ window.__ModuleLoader__.load({
       hygieneModelReason_QUOTA: 'provider 额度已用完',
       hygieneModelReason_ACCOUNT_QUOTA: 'provider 账户余额不足',
       hygieneModelReason_BAD_JSON: '模型没有按要求的格式回答',
-      hygieneOverLimit: '当前存了 {count} 条记忆，超过安全上限 {limit}。不会因为条数多而删除，请在记忆列表里自行查看。',
+      hygieneModelReason_UNKNOWN_MODEL: 'DSH 里选的模型不存在',
+      hygieneModelReason_CONTEXT_WINDOW_EXCEEDED: '这组记忆超出了模型的上下文',
+      hygieneModelReason_UNSUPPORTED_REASONING_EFFORT: '模型不接受这个推理强度',
+      hygieneModelReason_MAX_TOKENS: '模型的回答被截断了',
+      hygieneModelReason_LLM_FAILED: '模型调用失败',
+      hygieneModelReasonOther: '模型调用失败（代码 {code}）',
+      hygieneModelPartial: '在这之前已经回答的调用照常使用。',
+      hygieneModelBad: '其中 {count} 次回答格式不对，已跳过。',
+      hygieneModelSkipped: '{count} 次调用连续失败两次，在相关记忆有变动之前不再调用。',
+      hygieneModelUnmetered: '部分调用没有返回 token 用量，总数不完整。',
+      hygieneModelSuspicious: '{count} 次回答要删掉整组记忆，已整组丢弃。',
+      hygieneModelDeferred: '还有 {count} 条删除留到下次（每次最多 20 条）。',
+      hygienePending: '还有 {count} 条待巡检，下次巡检提前到一天后。',
+      hygienePendingSlow: '还有 {count} 条待巡检。',
+      hygieneMergesPending: '{count} 组合并已写入但还没确认，原记忆保留，下次巡检再处理。',
+      hygieneScanLimited: '只扫描了前 {limit} 条（这个后端一次只列一页）；安全上限的提醒只在本地后端有效。',
+      hygieneBusy: '巡检正在进行，请等它结束后再试。',
+      hygieneOverLimit: '记忆超过 {limit} 条（安全上限）。不会因为条数多而删除，请在记忆列表里自行查看。',
       hygieneMergeDetails: '合并明细',
       hygieneImportanceDetails: '重要度',
       hygieneLastReport: '上次巡检报告',
@@ -1552,11 +1586,21 @@ window.__ModuleLoader__.load({
       if (model?.status === 'ok') parts.push(template(t('hygieneModelOk'), { calls: model.calls ?? 0, tokens: model.usage?.totalTokens ?? 0 }))
       if (model?.status === 'degraded' || model?.status === 'skipped') {
         const key = `hygieneModelReason_${model.reason}`
-        parts.push(template(t('hygieneModelDegraded'), { reason: t(key) !== key ? t(key) : String(model.reason ?? '?') }))
-        if (model.usage?.totalTokens > 0) parts.push(template(t('hygieneModelOk'), { calls: model.calls ?? 0, tokens: model.usage.totalTokens }))
+        const reason = t(key) !== key ? t(key) : template(t('hygieneModelReasonOther'), { code: String(model.reason ?? '?') })
+        parts.push(template(t('hygieneModelDegraded'), { reason }))
+        if (model.partial) parts.push(t('hygieneModelPartial'))
+        if (model.calls > 0) parts.push(template(t('hygieneModelOk'), { calls: model.calls, tokens: model.usage?.totalTokens ?? 0 }))
       }
       if (model?.status === 'off') parts.push(t('hygieneModelOff'))
-      if (value.overLimit) parts.push(template(t('hygieneOverLimit'), { count: value.scanned ?? 0, limit: value.safetyLimit ?? 20000 }))
+      if (model?.badAnswers > 0 && model.status === 'ok') parts.push(template(t('hygieneModelBad'), { count: model.badAnswers }))
+      if (model?.skippedGroups > 0) parts.push(template(t('hygieneModelSkipped'), { count: model.skippedGroups }))
+      if (model?.suspicious > 0) parts.push(template(t('hygieneModelSuspicious'), { count: model.suspicious }))
+      if (model?.unmetered > 0) parts.push(t('hygieneModelUnmetered'))
+      if (model?.deferred > 0) parts.push(template(t('hygieneModelDeferred'), { count: model.deferred }))
+      if (value.mergesPending > 0) parts.push(template(t('hygieneMergesPending'), { count: value.mergesPending }))
+      if (value.pending > 0) parts.push(template(t(value.catchUp ? 'hygienePending' : 'hygienePendingSlow'), { count: value.pending }))
+      if (value.overLimit) parts.push(template(t('hygieneOverLimit'), { limit: value.safetyLimit ?? 20000 }))
+      if (value.scanLimited) parts.push(template(t('hygieneScanLimited'), { limit: value.scanLimit ?? 1000 }))
       if (value.dryRun) parts.unshift(`[${t('hygienePreviewTag')}]`)
       return parts.join(' ')
     }
@@ -3041,7 +3085,7 @@ window.__ModuleLoader__.load({
             current.data ? { ...current, data: { ...current.data, maintenance: response.maintenance } } : current,
           )
         }
-        if (!response?.ok) throw new Error(response?.error || t('hygieneFailed'))
+        if (!response?.ok) throw new Error(response?.reason === 'busy' ? t('hygieneBusy') : response?.error || t('hygieneFailed'))
         return response.report ?? {}
       }
 
@@ -3085,7 +3129,7 @@ window.__ModuleLoader__.load({
           await refreshStatus()
         } catch (error) {
           setHygieneState('error')
-          setHygieneMessage(error.message || t('hygieneFailed'))
+          setHygieneMessage(error.reason === 'busy' ? t('hygieneBusy') : error.message || t('hygieneFailed'))
         }
       }
 
@@ -3198,6 +3242,9 @@ window.__ModuleLoader__.load({
         maintenanceMeta.push(`${t('hygieneNextRun')} ${activityTime(maintenance.nextRunAt)}`)
       } else if (maintenance?.due) {
         maintenanceMeta.push(`${t('hygieneNextRun')} ${t('hygieneDue')}`)
+      }
+      if (maintenance?.pending > 0) {
+        maintenanceMeta.push(template(t(maintenance.catchUp ? 'hygienePending' : 'hygienePendingSlow'), { count: maintenance.pending }))
       }
       if (maintenance?.profile) {
         maintenanceMeta.push(
@@ -3926,7 +3973,9 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'mem0-secondary',
                 onClick: () => void runHygiene(),
-                disabled: hygieneState === 'running' || hygieneState === 'previewing' || !data,
+                // Also while a scheduled pass runs: a manual preview would not
+                // get its own plan (the plugin answers busy).
+                disabled: hygieneState === 'running' || hygieneState === 'previewing' || !data || data?.maintenance?.running === true,
               },
               hygieneState === 'running'
                 ? t('hygieneRunning')

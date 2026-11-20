@@ -249,7 +249,7 @@ try {
   out.after = (listed.results ?? listed).map((item) => ({ label: label(item.id), id: item.id, text: item.memory, importance: item.importance ?? null, pinned: item.pinned === true, merged_from: item.metadata?.merged_from?.map(label) ?? null }))
 
   const model = preview.model ?? {}
-  console.log(`\nmodel: status ${model.status}, calls ${model.calls}, groups ${model.groups}, reviewed ${model.reviewed}, bad answers ${model.badAnswers ?? 0}`)
+  console.log(`\nmodel: status ${model.status}, calls ${model.calls}, groups ${model.groups}, reviewed ${model.reviewed}, new/changed ${model.changed}, backlog ${model.backlog}, pending ${model.pending}, bad answers ${model.badAnswers ?? 0}, retries ${model.retries ?? 0}, skipped ${model.skippedGroups ?? 0}, suspicious ${model.suspicious ?? 0}, deferred ${model.deferred ?? 0}, unmetered ${model.unmetered ?? 0}`)
   console.log(`usage: ${JSON.stringify(model.usage)}`)
   calls.forEach((call, index) => console.log(`  call ${index + 1}: max ${call.request.maxTokens}, effort ${call.request.reasoningEffort}, finish ${call.finish?.kind}, usage ${JSON.stringify(call.usage)}, ${call.ms} ms`))
   console.log(`rejected: ${JSON.stringify(model.rejected ?? [])}`)

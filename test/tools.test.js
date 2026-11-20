@@ -65,7 +65,6 @@ test('registers the memory tools with the expected names', () => {
     'mem0_add',
     'mem0_delete',
     'mem0_get',
-    'mem0_pin',
     'mem0_profile_get',
     'mem0_profile_reset',
     'mem0_profile_update',
@@ -73,6 +72,8 @@ test('registers the memory tools with the expected names', () => {
     'mem0_status',
     'mem0_update',
   ])
+  // mem0_pin only where the backend stores pins (the local one).
+  assert.equal(toolMap({ ...fakeClient(), setAttributes: async () => ({}) }).has('mem0_pin'), true)
 })
 
 test('mem0_search scopes to the configured user and formats results', async () => {
@@ -231,4 +232,12 @@ test('profile tools read, update and reset editable memory summary', async () =>
   assert.equal(text, '- Likes coffee')
   assert.match(await tools.get('mem0_profile_reset').execute({}, {}), /Rebuilt memory summary/)
   assert.equal(text, '- Rebuilt from memories')
+})
+
+test('mem0_add and mem0_update cannot set the metadata keys hygiene trusts', async () => {
+  const { callerMetadata } = await import('../lib/tools.js')
+  assert.deepEqual(
+    callerMetadata({ topic: 'tea', merged_from: ['x'], merged_at: '2026-01-01', fact_date: '2020-01-01', channel: 'dsh-hygiene', source: 'other', pinned: true, importance: 5 }),
+    { topic: 'tea' },
+  )
 })
