@@ -308,6 +308,15 @@ config:
 
 **工作方式。** 写入遵循 Mem0 2.2.1 的 V3 追加式流程：取该对话范围最近 10 条消息和最相似的 10 条记忆，用 Mem0 自己的抽取 prompt（逐字复制，开启「按输入语言回答」）调用一次 LLM，然后只做 ADD：md5 与已有记忆或同批新事实相同的会跳过。同一用户/agent 的写入依次执行。检索时把查询向量化，与所有已存向量逐一比较（余弦，暴力检索；几千条记忆只要几毫秒），丢掉低于 0.1 的分数。向量缓存在内存里；另一个 DSH 进程写了同一个文件时，通过 SQLite 的 `data_version` 发现。WAL 模式和 5 秒 busy timeout 让多个 DSH profile 可以共用这个文件。哪些部分来自 Mem0 见 [NOTICE](NOTICE)。
 
+<a id="near-duplicate-check"></a>
+**近重复检查（偏离 Mem0 上游）。** 上游 V3 additive 只按 md5 去掉完全相同的事实，所以同一轮里一条事实可能被存两三次：`mem0_add` 存一次，自动保存换个说法再存一次，助手的确认回复又被抽出一次。本地后端现在：
+
+- 同一轮里 `mem0_add` 存下的记忆，会作为「已有记忆」交给这一轮的抽取，即使它不在最相似的 10 条里；
+- 新事实和上面这些记忆，或同一批里更早的事实，余弦相似度达到 `captureDedupThreshold`（默认 **0.95**；`0` 表示关闭，只剩上游的 md5 去重）就不存。比较的范围只限本轮：更早的记忆不管多相似，都只做 md5 去重。V3 additive 从不更新记忆，一条更正（「出差改到下下周」）就是一条和旧事实很接近的新事实；如果拿它和旧记忆比，会被当成重复丢掉，新信息就丢了。之后几轮里换个说法的重复，留给记忆巡检去合并。用 bge-m3 实测：同一事实的不同说法是 0.94–0.99，同一话题的不同事实最高到 0.94（「用 pnpm」和「用 npm」、「深色主题」和「浅色主题」），所以 0.95 能把它们分开；调低（比如 0.92）能多拦一些改写，但可能误拦相近而不同的事实；
+- 助手回复里确认记忆的句子（「已记住……」「Got it, I've saved…」）和关于工具、截图的说明，不送去抽取。Mem0 的 prompt 逐字保留，它也会从助手消息里抽事实，所以只能在输入侧过滤；用户自己的话总是原样发送。
+
+活动记录会写明有几条事实因为近重复没存、回复里有几句没送去抽取。Platform 和自建 server 后端用它们自己的流程，不受影响（回复过滤对它们同样生效）。
+
 **更换 embedding 模型。** 存储会记住写入向量的 embedding（模型和维度）。配置了另一个模型时，召回和保存会停下并给出明确的 `EMBEDDER_MISMATCH` 配置错误，而不是把两种向量混在一起。可以换回原模型，或在配置向导里保存新模型，保存时会先重算向量再切换。空存储会直接采用新模型。
 
 **抽取失败。** 回复被截断（`finish_reason=length`）时，这次保存会用加倍的输出上限（最多 65536）重试一次。回复不是 JSON 或为空时重试一次；模型拒答不重试。抽取失败会把 `finish_reason`、输出上限和 token 数记进失败历史和「记忆活动」卡片（只有数字，不含文本）。抽取失败不计入熔断：LLM 已经回答了，暂停记忆也没用。
@@ -344,10 +353,43 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:15333/collections/dsh_mem0/
 
 记忆抽取通常在云端，所以本地 embedding 模型决定了召回能不能保持快速。
 
-- **让 embedding 模型常驻。** Ollama 默认空闲 5 分钟就卸载模型，之后第一次召回要等冷加载：i5-13500H 上 bge-m3 约 2.5 秒，内存紧张时更久。在 Ollama 服务的环境里设置 `OLLAMA_KEEP_ALIVE=-1`（永不卸载）或较长的值如 `24h`。Windows 上把它加为用户环境变量，然后从托盘退出 Ollama 再启动。bge-m3 加载后约占 1.2 GB 内存。
+- **让 embedding 模型常驻。** Ollama 默认空闲 5 分钟就卸载模型，之后第一次召回要等冷加载：i5-13500H 上 bge-m3 约 2.5 秒，内存紧张时更久。插件现在每次向 Ollama 请求 embedding 都带上 `keep_alive`（`embedderKeepAlive`，默认 `30m`；`-1` 表示永不卸载，留空则用 Ollama 的 5 分钟），并在启动时预先加载一次本地 embedding 模型，第一次召回不用再等加载。如果经常离开更久，也可以在 Ollama 服务的环境里设置 `OLLAMA_KEEP_ALIVE=-1` 或 `24h`。Windows 上把它加为用户环境变量，然后从托盘退出 Ollama 再启动。bge-m3 加载后约占 1.2 GB 内存。
 - **`recallTimeoutMs`：** 默认 5000。如果模型仍可能被卸载（没设 keep-alive，或内存紧张），用 8000。召回超时只会让这一轮没有记忆。
 - **`addTimeoutMs`：** 默认 120000 足够。用云端抽取模型时，我们测试中每次保存不到 10 秒。
 - **embedding 模型：** 用中文写作就保持 bge-m3。较小的英文模型（`nomic-embed-text`、`all-minilm`）对中文召回很差。换模型需要重算向量（见上文）。
+
+<a id="slow-recall"></a>
+#### 召回慢：看是哪一步慢
+
+每次自动召回都会记下每一步用了多久。设置页在 **记忆活动 → 自动召回** 下显示，`mem0_status` 里是 `last recall:` 这一行：
+
+```text
+last recall: 10 results, 7019 ms (store open 0 ms · credential 0 ms · embedding 6990 ms · search 12 ms · inject 1 ms · other 16 ms)
+```
+
+| 步骤 | 是什么 | 预期 |
+|---|---|---|
+| store open（打开存储） | 打开 `memory.sqlite`（只有第一次） | 0–5 ms |
+| credential（凭据查询） | 在 DSH 凭据里查 embedding 的 key（本地服务没有） | 0–5 ms |
+| embedding | 把问题向量化的那次请求 | 模型已加载时 10–100 ms（Ollama 走 CPU：50–300 ms）；模型被卸载过则 1.5–3 秒或更久 |
+| search（SQLite 检索和打分） | SQLite 向量扫描和打分 | 5000 条时 25 ms 以内（启动后第一次最多约 100 ms） |
+| inject（生成注入块） | 重新排序、生成召回块 | 0–2 ms |
+| other（其他） | 各步之外的时间（DSH 忙、事件循环被占） | 0–20 ms |
+
+在 M 系列 Mac 上用 oMLX 的 bge-m3、5000 条记忆实测：热召回 36 ms（embedding 18、检索 20）；模型冷启动 1.6–1.8 秒（embedding 1.5–1.7 秒）；有启动预热时首次召回 131 ms。**embedding** 慢，说明模型被卸载了或内存紧张，按上面的办法让它常驻；**search** 慢，请连同记忆条数一起反馈；**other** 大，说明是 DSH 本身在忙。
+
+Windows 复测（PowerShell）：
+
+```powershell
+# 1. Ollama 在运行并加载了 bge-m3；expires_at 是它何时卸载（keep_alive）
+Invoke-RestMethod http://127.0.0.1:11434/api/ps | Select-Object -ExpandProperty models | Format-Table name, size_vram, expires_at
+# 2. 计时一次 embedding：长时间没用后的第一次就是冷加载
+Measure-Command { Invoke-RestMethod http://127.0.0.1:11434/api/embed -Method Post -ContentType 'application/json' -Body '{"model":"bge-m3","input":["test"],"keep_alive":"30m"}' } | Select-Object TotalMilliseconds
+# 3. 再来一次：已经是热的（CPU 上应明显低于 300 ms）
+Measure-Command { Invoke-RestMethod http://127.0.0.1:11434/api/embed -Method Post -ContentType 'application/json' -Body '{"model":"bge-m3","input":["test"],"keep_alive":"30m"}' } | Select-Object TotalMilliseconds
+```
+
+然后在 DSH 里：重启 DSH，等几秒，问一个需要记忆的问题，再调用 `mem0_status`。应能看到 `embedder warm-up at start: ok in …`，以及 `last recall:` 一行里 embedding 低于 300 ms。等 5 分钟以上再问一次：有了 `keep_alive`，embedding 仍然是热的（改动之前这里又会是一次冷加载）。
 
 
 ### 全部配置项
@@ -383,6 +425,8 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:15333/collections/dsh_mem0/
 | `timeoutMs` | `30000` | 所有后端（Platform、server、OSS）每次请求的超时：工具、列表、巡检。写入和自动召回用下面两个设置 |
 | `recallTimeoutMs` | `5000` | 自动召回的超时，100–60000；超时后本轮不带召回记忆继续 |
 | `addTimeoutMs` | `120000` | 保存记忆（自动保存和 `mem0_add`）的超时，写入时可能调用 LLM 抽取事实，1000–600000 |
+| `captureDedupThreshold` | `0.95` | 本地后端：自动保存抽出的事实与同一轮 `mem0_add` 存下的记忆、或同一次保存里的其他事实，余弦相似度达到这个值就不存；更早的记忆只做 md5 去重；`0` 表示关闭，否则 0.5–1。见[近重复检查](#near-duplicate-check) |
+| `embedderKeepAlive` | `30m` | 本地后端用 Ollama 时：每次 embedding 请求带上的 `keep_alive`（`30m`、`2h`、`300` 秒、`-1` 表示一直保留）；留空则用 Ollama 默认的 5 分钟 |
 | `enabled` | `true` | 总开关 |
 
 在设置页或 profile 配置里保存的修改会自动生效：loader 提交新配置时（`loader/volatile-update`）插件会自己重启，不需要手动重新加载插件或重启 DSH。`backend: auto` 下，在 DSH 凭据里存入或删除 Key 也会让插件重启。

@@ -6,6 +6,10 @@ English is the default; the Chinese version follows below.
 
 ### Unreleased
 
+- **One fact, one memory** (Windows test: "remember I travel next week" gave three near-identical memories). The local backend shows memories `mem0_add` stored in the same turn to that turn's capture as existing, and no longer stores a captured fact whose cosine similarity with one of those or an earlier fact of the batch is at least `captureDedupThreshold` (new, default 0.95, `0` = off). Only this turn's writes are compared by meaning; older memories get md5 only, so a correction of an older fact is never dropped (V3 additive cannot update it). This deviates from Mem0 2.2.1, which drops exact md5 duplicates only; see README "Near-duplicate check". The assistant's sentences that confirm a memory or talk about tools or screenshots are no longer sent to extraction (every backend; Mem0's prompt itself is unchanged). The activity record counts both.
+- **Recall step times.** Each automatic recall records store open, key lookup, embedding, SQLite search, building the block and the rest, in the settings page's activity and as `last recall:` in `mem0_status`, also for a recall that timed out. README "Slow recall" lists the expected values and a PowerShell retest.
+- **Faster first recall with Ollama.** Embedding requests to Ollama carry `keep_alive` (`embedderKeepAlive`, new, default `30m`), and a local embedding server is warmed up once at start, so a recall after a pause no longer waits 2–7 s for the model to load. Cloud embedders are never called for this.
+- **Setup wizard, LLM step:** the test result is a green or red card under the test button with finish_reason, output / prompt tokens and time; a failure says why and what to do. It stays until a setting of the step (or its key) changes, and leaving the step before the test passed asks once (**Next anyway**).
 - **Status orb from dissolve.** The composer status icon is now dissolve's ThinkingOrb (MIT, Rayan Selmi; vendored at commit 06eddec in `vendor/dissolve`, inlined into the client, no CDN): idle → slowly turning sphere, recalling → radar disc, saving → three rings, success → light-blue check (kept while the success shows), failure → dots fall and reform in red. 18 px, 36 dots, readable in light and dark themes, still under reduced motion. The orb is created once per mounted composer and destroyed on unmount (session switch, plugin dispose), which stops its frame loop and observers. The **Memory: project/global** chip is unchanged.
 - **Memory partitions: global, project and session** (local backend).
   - A session's project is the hash of its normalised git `origin` (ssh and https forms match), else the repository root, else the working directory; Windows drive case and backslashes do not matter. Only the hash and the repository or folder name are stored.
@@ -180,6 +184,10 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 ### 未发布
 
+- **一条事实只存一条记忆**（Windows 实测：「记住我下周要去某地出差」存出了三条近似记录）。本地后端把同一轮里 `mem0_add` 存下的记忆当作已有记忆交给这一轮的自动保存；抽出的事实和这些记忆或同批更早的事实余弦相似度达到 `captureDedupThreshold`（新增，默认 0.95，`0` 为关闭）就不存。只有本轮写入的内容按语义比较，更早的记忆只做 md5 去重，所以对旧事实的更正不会被丢掉（V3 additive 无法更新旧记忆）。这一点偏离 Mem0 2.2.1（上游只按 md5 去掉完全相同的），见 README「近重复检查」。助手回复里确认记忆、谈工具或截图的句子不再送去抽取（所有后端；Mem0 的 prompt 本身不变）。活动记录会写明两者各有几条。
+- **召回分段耗时。** 每次自动召回都记下打开存储、凭据查询、embedding、SQLite 检索和打分、生成注入块和其他各用了多久，显示在设置页的记忆活动里，`mem0_status` 里是 `last recall:` 一行，召回超时时也有。README「召回慢」列出了预期值和 PowerShell 复测步骤。
+- **用 Ollama 时首次召回更快。** 发给 Ollama 的 embedding 请求带上 `keep_alive`（新增 `embedderKeepAlive`，默认 `30m`），启动时还会预先加载一次本地 embedding 模型，隔一段时间再召回不用再等 2–7 秒的模型加载。云端 embedding 不会因此被调用。
+- **设置向导 LLM 这一步：** 测试结果显示在测试按钮下方，成功是绿色、失败是红色，写明 finish_reason、输出和提示 token 数及耗时；失败时写出原因和建议。结果一直保留，直到这一步的设置（或 key）改动；测试没通过就离开这一步时会先提示一次（**仍然下一步**）。
 - **状态图标换成 dissolve 的 ThinkingOrb。** 输入框下方的状态图标改用 dissolve 的 ThinkingOrb（MIT 许可，作者 Rayan Selmi；按 commit 06eddec 放在 `vendor/dissolve`，内联进客户端，不从 CDN 加载）：待命是缓慢转动的球，召回是雷达圆盘，保存是三道环，成功是浅蓝色对勾（成功状态显示期间一直保持），失败时圆点落下并重新聚成红色。18 像素、36 个点，浅色和深色主题下都看得清，开启「减少动态效果」时静止。每个输入框挂载时创建一个小球，卸载时（切换会话、插件停用）销毁，动画循环和监听随之停止。「记忆：项目/全局」标签不变。
 - **记忆分区：全局、项目、会话**（本地后端）。
   - 会话的项目取规范化后 git `origin` 的哈希（ssh 和 https 写法一致），没有就取仓库根目录，再没有取工作目录；Windows 盘符大小写和反斜杠不影响。只保存哈希和仓库或文件夹名。

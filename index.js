@@ -248,7 +248,7 @@ export async function apply(ctx, rawConfig) {
     )
   }
 
-  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard, projects })
+  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard, projects, onExplicitAdd: (session, rows) => lifecycle.noteExplicitAdd(session, rows) })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
     return () => {

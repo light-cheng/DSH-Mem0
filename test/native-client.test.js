@@ -122,7 +122,7 @@ test('infer:true sends mem0\'s request and stores only new facts (md5 dedup agai
     }),
   })
   const first = await client.add([{ role: 'user', content: 'I drink green tea every morning' }, { role: 'assistant', content: 'Noted.' }])
-  assert.deepEqual(first.summary, { facts: 1, add: 1, update: 0, delete: 0, none: 0, skippedDuplicate: 0 })
+  assert.deepEqual(first.summary, { facts: 1, add: 1, update: 0, delete: 0, none: 0, skippedDuplicate: 0, skippedSimilar: 0 })
   const request = calls.llm[0].body
   assert.equal(request.model, 'test-llm')
   assert.equal(request.temperature, 0)
@@ -141,7 +141,7 @@ test('infer:true sends mem0\'s request and stores only new facts (md5 dedup agai
   const prompt = calls.llm[1].body.messages[1].content
   assert.match(prompt, /## Existing Memories\n\[\{"id": "0", "text": "User drinks green tea every morning"\}\]/)
   assert.match(prompt, /## Last k Messages\nuser: I drink green tea every morning\nassistant: Noted\.\n/)
-  assert.deepEqual(second.summary, { facts: 4, add: 1, update: 0, delete: 0, none: 3, skippedDuplicate: 2 })
+  assert.deepEqual(second.summary, { facts: 4, add: 1, update: 0, delete: 0, none: 3, skippedDuplicate: 2, skippedSimilar: 0 })
   const all = await client.list({ user_id: USER })
   assert.deepEqual(all.results.map((item) => item.memory).sort(), ['User drinks green tea every morning', 'User writes release notes in English and Chinese'])
   assert.equal(all.results.find((item) => item.memory.includes('release')).attributed_to, 'user')

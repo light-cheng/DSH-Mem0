@@ -308,6 +308,15 @@ Keys are referenced by name (`embedderApiKeyRef`, `llmApiKeyRef`) and looked up 
 
 **How it works.** Adds follow Mem0 2.2.1's V3 additive pipeline: the last 10 messages of the conversation scope, the 10 most similar memories, one LLM call with Mem0's own extraction prompt (copied verbatim, with "answer in the language of the input" on), then only ADD: new facts whose md5 matches an existing or another new fact are skipped. Adds of one user/agent run one after another. Search embeds the query, compares it with every stored vector (cosine, brute force; a few thousand memories take milliseconds) and drops scores below 0.1. Vectors are cached in memory; another DSH process writing the same file is noticed through SQLite's `data_version`. WAL mode and a 5 s busy timeout let several DSH profiles share the file. See [NOTICE](NOTICE) for what is derived from Mem0.
 
+<a id="near-duplicate-check"></a>
+**Near-duplicate check (deviates from Mem0).** Upstream V3 additive only drops exact md5 duplicates, so one fact could be stored two or three times in one turn: once by `mem0_add`, once reworded by the automatic capture, and once more from the assistant's confirmation. The local backend now:
+
+- shows the memories `mem0_add` stored in the same turn to that turn's extraction as existing memories, even when they are not among the 10 most similar;
+- does not store a new fact whose cosine similarity with one of those memories or an earlier fact of the same batch is at least `captureDedupThreshold` (default **0.95**; `0` turns it off, leaving md5 only as upstream). The window is the current turn: older memories, however similar, are only checked by md5. V3 additive never updates a memory, so a correction ("the trip moved to the week after") is a new fact close to the old one; compared with older memories it would be dropped and the new information lost. Rewordings repeated in later turns are left to memory hygiene, which merges them. With bge-m3, rewordings of one fact score 0.94–0.99 and different facts on the same topic up to 0.94 ("uses pnpm" / "uses npm", "dark theme" / "light theme"), so 0.95 keeps them apart; lower it (e.g. 0.92) to catch more rewordings at the risk of dropping a close but different fact;
+- leaves out of the extraction input the assistant's sentences that confirm a memory ("Got it, I've saved…", "已记住…") or talk about tools or screenshots. Mem0's prompt is kept byte for byte and also extracts from assistant messages, so this is filtered on the input side; the user's own words are always sent.
+
+The activity record says how many facts were left out as near-duplicates and how many reply sentences were not sent. Platform and self-hosted server backends run their own pipeline and are unchanged (the reply filter applies to them too).
+
 **Changing the embedding model.** The store remembers which embedder (model and dimension) wrote its vectors. With another one configured, recall and capture stop with a clear `EMBEDDER_MISMATCH` configuration error instead of mixing vectors. Switch back, or save the new model with the setup wizard, which recomputes the vectors before switching. An empty store simply takes the new embedder.
 
 **Extraction failures.** When an answer is cut off (`finish_reason=length`), the capture is retried once with twice the output budget (up to 65536). An answer that is not JSON or empty is retried once; a refusal is not. A failed extraction records its `finish_reason`, output budget and token counts in the failure history and the Memory activity card (numbers only, never text). Extraction failures do not count toward the circuit breaker: the LLM answered, so pausing memory would not help.
@@ -344,10 +353,43 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:15333/collections/dsh_mem0/
 
 Extraction usually runs in the cloud, so the local embedding model is what decides whether recall stays fast.
 
-- **Keep the embedding model loaded.** Ollama unloads a model after 5 idle minutes by default. The first recall after a break then waits for a cold load: about 2.5 s for bge-m3 on an i5-13500H, longer when memory is tight. Set `OLLAMA_KEEP_ALIVE=-1` (never unload) or a long value such as `24h` in the environment of the Ollama service. On Windows, add it as a user environment variable, then quit Ollama from the tray and start it again. bge-m3 needs about 1.2 GB of RAM while loaded.
+- **Keep the embedding model loaded.** Ollama unloads a model after 5 idle minutes by default. The first recall after a break then waits for a cold load: about 2.5 s for bge-m3 on an i5-13500H, longer when memory is tight. The plugin now sends `keep_alive` with every Ollama embedding (`embedderKeepAlive`, default `30m`; `-1` never unloads, empty leaves Ollama's 5 minutes) and loads a local embedding model once when it starts, so the first recall does not pay for the load. For longer breaks, set `OLLAMA_KEEP_ALIVE=-1` or `24h` in the environment of the Ollama service as well. On Windows, add it as a user environment variable, then quit Ollama from the tray and start it again. bge-m3 needs about 1.2 GB of RAM while loaded.
 - **`recallTimeoutMs`:** the default is 5000. If the model can still be unloaded (no keep-alive, or memory pressure), use 8000. A recall that times out only skips memories for that turn.
 - **`addTimeoutMs`:** the default 120000 is plenty. With a cloud extraction model, captures took under 10 s in our tests.
 - **Embedding model:** keep bge-m3 if you write in Chinese. Smaller English-centric models (`nomic-embed-text`, `all-minilm`) recall Chinese poorly. Switching models needs the vectors recomputed (see above).
+
+<a id="slow-recall"></a>
+#### Slow recall: which step is slow
+
+Each automatic recall records how long each step took. The settings page shows it under **Memory activity → Automatic recall**, and `mem0_status` prints it as `last recall:`:
+
+```text
+last recall: 10 results, 7019 ms (store open 0 ms · credential 0 ms · embedding 6990 ms · search 12 ms · inject 1 ms · other 16 ms)
+```
+
+| Step | What it is | Expected |
+|---|---|---|
+| store open | open `memory.sqlite` (first call only) | 0–5 ms |
+| credential | look up the embedder key in DSH credentials (none for a local server) | 0–5 ms |
+| embedding | the embedding request for the question | 10–100 ms when the model is loaded (Ollama on CPU: 50–300 ms); 1.5–3 s or more when it was unloaded |
+| search | SQLite vector scan and scoring | under 25 ms at 5000 memories (first search after start: up to about 100 ms) |
+| inject | reorder and build the recall block | 0–2 ms |
+| other | time no step accounts for (DSH busy, the event loop held up) | 0–20 ms |
+
+Measured on an M-series Mac with oMLX bge-m3 and 5000 memories: warm recall 36 ms (embedding 18, search 20), cold model 1.6–1.8 s (embedding 1.5–1.7 s), with the start-up warm-up 131 ms. If **embedding** is the slow step, the model was unloaded or the machine is short of memory: keep it loaded (above). If **search** is slow, report it with the memory count. If **other** is large, DSH itself was busy.
+
+Retest on Windows (PowerShell):
+
+```powershell
+# 1. Ollama is up and has bge-m3; "expires_at" says when it unloads (keep_alive)
+Invoke-RestMethod http://127.0.0.1:11434/api/ps | Select-Object -ExpandProperty models | Format-Table name, size_vram, expires_at
+# 2. One embedding, timed: the first after a long break is the cold load
+Measure-Command { Invoke-RestMethod http://127.0.0.1:11434/api/embed -Method Post -ContentType 'application/json' -Body '{"model":"bge-m3","input":["test"],"keep_alive":"30m"}' } | Select-Object TotalMilliseconds
+# 3. The same again: now warm (expect well under 300 ms on CPU)
+Measure-Command { Invoke-RestMethod http://127.0.0.1:11434/api/embed -Method Post -ContentType 'application/json' -Body '{"model":"bge-m3","input":["test"],"keep_alive":"30m"}' } | Select-Object TotalMilliseconds
+```
+
+Then in DSH: restart it, wait a few seconds, ask a question that needs memory, and run `mem0_status`. Expect `embedder warm-up at start: ok in …` and a `last recall:` line whose embedding step is under 300 ms. Wait more than 5 minutes, ask again: with `keep_alive` the embedding step stays warm (before this change it was the cold load again).
 
 
 ### All options
@@ -383,6 +425,8 @@ Extraction usually runs in the cloud, so the local embedding model is what decid
 | `timeoutMs` | `30000` | Timeout for each backend request on every backend (Platform, server and OSS): tools, listing, hygiene. Writes and automatic recall use the two settings below |
 | `recallTimeoutMs` | `5000` | Timeout for automatic recall, 100–60000; on timeout the turn continues without recalled memories |
 | `addTimeoutMs` | `120000` | Timeout for storing memories (capture and `mem0_add`), which may run LLM fact extraction, 1000–600000 |
+| `captureDedupThreshold` | `0.95` | Local backend: a captured fact at least this similar (cosine) to a memory `mem0_add` stored in the same turn, or to another fact of the same capture, is not stored; older memories are checked by md5 only; `0` = off, else 0.5–1. See [Near-duplicate check](#near-duplicate-check) |
+| `embedderKeepAlive` | `30m` | Local backend with Ollama: `keep_alive` sent with each embedding (`30m`, `2h`, `300` seconds, `-1` = always); empty = Ollama's default 5 minutes |
 | `enabled` | `true` | Master switch |
 
 Changes saved in the settings page or the profile config apply on their own: the plugin restarts itself when the loader commits new values (`loader/volatile-update`), so no manual reload or DSH restart is needed. With `backend: auto`, storing or removing the key in DSH credentials restarts it too.

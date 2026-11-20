@@ -333,7 +333,7 @@ test('scope chip view: project, global, switch off, REST backends', () => {
 test('settings save accepts decimal weights and refuses non-numbers (importanceWeight 0.2, projectRecallBoost 1.1)', () => {
   const { exports } = loadClient()
   const { numericDraft } = exports.__test__
-  const draft = { captureMaxChars: '450', recallTopK: 5, timeoutMs: 30000, recallTimeoutMs: 5000, addTimeoutMs: 120000, profileBudgetTokens: 1375, memoryBudgetTokens: 2200, storeSafetyLimit: 20000, importanceWeight: 0.2, projectRecallBoost: '1.1', hygieneIntervalDays: 7, projectPartitions: false }
+  const draft = { captureMaxChars: '450', recallTopK: 5, timeoutMs: 30000, recallTimeoutMs: 5000, addTimeoutMs: 120000, profileBudgetTokens: 1375, memoryBudgetTokens: 2200, storeSafetyLimit: 20000, importanceWeight: 0.2, projectRecallBoost: '1.1', hygieneIntervalDays: 7, captureDedupThreshold: 0.95, projectPartitions: false }
   const next = numericDraft(draft)
   assert.ok(next, 'the defaults save')
   assert.equal(next.importanceWeight, 0.2)
@@ -343,4 +343,46 @@ test('settings save accepts decimal weights and refuses non-numbers (importanceW
   assert.equal(numericDraft({ ...draft, recallTopK: 2.5 }), null, 'whole-number fields stay whole')
   assert.equal(numericDraft({ ...draft, projectRecallBoost: '' }), null)
   assert.equal(numericDraft({ ...draft, importanceWeight: 'abc' }), null)
+})
+
+test('setup wizard LLM step: the test result names finish_reason and tokens; failures give a reason and advice', () => {
+  const { exports } = loadClient()
+  const { en, zh, llmTestView } = exports.__test__
+  const tz = (key) => zh[key] ?? key
+  const te = (key) => en[key] ?? key
+  assert.equal(llmTestView(tz, null), null)
+  const ok = llmTestView(tz, { ok: true, facts: 3, stats: { finishReason: 'stop', completionTokens: 850, maxTokens: 8000, reasoningTokens: 0, promptTokens: 8271 }, advice: [], ms: 1834 })
+  assert.equal(ok.ok, true)
+  assert.equal(ok.badge, '测试通过')
+  assert.match(ok.facts, /3 条事实/)
+  assert.equal(ok.details.join(' | '), 'finish_reason：stop | 输出 850 / 8000 tokens | 提示 8271 tokens | 1834 ms')
+  const cut = llmTestView(te, { ok: false, reason: 'truncated', stats: { finishReason: 'length', completionTokens: 2000, maxTokens: 2000, reasoningTokens: 1900 }, advice: ['raise-max-tokens', 'lower-effort'] })
+  assert.equal(cut.ok, false)
+  assert.equal(cut.badge, 'Test failed')
+  assert.match(cut.details[0], /finish_reason: length/)
+  assert.match(cut.details[1], /2000 \/ 2000 tokens \(1900 of them reasoning\)/)
+  assert.match(cut.reason, /cut off/)
+  assert.equal(cut.advice.length, 2)
+  // Transport failures: a reason and one piece of advice for each kind.
+  assert.match(llmTestView(tz, { ok: false, authFailed: true, status: 401, advice: [] }).advice[0], /API key/)
+  assert.match(llmTestView(tz, { ok: false, code: 'NETWORK_ERROR', error: 'refused', advice: [] }).advice[0], /地址和端口/)
+  assert.match(llmTestView(tz, { ok: false, code: 'ETIMEDOUT', error: 'timed out', advice: [] }).advice[0], /及时/)
+  assert.match(llmTestView(tz, { ok: false, status: 404, code: 'BACKEND_ERROR', error: 'HTTP 404', advice: [] }).advice[0], /\/v1/)
+  assert.match(llmTestView(tz, { ok: false, reason: 'empty', stats: {}, advice: [] }).advice[0], /什么也没返回/)
+  assert.ok(zh.wzLlmUntested && en.wzLlmUntested && zh.wzNextAnyway && en.wzNextAnyway)
+})
+
+test('recall activity shows the time of each step', () => {
+  const { exports } = loadClient()
+  const { en, zh, recallTimingLine, activityDetails } = exports.__test__
+  const tz = (key) => zh[key] ?? key
+  const timings = { credentialMs: 0, embedMs: 6990, searchMs: 12, injectMs: 1, otherMs: 16, totalMs: 7019 }
+  assert.equal(recallTimingLine(tz, timings), '各步耗时：凭据查询 0 ms · embedding 6990 ms · SQLite 检索和打分 12 ms · 生成注入块 1 ms · 其他 16 ms · 共 7019 ms')
+  assert.equal(recallTimingLine(tz, undefined), '')
+  const lines = activityDetails((key) => en[key] ?? key, { status: 'ok', timings })
+  assert.match(lines[0], /^Time per step: key lookup 0 ms · embedding 6990 ms/)
+  assert.match(lines[1], /embedding model/)
+  const capture = activityDetails(tz, { status: 'saved', facts: 5, add: 2, none: 3, similar: 2, metaDropped: 2 })
+  assert.match(capture[0], /其中 2 条与本轮刚写入的记忆过于相近/)
+  assert.match(capture[1], /2 句是记忆确认/)
 })
