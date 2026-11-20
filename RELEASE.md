@@ -4,6 +4,10 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### Publishing
+
+Creating a GitHub release publishes the package to npm automatically (`.github/workflows/release.yml`, npm trusted publishing, no token). Tag the release `vX.Y.Z`, matching the `version` in `package.json`; a mismatch fails the workflow before anything is published. A release marked **pre-release** is published to the `next` dist-tag, otherwise to `latest`. If the first pre-release publish fails with an error about dist-tags, publish stable releases only (leave **pre-release** unticked).
+
 ### Unreleased
 
 - **One fact, one memory** (Windows test: "remember I travel next week" gave three near-identical memories). The local backend shows memories `mem0_add` stored in the same turn to that turn's capture as existing, and no longer stores a captured fact whose cosine similarity with one of those or an earlier fact of the batch is at least `captureDedupThreshold` (new, default 0.95, `0` = off). Only this turn's writes are compared by meaning; older memories get md5 only, so a correction of an older fact is never dropped (V3 additive cannot update it). This deviates from Mem0 2.2.1, which drops exact md5 duplicates only; see README "Near-duplicate check". The assistant's sentences that confirm a memory or talk about tools or screenshots are no longer sent to extraction (every backend; Mem0's prompt itself is unchanged). The activity record counts both.
@@ -181,6 +185,10 @@ Highlights:
 Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pack` pass.
 
 ## 简体中文
+
+### 如何发布
+
+在 GitHub 上新建 release 就会自动发到 npm（`.github/workflows/release.yml`，npm trusted publishing，不用 token）。tag 写成 `vX.Y.Z`，和 `package.json` 的 `version` 一致；不一致时 workflow 在发布前失败，不会发出任何东西。勾选 **pre-release** 时发布到 `next` 标签，否则发布到 `latest`。如果第一次 prerelease 发布失败、报错和 dist-tag 有关，就改为只发正式版（不勾选 **pre-release**）。
 
 ### 未发布
 
