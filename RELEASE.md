@@ -17,7 +17,7 @@ English is the default; the Chinese version follows below.
   - Two embedders: any OpenAI-compatible `/embeddings` server, or Ollama `/api/embed`. The store records which embedder wrote its vectors; another one is a clear `EMBEDDER_MISMATCH` configuration error instead of mixed vectors (an empty store takes the new one).
   - Configuration lives in the `dsh_mem0` block of `~/.dsh/mem0/oss.json` (`embedderProvider`, `embedderBaseUrl`, `embedderModel`, `embedderDims`, `embedderApiKeyRef`, `llmBaseUrl`, `llmModel`, `llmApiKeyRef`, `llmMaxTokens`, `llmTemperature`, `llmReasoningEffort`, `storePath`). Keys are credential names looked up in DSH credentials, then the environment; a Mem0-format `oss.json` with literal keys keeps working.
   - SQLite errors are attributed to the vector store with a code (`busy`, `corrupt`, `readonly`, `disk_full`, …). `mem0_status` shows `store: ok (sqlite)`; health keeps the old `qdrant` field for earlier settings pages.
-  - Removed: `python/`, the sidecar client and log, `pythonPath`, `mem0ConfigPath`, `historyDbPath`, `sidecarEnv`, the legacy `~/.hermes` paths, the Qdrant checks and the Python CI steps. Old settings are ignored with a debug line, never an error, and do not trigger "settings look rewritten". Memories in Qdrant are not read by this version; the wizard's migration copies them.
+  - Removed: `python/`, the sidecar client and log, `pythonPath`, `mem0ConfigPath`, `historyDbPath`, `sidecarEnv`, the legacy fallback config paths, the Qdrant checks and the Python CI steps. Old settings are ignored with a debug line, never an error, and do not trigger "settings look rewritten". Memories in Qdrant are not read by this version; the wizard's migration copies them.
   - Background calls to DSH's own model (memory translation) use the default model selection without a session, so they create no session file.
   - Requires Node >= 24.9 (DSH ships 24.21). CI runs on Windows, macOS and Linux; a weekly workflow reports new mem0ai releases whose prompts or pipeline differ from 2.2.1.
   - The earlier Unreleased entries below about the Python sidecar, its interpreter discovery, embedded Qdrant and `sidecar.log` describe code this release removes.
@@ -166,7 +166,7 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
   - 两种 embedding：任意 OpenAI 兼容的 `/embeddings` 服务，或 Ollama `/api/embed`。存储记录写入向量的 embedding；配置成另一个时给出明确的 `EMBEDDER_MISMATCH` 配置错误，不会混用向量（空存储直接采用新的）。
   - 配置写在 `~/.dsh/mem0/oss.json` 的 `dsh_mem0` 段（`embedderProvider`、`embedderBaseUrl`、`embedderModel`、`embedderDims`、`embedderApiKeyRef`、`llmBaseUrl`、`llmModel`、`llmApiKeyRef`、`llmMaxTokens`、`llmTemperature`、`llmReasoningEffort`、`storePath`）。密钥写凭据名，先查 DSH 凭据再查环境变量；带明文密钥的 Mem0 格式 `oss.json` 仍然可用。
   - SQLite 错误归到向量库并带代码（`busy`、`corrupt`、`readonly`、`disk_full` 等）。`mem0_status` 显示 `store: ok (sqlite)`；健康检查保留旧的 `qdrant` 字段，兼容旧设置页。
-  - 移除：`python/`、sidecar 客户端和日志、`pythonPath`、`mem0ConfigPath`、`historyDbPath`、`sidecarEnv`、旧的 `~/.hermes` 路径、Qdrant 检查和 CI 里的 Python 步骤。旧设置会被忽略，只记 debug 日志，不报错，也不会触发「配置疑似被重写」。这个版本不读取 Qdrant 里的记忆；向导的迁移步骤会复制它们。
+  - 移除：`python/`、sidecar 客户端和日志、`pythonPath`、`mem0ConfigPath`、`historyDbPath`、`sidecarEnv`、旧的回退配置路径、Qdrant 检查和 CI 里的 Python 步骤。旧设置会被忽略，只记 debug 日志，不报错，也不会触发「配置疑似被重写」。这个版本不读取 Qdrant 里的记忆；向导的迁移步骤会复制它们。
   - 插件在后台调用 DSH 自己的模型（记忆翻译）时使用默认模型选择、不带会话，不会生成会话文件。
   - 需要 Node >= 24.9（DSH 自带 24.21）。CI 在 Windows、macOS、Linux 上运行；每周的工作流会在 mem0ai 发布 prompt 或流程与 2.2.1 不同的新版本时提醒。
   - 下面几条更早的「未发布」条目（Python sidecar、解释器查找、内嵌 Qdrant、`sidecar.log`）描述的代码已在本次移除。
