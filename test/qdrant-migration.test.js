@@ -9,6 +9,8 @@ import path from 'node:path'
 import {
   FORBIDDEN_COLLECTIONS,
   MigrationError,
+  allowedCollections,
+  storeMigrationMarker,
   canCopyVectors,
   checkCollection,
   mapPoint,
@@ -56,7 +58,7 @@ function point(index, { user = USER, text = `memory number ${index}`, created = 
 }
 
 /** A mocked Qdrant: one collection, read-only routes; records every request. */
-function mockQdrant(points, { name = COLLECTION, size = DIMS, down = false } = {}) {
+function mockQdrant(points, { name = COLLECTION, size = DIMS, down = false, extraCount = 0, dropPage = false } = {}) {
   const requests = []
   const fetchImpl = async (url, init = {}) => {
     const parsed = new URL(url)
@@ -68,11 +70,12 @@ function mockQdrant(points, { name = COLLECTION, size = DIMS, down = false } = {
     const userOf = (filter) => filter?.must?.[0]?.match?.value
     if (init.method === 'GET' && parsed.pathname === base) return json({ points_count: points.length, config: { params: { vectors: { size, distance: 'Cosine' } } } })
     if (parsed.pathname.startsWith('/collections/') && !parsed.pathname.startsWith(base)) return json('Not found: Collection', 404)
-    const mine = points.filter((item) => item.payload.user_id === userOf(body?.filter))
-    if (parsed.pathname === `${base}/points/count`) return json({ count: mine.length })
+    // Like Qdrant: a numeric user_id matches its string form too.
+    const mine = points.filter((item) => String(item.payload.user_id) === userOf(body?.filter))
+    if (parsed.pathname === `${base}/points/count`) return json({ count: mine.length + extraCount })
     if (parsed.pathname === `${base}/points/scroll`) {
       const start = body.offset ? Number(body.offset) : 0
-      const page = mine.slice(start, start + body.limit)
+      const page = (dropPage && start > 0 ? [] : mine.slice(start, start + body.limit)).map((item) => (body.with_vector ? item : { ...item, vector: undefined }))
       return json({ points: page, next_page_offset: start + body.limit < mine.length ? start + body.limit : null })
     }
     if (parsed.pathname === `${base}/points/search`) {
@@ -140,9 +143,40 @@ test('a point maps to a record: md5 hash, metadata, original values kept', () =>
 
 test('collection guard: mem0 and odd names are refused, whatever the case', () => {
   assert.ok(FORBIDDEN_COLLECTIONS.includes('mem0'))
-  for (const name of ['mem0', 'MEM0', ' mem0 ']) assert.throws(() => checkCollection(name), (error) => error.code === 'FORBIDDEN_COLLECTION')
+  for (const name of ['mem0', 'MEM0', ' mem0 ', 'mem0migrations', 'Mem0_backup']) assert.throws(() => checkCollection(name), (error) => error.code === 'FORBIDDEN_COLLECTION')
   assert.throws(() => checkCollection('a/b'), MigrationError)
   assert.equal(checkCollection('dsh_mem0'), 'dsh_mem0')
+  assert.deepEqual(allowedCollections({ raw: RAW, configured: 'dsh_mem0' }), [COLLECTION, 'dsh_mem0'])
+  assert.deepEqual(allowedCollections({ raw: { oss: { vector_store: { config: { collection_name: 'mem0' } } } }, configured: 'mine' }), ['mine', 'dsh_mem0'])
+})
+
+test('preflight and migrate read only an allowed collection', async () => {
+  const qdrant = mockQdrant([point(1)], { name: 'other_app' })
+  await assert.rejects(preflight({ collection: 'other_app', userId: USER, raw: RAW, allowed: ['dsh_mem0'], fetchImpl: qdrant.fetchImpl }), (error) => error.code === 'COLLECTION_NOT_ALLOWED')
+  assert.equal(qdrant.requests.length, 0)
+})
+
+test('count check against Qdrant: a missing page fails, other user ids are counted apart', async () => {
+  const dir = tempDir()
+  const points = Array.from({ length: 300 }, (_, index) => point(index + 1))
+  const short = mockQdrant(points, { dropPage: true })
+  await assert.rejects(migrate({ storePath: path.join(dir, 'a.sqlite'), collection: COLLECTION, userId: USER, raw: RAW, embedder: EMBEDDER, dims: DIMS, fetchImpl: embedderFetch(short) }), (error) => error.code === 'VERIFY_FAILED' && /Qdrant counts 300 points for this user, 256 were read/.test(error.message))
+  assert.equal(fs.existsSync(path.join(dir, 'a.sqlite')), false)
+  // A user id stored as a number: Qdrant matches it, the strict check here drops it.
+  const numeric = mockQdrant([point(1), point(2, { extra: {} }), { ...point(3), payload: { ...point(3).payload, user_id: 12345 } }])
+  const report = await migrate({ storePath: path.join(dir, 'b.sqlite'), collection: COLLECTION, userId: '12345', raw: RAW, embedder: EMBEDDER, dims: DIMS, fetchImpl: embedderFetch(numeric) })
+  assert.equal(report.imported, 0)
+  assert.equal(report.skippedForeign, 1)
+  assert.equal(report.checks.count.skippedForeign, 1)
+})
+
+test('a Qdrant hash that differs from md5 of the text is counted, not fatal', async () => {
+  const dir = tempDir()
+  const odd = point(1)
+  odd.payload.hash = 'not-the-md5'
+  const report = await migrate({ storePath: path.join(dir, 'm.sqlite'), collection: COLLECTION, userId: USER, raw: RAW, embedder: EMBEDDER, dims: DIMS, fetchImpl: embedderFetch(mockQdrant([odd, point(2)])) })
+  assert.equal(report.imported, 2)
+  assert.equal(report.checks.hashes.differFromQdrant, 1)
 })
 
 test('Qdrant address: typed, then oss.json, then the platform default', () => {
@@ -191,7 +225,10 @@ test('migrate into a new store: recomputed vectors, checks, marker, no .importin
   assert.equal(report.imported, 300)
   assert.equal(report.skippedEmpty, 1)
   assert.equal(report.checks.count.stored, 300)
-  assert.ok(report.checks.hashes > 0 && report.checks.queries > 0)
+  assert.ok(report.checks.hashes.sampled > 0 && report.checks.queries > 0)
+  assert.equal(report.checks.hashes.differFromQdrant, 0)
+  // Recomputed: no vectors fetched from Qdrant.
+  assert.ok(qdrant.requests.filter((request) => request.path.endsWith('/scroll')).every((request) => request.body.with_vector === false))
   assert.ok(progress.includes('read') && progress.includes('embed'))
   assert.equal(fs.existsSync(`${storePath}.importing`), false)
   // Only reads, and every read filtered by this user.
@@ -251,8 +288,13 @@ test('migrate into an existing store merges in one transaction, skips ids and du
   assert.equal(report.imported, 2)
   assert.equal(report.skippedExisting, 1)
   assert.equal(store.count({ user_id: USER }), 3, 'the open connection sees the merge (data_version)')
-  const again = await migrate({ storePath, collection: COLLECTION, userId: USER, raw: RAW, embedder: EMBEDDER, dims: DIMS, fetchImpl: embedderFetch(qdrant) })
+  // Migrated once: a second run needs `again` (deleted memories would return).
+  const firstMarker = JSON.parse(store.getMeta(MIGRATION_META_KEY))
+  await assert.rejects(migrate({ storePath, collection: COLLECTION, userId: USER, raw: RAW, embedder: EMBEDDER, dims: DIMS, fetchImpl: embedderFetch(qdrant) }), (error) => error.code === 'ALREADY_MIGRATED')
+  assert.equal(storeMigrationMarker(storePath).at, firstMarker.at)
+  const again = await migrate({ storePath, collection: COLLECTION, userId: USER, raw: RAW, embedder: EMBEDDER, dims: DIMS, again: true, fetchImpl: embedderFetch(qdrant) })
   assert.equal(again.imported, 0)
+  assert.equal(JSON.parse(store.getMeta(MIGRATION_META_KEY)).first, firstMarker.at, 'the first migration date is kept')
   assert.equal(store.count({}), 3)
   assert.equal(fs.existsSync(`${storePath}.importing`), false)
 })

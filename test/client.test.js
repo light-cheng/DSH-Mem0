@@ -237,3 +237,21 @@ test('setup wizard: texts without Python or Hermes, store and switch helpers', (
   assert.equal(llmAdvice(tz, ['raise-max-tokens']).length, 1)
   assert.match(migrationText(tz, { imported: 50, vectors: 'copied', skippedExisting: 0, skippedEmpty: 0 }), /已迁移 50 条.*旧数据仍在 Qdrant/)
 })
+
+test('setup wizard: a stored key only for its own server; errors in the page language', () => {
+  const { exports } = loadClient()
+  const { en, zh, storedKeyApplies, wizardError, wizardStepName, storeCheckText } = exports.__test__
+  const state = { current: { embedder: { provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKeyRef: 'E' } }, credentials: { embedder: { ref: 'E', configured: true } } }
+  assert.equal(storedKeyApplies(state, 'embedder', { provider: 'openai', baseUrl: 'https://api.openai.com/v1/', apiKeyRef: 'E' }), true)
+  assert.equal(storedKeyApplies(state, 'embedder', { provider: 'openai', baseUrl: 'https://api.siliconflow.cn/v1', apiKeyRef: 'E' }), false)
+  assert.equal(storedKeyApplies(state, 'embedder', { provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKeyRef: 'OTHER' }), false)
+  const tz = (key) => zh[key] ?? key
+  const te = (key) => en[key] ?? key
+  assert.equal(wizardError(tz, { code: 'ALREADY_MIGRATED', error: 'this store was migrated already' }), '这个记忆文件已经从 Qdrant 迁移过一次。 (this store was migrated already)')
+  assert.match(wizardError(tz, { code: 'SOMETHING_NEW', error: 'raw' }), /raw/)
+  assert.equal(wizardStepName(tz, 'verify'), '核对')
+  assert.equal(wizardStepName(te, 'merge'), 'merging')
+  assert.match(storeCheckText(tz, { writable: true, kind: 'unverified', path: '/Volumes/X', reason: 'weirdfs' }), /无法确认/)
+  // Same keys in both languages.
+  assert.deepEqual(Object.keys(en).filter((key) => key.startsWith('wz')).sort(), Object.keys(zh).filter((key) => key.startsWith('wz')).sort())
+})

@@ -10,6 +10,7 @@ import {
   SELFTEST_USER_ID,
   checkStoreLocation,
   classifyStorePath,
+  macMountType,
   draftFields,
   isReservedPortError,
   localServiceCandidates,
@@ -21,6 +22,7 @@ import {
   writeOssSettings,
 } from '../lib/setup-wizard.js'
 import { handleSetupAction, jobStatus, setupState } from '../lib/setup-routes.js'
+import { setupPostRefusal } from '../lib/gui-routes.js'
 import { describeCredential, storeCredential } from '../lib/credentials.js'
 import { resolveNativeSettings } from '../lib/oss-config.js'
 import { md5 } from '../lib/native-client.js'
@@ -107,7 +109,9 @@ test('probe lists models, marks embedding models, and gives the 10013 hint on Wi
   assert.deepEqual(ollama.embeddingModels, ['bge-m3:latest'])
   const lmstudio = results.find((item) => item.port === 1234)
   assert.equal(lmstudio.error, 'not running')
-  assert.equal(lmstudio.hint.command, 'netsh int ipv4 show excludedportrange protocol=tcp')
+  assert.equal(lmstudio.hint, undefined, 'refused alone: the page sums it up once')
+  const reserved = await probeLocalServices({ platform: 'win32', fetchImpl: async () => { throw new TypeError('fetch failed', { cause: new Error('connect EACCES (os error 10013)') }) } })
+  assert.ok(reserved.every((item) => item.hint?.command === 'netsh int ipv4 show excludedportrange protocol=tcp'))
   const mac = await probeLocalServices({ platform: 'darwin', fetchImpl })
   assert.ok(mac.some((item) => item.port === 8000))
   assert.ok(mac.every((item) => !item.hint), 'no Windows hint elsewhere')
@@ -144,6 +148,44 @@ test('store check on this computer: writable, nothing left behind', (t) => {
   assert.equal(result.ok, true)
   assert.equal(result.exists, false)
   assert.deepEqual(fs.readdirSync(path.join(dir, 'sub')), [], 'the write test file is removed')
+})
+
+test('store check: SMB shares under /Volumes and mapped Windows drives are network drives', () => {
+  const dir = tempDir()
+  const mounts = `/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)\n//me@nas._smb._tcp.local/share on /Volumes/share (smbfs, nodev, nosuid, mounted by me)\n/dev/disk5s1 on /Volumes/USB (exfat, local, nodev, nosuid, noowners)`
+  assert.deepEqual(macMountType('/Volumes/share/mem0', mounts), { point: '/Volumes/share', type: 'smbfs' })
+  assert.deepEqual(macMountType('/Volumes/USB', mounts), { point: '/Volumes/USB', type: 'exfat' })
+  assert.equal(macMountType('/Users/me', mounts).type, 'apfs')
+  // On the real file system the folder is a temp dir; the mount table decides.
+  const smb = checkStoreLocation(path.join(dir, 'm.sqlite'), { platform: 'darwin', mountTable: () => mounts.replace('/Volumes/share', dir) })
+  assert.equal(smb.kind, 'local', 'only /Volumes paths ask the mount table')
+  const fake = (point, type) => () => `x on / (apfs, local)\nnas on ${point} (${type}, nodev)`
+  const classify = (type) => {
+    const volume = '/Volumes/Data'
+    const out = checkStoreLocation(`${volume}/mem0/m.sqlite`, { platform: 'darwin', mountTable: fake(volume, type) })
+    return out
+  }
+  if (process.platform === 'darwin') {
+    assert.equal(classify('smbfs').kind, 'network')
+    assert.equal(classify('smbfs').ok, false)
+    assert.equal(classify('weirdfs').kind, 'unverified')
+    assert.equal(classify('weirdfs').needsConfirm, true)
+  }
+  const unc = checkStoreLocation(path.join(dir, 'z', 'm.sqlite'), { platform: 'win32', realpath: () => '\\\\fileserver\\share\\mem0' })
+  assert.equal(unc.kind, 'network')
+  assert.equal(unc.ok, false)
+  const local = checkStoreLocation(path.join(dir, 'c', 'm.sqlite'), { platform: 'win32', realpath: () => 'C:\\Users\\u\\.dsh' })
+  assert.equal(local.kind, 'local')
+})
+
+test('setup POST: JSON from the same origin only', () => {
+  const ok = { headers: { host: '127.0.0.1:4096', 'content-type': 'application/json; charset=utf-8', origin: 'http://127.0.0.1:4096', 'sec-fetch-site': 'same-origin' } }
+  assert.equal(setupPostRefusal(ok), null)
+  assert.equal(setupPostRefusal({ headers: { host: '127.0.0.1:4096', 'content-type': 'application/json' } }), null)
+  assert.equal(setupPostRefusal({ headers: { ...ok.headers, 'content-type': 'text/plain' } }).status, 415)
+  assert.equal(setupPostRefusal({ headers: { ...ok.headers, origin: 'https://evil.example' } }).status, 403)
+  assert.equal(setupPostRefusal({ headers: { ...ok.headers, 'sec-fetch-site': 'cross-site' } }).status, 403)
+  assert.equal(setupPostRefusal({ headers: { ...ok.headers, origin: 'http://127.0.0.1:5000', 'sec-fetch-site': 'same-site' } }).status, 403)
 })
 
 test('draft fields: no keys, wizard fields only, dimensions sent only on request', () => {
@@ -273,7 +315,7 @@ test('save: a failing self-test writes nothing and stores no key', async (t) => 
   let restarted = false
   const result = await handleSetupAction(ctx, runtime, { action: 'save', draft: DRAFT(dir), keys: { embedder: 'sk-x' } }, { fetchImpl: providerFetch({ status: 401 }), restart: () => { restarted = true } })
   assert.equal(result.ok, false)
-  assert.equal(result.steps[0].step, 'write')
+  assert.equal(result.step, 'embedder')
   assert.deepEqual(calls, [])
   assert.equal(fs.readFileSync(ossConfigPath, 'utf8'), '{"dsh_mem0":{"userId":"me"}}')
   assert.deepEqual(fs.readdirSync(dir).filter((name) => name.includes('.bak-')), [])
@@ -297,7 +339,7 @@ test('wizard state: no keys, credential status, legacy Qdrant detected', async (
   fs.writeFileSync(ossConfigPath, JSON.stringify({ oss: { vector_store: { provider: 'qdrant', config: { url: 'http://127.0.0.1:15333', collection_name: 'dsh_mem0' } }, embedder: { provider: 'openai', config: { model: 'bge-m3', api_key: 'sk-literal-key-999' } } } }))
   const { ctx } = credentialsCtx({ initial: { DSH_MEM0_LLM_API_KEY: 'sk-stored' } })
   const native = resolveNativeSettings({}, JSON.parse(fs.readFileSync(ossConfigPath, 'utf8')))
-  const runtime = { config: { backend: 'oss', ossConfigPath, userId: 'dsh-user', collectionName: 'dsh_mem0', profileFields: ['embedderModel', 'userId'], native: { ...native, embedder: { ...native.embedder, apiKey: undefined, literalKey: true }, llm: { ...native.llm, apiKey: undefined } }, storePath: path.join(dir, 'memory.sqlite') } }
+  const runtime = { config: { backend: 'oss', ossConfigPath, userId: 'dsh-user', collectionName: 'dsh_mem0', profileFields: ['embedderModel', 'userId'], native, storePath: path.join(dir, 'memory.sqlite') } }
   const state = await setupState(ctx, runtime)
   assert.equal(state.legacy.detected, true)
   assert.equal(state.legacy.endpoint, '127.0.0.1:15333')
@@ -310,7 +352,17 @@ test('wizard state: no keys, credential status, legacy Qdrant detected', async (
   assert.ok(!/hermes|python/i.test(JSON.stringify(state)))
 })
 
-test('migration actions need the local backend; reembed runs as a job', async (t) => {
+async function waitJob(id) {
+  let job
+  for (let i = 0; i < 300; i += 1) {
+    job = jobStatus(id)
+    if (job.state !== 'running') return job
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  return job
+}
+
+test('a store of another embedder: the self-test runs in a temporary store, vectors are recomputed on save', async (t) => {
   const dir = tempDir()
   const { ctx } = credentialsCtx()
   const off = await handleSetupAction(ctx, { config: { backend: 'platform' } }, { action: 'migrate' })
@@ -321,23 +373,135 @@ test('migration actions need the local backend; reembed runs as a job', async (t
   store.insert([{ id: 'a', text: 'one', hash: md5('one'), vector: [1, 0], payload: { user_id: 'u' }, embedModel: 'old' }])
   store.setEmbedderInfo({ model: 'old', dims: 2 })
   store.close()
-  const runtime = { config: { backend: 'oss', ossConfigPath: path.join(dir, 'oss.json'), profileFields: [] } }
+  const ossConfigPath = path.join(dir, 'oss.json')
+  const runtime = { config: { backend: 'oss', ossConfigPath, profileFields: [] } }
   const draft = DRAFT(dir)
   const tested = await handleSetupAction(ctx, runtime, { action: 'testEmbedder', draft }, { fetchImpl: providerFetch() })
   assert.deepEqual(tested.storeMismatch, { model: 'old', dims: 2, memories: 1 })
-  const started = await handleSetupAction(ctx, runtime, { action: 'reembed', draft }, { fetchImpl: providerFetch() })
-  assert.equal(started.ok, true)
-  let job
-  for (let i = 0; i < 100; i += 1) {
-    job = jobStatus(started.job.id)
-    if (job.state !== 'running') break
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  assert.equal((await handleSetupAction(ctx, runtime, { action: 'reembed', draft })).ok, false, 'no re-embedding outside save')
+  const checked = await handleSetupAction(ctx, runtime, { action: 'selfTest', draft, keys: { embedder: 'sk', llm: 'sk' } }, { fetchImpl: providerFetch() })
+  assert.equal(checked.ok, true, JSON.stringify(checked))
+  assert.equal(checked.scratchStore, true)
+  assert.equal(checked.reembed, 1)
+  const untouched = new SqliteStore({ filePath: storePath })
+  assert.deepEqual(untouched.embedderInfo(), { model: 'old', dims: 2 }, 'the self-test leaves the store alone')
+  untouched.close()
+  assert.equal(fs.existsSync(ossConfigPath), false)
+  let restarted = 0
+  const saved = await handleSetupAction(ctx, runtime, { action: 'save', draft, keys: { embedder: 'sk', llm: 'sk' } }, { fetchImpl: providerFetch(), restart: () => { restarted += 1 } })
+  assert.equal(saved.ok, true)
+  assert.equal(saved.reembed, 1)
+  const job = await waitJob(saved.job.id)
   assert.equal(job.state, 'done', JSON.stringify(job))
-  assert.equal(job.result.updated, 1)
+  assert.equal(job.result.reembedded, 1)
+  assert.ok(fs.existsSync(ossConfigPath), 'oss.json written after the vectors')
   const after = new SqliteStore({ filePath: storePath })
   t.after(() => after.close())
   assert.deepEqual(after.embedderInfo(), { model: 'test-embed', dims: DIMS })
+  assert.equal(after.count({}), 1)
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  assert.equal(restarted, 1)
+})
+
+test('a stored key goes only to the server it was saved for (no Authorization after a change)', async () => {
+  const dir = tempDir()
+  const { ctx } = credentialsCtx({ initial: { DSH_MEM0_EMBEDDER_API_KEY: 'sk-openai', DSH_MEM0_LLM_API_KEY: 'sk-llm' } })
+  const saved = resolveNativeSettings({ embedderProvider: 'openai', embedderBaseUrl: 'https://api.openai.com/v1', embedderModel: 'text-embedding-3-small', embedderApiKeyRef: 'DSH_MEM0_EMBEDDER_API_KEY', llmBaseUrl: 'https://llm.example.test/v1', llmModel: 'm', llmApiKeyRef: 'DSH_MEM0_LLM_API_KEY' })
+  const runtime = { config: { backend: 'oss', ossConfigPath: path.join(dir, 'oss.json'), profileFields: [], native: saved } }
+  const sameServer = []
+  await handleSetupAction(ctx, runtime, { action: 'testEmbedder', draft: { embedder: { provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-large', apiKeyRef: 'DSH_MEM0_EMBEDDER_API_KEY' } } }, { fetchImpl: providerFetch({ seen: sameServer }) })
+  assert.equal(sameServer[0].headers.authorization, 'Bearer sk-openai')
+  for (const action of ['testEmbedder', 'listModels']) {
+    const seen = []
+    await handleSetupAction(ctx, runtime, { action, draft: { embedder: { provider: 'openai', baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3', apiKeyRef: 'DSH_MEM0_EMBEDDER_API_KEY' } } }, { fetchImpl: providerFetch({ seen }) })
+    assert.ok(seen.length > 0)
+    assert.ok(seen.every((request) => !request.headers.authorization && !request.headers.Authorization), `${action}: ${JSON.stringify(seen[0].headers)}`)
+  }
+  const llmSeen = []
+  await handleSetupAction(ctx, runtime, { action: 'testLlm', draft: { llm: { baseUrl: 'https://elsewhere.test/v1', model: 'm', apiKeyRef: 'DSH_MEM0_LLM_API_KEY' } } }, { fetchImpl: providerFetch({ seen: llmSeen }) })
+  assert.ok(llmSeen.every((request) => !request.headers.authorization))
+})
+
+test('credential names: only the wizard defaults or the one in use; another existing key needs a confirmation', async () => {
+  const dir = tempDir()
+  const { ctx, calls } = credentialsCtx({ initial: { DEEPSEEK_API_KEY: 'sk-dsh', MY_EMBED: 'sk-old' } })
+  const runtime = { config: { backend: 'platform', ossConfigPath: path.join(dir, 'oss.json'), profileFields: [], native: resolveNativeSettings({ embedderBaseUrl: 'https://embed.example.test/v1', embedderModel: 'test-embed', embedderApiKeyRef: 'MY_EMBED' }) } }
+  const refused = await handleSetupAction(ctx, runtime, { action: 'testEmbedder', draft: { embedder: { provider: 'openai', baseUrl: 'https://x.test/v1', model: 'm', apiKeyRef: 'DEEPSEEK_API_KEY' } } }, { fetchImpl: providerFetch() })
+  assert.equal(refused.code, 'REF_NOT_ALLOWED')
+  const draft = DRAFT(dir, { embedder: { ...DRAFT(dir).embedder, apiKeyRef: 'MY_EMBED' } })
+  const asked = await handleSetupAction(ctx, runtime, { action: 'save', draft, keys: { embedder: 'sk-new', llm: 'sk-llm' } }, { fetchImpl: providerFetch() })
+  assert.equal(asked.code, 'REF_EXISTS')
+  assert.equal(asked.ref, 'MY_EMBED')
+  assert.deepEqual(calls, [])
+  const done = await handleSetupAction(ctx, runtime, { action: 'save', draft, keys: { embedder: 'sk-new', llm: 'sk-llm' }, overwriteRefs: ['MY_EMBED'] }, { fetchImpl: providerFetch() })
+  assert.equal(done.ok, true, JSON.stringify(done))
+  assert.deepEqual(calls.sort(), ['DSH_MEM0_LLM_API_KEY', 'MY_EMBED'])
+})
+
+test('save moves a literal key: stored in DSH credentials, removed from the oss block, the backup flagged', async () => {
+  const dir = tempDir()
+  const ossConfigPath = path.join(dir, 'oss.json')
+  fs.writeFileSync(ossConfigPath, JSON.stringify({ oss: { vector_store: { provider: 'qdrant', config: { url: 'http://127.0.0.1:6333' } }, embedder: { provider: 'openai', config: { model: 'test-embed', api_key: 'sk-literal', openai_base_url: 'https://embed.example.test/v1' } } } }))
+  const { ctx, values } = credentialsCtx()
+  const runtime = { config: { backend: 'platform', ossConfigPath, profileFields: [] } }
+  const result = await handleSetupAction(ctx, runtime, { action: 'save', draft: { ...DRAFT(dir), useLiteralKey: { embedder: true } }, keys: { llm: 'sk-llm' } }, { fetchImpl: providerFetch() })
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(values.get('DSH_MEM0_EMBEDDER_API_KEY'), 'sk-literal')
+  const written = JSON.parse(fs.readFileSync(ossConfigPath, 'utf8'))
+  assert.equal(written.oss.embedder.config.api_key, undefined)
+  assert.equal(written.oss.embedder.config.model, 'test-embed')
+  assert.deepEqual(written.oss.vector_store, { provider: 'qdrant', config: { url: 'http://127.0.0.1:6333' } })
+  assert.deepEqual(result.written.droppedLiteralKeys, ['embedder'])
+  assert.equal(result.written.backupHasKeys, true)
+})
+
+test('migration route: allowed collections only, a second run needs a confirmation, running jobs listed', async (t) => {
+  const dir = tempDir()
+  const ossConfigPath = path.join(dir, 'oss.json')
+  fs.writeFileSync(ossConfigPath, JSON.stringify({ oss: { vector_store: { provider: 'qdrant', config: { url: 'http://127.0.0.1:6333', collection_name: 'dsh_mem0', api_key: 'qd-key' } } } }))
+  const storePath = path.join(dir, 'memory.sqlite')
+  const store = new SqliteStore({ filePath: storePath })
+  store.insert([{ id: 'a', text: 'one', hash: md5('one'), vector: vector('one'), payload: { user_id: 'u' }, embedModel: 'test-embed' }])
+  store.setEmbedderInfo({ model: 'test-embed', dims: DIMS })
+  store.setMeta('qdrant_migration', JSON.stringify({ at: '2026-11-01T00:00:00.000Z', imported: 1 }))
+  store.close()
+  const settings = { storePath, embedder: { provider: 'openai', baseUrl: 'https://embed.example.test/v1', model: 'test-embed', apiKey: 'sk' } }
+  const runtime = { config: { backend: 'oss', ossConfigPath, userId: 'u', collectionName: 'dsh_mem0', profileFields: [] }, client: { settings: () => settings } }
+  const seen = []
+  const fetchImpl = async (url, init = {}) => {
+    seen.push({ url: String(url), headers: init.headers ?? {} })
+    if (String(url).endsWith('/embeddings')) return providerFetch()(url, init)
+    return new Response(JSON.stringify({ result: { count: 0, config: { params: { vectors: { size: DIMS, distance: 'Cosine' } } } }, status: 'ok' }), { status: 200 })
+  }
+  const other = await handleSetupAction({ logger: {} }, runtime, { action: 'migratePreflight', collection: 'mem0migrations' }, { fetchImpl })
+  assert.equal(other.code, 'FORBIDDEN_COLLECTION')
+  const foreign = await handleSetupAction({ logger: {} }, runtime, { action: 'migratePreflight', collection: 'someone_else' }, { fetchImpl })
+  assert.equal(foreign.code, 'COLLECTION_NOT_ALLOWED')
+  assert.equal(seen.length, 0, 'nothing contacted for a refused collection')
+  const pre = await handleSetupAction({ logger: {} }, runtime, { action: 'migratePreflight' }, { fetchImpl })
+  assert.equal(pre.ok, true, JSON.stringify(pre))
+  assert.equal(pre.alreadyMigrated.imported, 1)
+  assert.equal(seen.find((request) => request.url.includes(':6333')).headers['api-key'], 'qd-key')
+  seen.length = 0
+  await handleSetupAction({ logger: {} }, runtime, { action: 'migratePreflight', url: 'http://10.0.0.9:6333' }, { fetchImpl })
+  assert.ok(seen.filter((request) => request.url.includes('10.0.0.9')).every((request) => !request.headers['api-key']), 'the Qdrant key stays with its own server')
+  const again = await handleSetupAction({ logger: {} }, runtime, { action: 'migrate' }, { fetchImpl })
+  assert.equal(again.code, 'ALREADY_MIGRATED')
+  const state = await setupState({ get: () => undefined }, runtime)
+  assert.deepEqual(state.jobs, [])
+  assert.deepEqual(state.legacy.collections, ['dsh_mem0'])
+})
+
+test('wizard state: a local backend chosen before counts as a possible earlier Qdrant setup', async () => {
+  const dir = tempDir()
+  const ossConfigPath = path.join(dir, 'oss.json')
+  const state = await setupState({ get: () => undefined }, { config: { backend: 'oss', backendSource: 'configured', ossConfigPath, collectionName: 'dsh_mem0', profileFields: ['backend'], ignoredSettings: [] } })
+  assert.equal(state.legacy.detected, false)
+  assert.equal(state.legacy.possible, true)
+  assert.equal(state.legacy.reason, 'local-backend')
+  assert.match(state.legacy.endpoint, /^127\.0\.0\.1:(6333|15333)$/)
+  const fresh = await setupState({ get: () => undefined }, { config: { backend: 'platform', backendSource: 'auto-default', ossConfigPath, profileFields: [], ignoredSettings: [] } })
+  assert.equal(fresh.legacy.possible, false)
 })
 
 test('reembed writes nothing when the memories change meanwhile (one transaction with the meta)', (t) => {

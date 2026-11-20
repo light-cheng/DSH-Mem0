@@ -298,10 +298,14 @@ window.__ModuleLoader__.load({
       wzModel: "Model",
       wzModelTyped: "Model name",
       wzKey: "API key",
-      wzKeyHint: "Stored in DSH credentials under the name below, never in oss.json. Leave blank to keep a stored key.",
+      wzKeyHint: "Stored in DSH credentials under the name below, never in oss.json.",
+      wzKeyNewServer: "The server changed: type the key for this one. A stored key is only sent to the server it was saved for.",
       wzKeyStored: "A key is stored in DSH credentials as {ref}. Leave blank to keep it.",
       wzKeyRef: "Credential name",
-      wzLiteral: "oss.json holds a plain-text key for this server: move it into DSH credentials when saving",
+      wzLiteral: "oss.json holds a plain-text key for this server: on save, store it in DSH credentials and remove it from oss.json",
+      wzBackupHasKeys: "The backup {backup} still holds the plain-text key; delete it once everything works.",
+      wzRefExists: "{ref} in DSH credentials already holds another key.",
+      wzRefReplace: "Replace {ref}",
       wzDetect: "Detect local services",
       wzDetecting: "Detecting…",
       wzServiceUp: "{label} on port {port}: running, {count} models",
@@ -317,9 +321,8 @@ window.__ModuleLoader__.load({
       wzCheck: "Check",
       wzEmbedOk: "Works: {dims} dimensions.",
       wzDimsDiffer: "The server returned {actual} dimensions, not {expected}.",
-      wzStoreMismatch: "The memory file holds {memories} memories embedded with {model} ({dims} dimensions). Switch back to that model, or recompute their vectors with this one.",
-      wzReembed: "Recompute vectors",
-      wzReembedConfirm: "Recompute the vectors of all {memories} memories with the new model? The text is not changed; this calls the embedder once per 32 memories.",
+      wzStoreMismatch: "The memory file holds {memories} memories embedded with {model} ({dims} dimensions). Switch back to that model, or keep this one: saving then recomputes their vectors.",
+      wzReembedOnSave: "Saving recomputes the vectors of {memories} memories first (the text is not changed; one embedder call per 32 memories). Until then everything keeps running as it is; the self-test uses a temporary file.",
       wzReembedDone: "Vectors recomputed: {count}.",
       wzProgress: "Working… {done}/{total}",
       wzFailed: "Failed: {error}",
@@ -335,6 +338,10 @@ window.__ModuleLoader__.load({
       wzAdviceJson: "The model did not answer JSON. Pick a model that supports JSON output.",
       wzStorePath: "Memory database file",
       wzStoreHint: "Leave blank for ~/.dsh/mem0/memory.sqlite. It must be on a local disk: not a network drive, not a synced folder (iCloud, OneDrive, Dropbox…).",
+      wzStoreWhere: "Memories are kept in {path}.",
+      wzStoreChange: "Change the location (advanced)",
+      wzStoreUnverified: "{path}: the disk type could not be confirmed ({reason}).",
+      wzStoreConfirm: "This is a disk of this computer, not a network share",
       wzStoreOk: "{path}: writable, on a local disk.",
       wzStoreExternal: "{path}: writable, but on another volume. Keep it attached while DSH runs.",
       wzStoreSync: "{path} is inside a {provider} folder. Synced folders damage SQLite files; choose a local folder.",
@@ -370,10 +377,43 @@ window.__ModuleLoader__.load({
       wzPhaseRead: "reading",
       wzPhaseEmbed: "computing vectors",
       wzMigrated: "Moved {imported} memories ({vectors}; {skipped} already there, {empty} without text). The old data is still in Qdrant and no longer used: you may delete it or stop the Qdrant service.",
+      wzForeign: "{count} points whose user id is stored in another form (for example as a number) were left out.",
+      wzMigrateAgain: "Move again (memories deleted since the first move come back)",
+      wzLegacyPossible: "If you used the local mode before, your memories may still be in Qdrant ({endpoint}): move them in step 5.",
+      wzRefusedSummary: "Not running: {list}. If one of them is running, its port may lie in a range Windows reserved:",
       wzVectorsCopied: "vectors copied",
       wzVectorsRecomputed: "vectors recomputed",
       wzMigrateFailed: "The migration failed at step \"{step}\": {error}. Nothing was written; the memory file is as it was.",
-      wzQdrantDown: "Start Qdrant again the way you ran it before (README, \"Windows troubleshooting\"), then check again.",
+      wzQdrantDown: "Start Qdrant again the way you ran it before (for example docker start, or the qdrant command), then check again.",
+      wzQdrantDownWin: "Start Qdrant again the way you ran it before (README, \"Windows troubleshooting\"), then check again.",
+      wzStepName_preflight: "check",
+      wzStepName_read: "reading Qdrant",
+      wzStepName_map: "reading the memories",
+      wzStepName_embed: "computing vectors",
+      wzStepName_write: "writing",
+      wzStepName_verify: "verifying",
+      wzStepName_switch: "switching",
+      wzStepName_merge: "merging",
+      wzStepName_embedder: "embedding model",
+      wzStepName_store: "memory file",
+      wzStepName_credentials: "credentials",
+      wzStepName_reembed: "recomputing vectors",
+      wzErr_LOCAL_BACKEND_OFF: "Finish the setup first: save it and switch the local backend on.",
+      wzErr_ALREADY_MIGRATED: "This memory file was filled from Qdrant already.",
+      wzErr_FORBIDDEN_COLLECTION: "This collection belongs to another app and is never read.",
+      wzErr_COLLECTION_NOT_ALLOWED: "Only the collection of this setup is read.",
+      wzErr_COLLECTION_NOT_FOUND: "Qdrant has no such collection.",
+      wzErr_QDRANT_UNREACHABLE: "Qdrant is not reachable at this address.",
+      wzErr_QDRANT_AUTH: "Qdrant refused the request (API key).",
+      wzErr_QDRANT_EMBEDDED_UNSUPPORTED: "oss.json names an embedded Qdrant folder; the move needs a Qdrant server.",
+      wzErr_VERIFY_FAILED: "A check after copying failed.",
+      wzErr_EMBEDDER_MISMATCH: "The memory file holds vectors of another embedding model.",
+      wzErr_BAD_VECTOR: "A memory in Qdrant has no vector of the expected size.",
+      wzErr_CONFIG_INVALID: "A setting is not valid.",
+      wzErr_REF_NOT_ALLOWED: "The wizard uses only its own credential names or the one in use.",
+      wzErr_EMBEDDER_FAILED: "The embedding model does not answer.",
+      wzErr_REEMBED_CONFLICT: "Memories kept changing while the vectors were recomputed; try again when DSH is idle.",
+      wzErr_STORE_REFUSED: "The memory file cannot be kept there.",
       wzSkip: "Skip, start empty",
       wzSkipHint: "Skipping leaves the old memories in Qdrant and recall starts from an empty store. You can still move them later from this wizard.",
       wzSkipped: "Migration skipped.",
@@ -723,10 +763,14 @@ window.__ModuleLoader__.load({
       wzModel: "模型",
       wzModelTyped: "模型名",
       wzKey: "API key",
-      wzKeyHint: "存进 DSH 凭据库（名称见下一项），不写进 oss.json。留空则沿用已存的 key。",
+      wzKeyHint: "存进 DSH 凭据库（名称见下一项），不写进 oss.json。",
+      wzKeyNewServer: "服务地址变了：请填写这个服务的 key。已存的 key 只会发给保存时的那个服务。",
       wzKeyStored: "DSH 凭据库里已有 {ref}。留空即沿用。",
       wzKeyRef: "凭据名",
-      wzLiteral: "oss.json 里有这个服务的明文 key：保存时把它移进 DSH 凭据库",
+      wzLiteral: "oss.json 里有这个服务的明文 key：保存时存进 DSH 凭据库，并从 oss.json 删除",
+      wzBackupHasKeys: "备份文件 {backup} 里仍有明文 key，确认一切正常后可以删除。",
+      wzRefExists: "DSH 凭据库里的 {ref} 已经存了另一个 key。",
+      wzRefReplace: "替换 {ref}",
       wzDetect: "探测本地服务",
       wzDetecting: "探测中…",
       wzServiceUp: "{label}（端口 {port}）：运行中，{count} 个模型",
@@ -742,9 +786,8 @@ window.__ModuleLoader__.load({
       wzCheck: "检查",
       wzEmbedOk: "可用：{dims} 维。",
       wzDimsDiffer: "服务返回 {actual} 维，不是 {expected} 维。",
-      wzStoreMismatch: "记忆文件里有 {memories} 条记忆，向量是用 {model}（{dims} 维）算的。请换回那个模型，或者用新模型重新计算向量。",
-      wzReembed: "重新计算向量",
-      wzReembedConfirm: "用新模型重新计算全部 {memories} 条记忆的向量？正文不变；每 32 条调用一次 embedding。",
+      wzStoreMismatch: "记忆文件里有 {memories} 条记忆，向量来自 {model}（{dims} 维）。可以换回那个模型；或者继续用现在这个，保存时会重新计算这些向量。",
+      wzReembedOnSave: "保存时会先重新计算 {memories} 条记忆的向量（正文不变，每 32 条调用一次 embedding）。在这之前一切照常运行；自测用的是临时文件。",
       wzReembedDone: "已重新计算 {count} 条向量。",
       wzProgress: "处理中… {done}/{total}",
       wzFailed: "失败：{error}",
@@ -760,6 +803,10 @@ window.__ModuleLoader__.load({
       wzAdviceJson: "模型没有返回 JSON，请换一个支持 JSON 输出的模型。",
       wzStorePath: "记忆数据库文件",
       wzStoreHint: "留空即 ~/.dsh/mem0/memory.sqlite。必须在本机磁盘上，不能放在网络盘或同步目录（iCloud、OneDrive、Dropbox 等）。",
+      wzStoreWhere: "记忆保存在 {path}。",
+      wzStoreChange: "更改位置（高级）",
+      wzStoreUnverified: "{path}：无法确认所在磁盘的类型（{reason}）。",
+      wzStoreConfirm: "这是本机的磁盘，不是网络共享",
       wzStoreOk: "{path}：可写，在本机磁盘上。",
       wzStoreExternal: "{path}：可写，但在另一个卷上。DSH 运行时请保持它连接。",
       wzStoreSync: "{path} 在 {provider} 同步目录里。同步目录会损坏 SQLite 文件，请换到本机目录。",
@@ -795,10 +842,43 @@ window.__ModuleLoader__.load({
       wzPhaseRead: "读取",
       wzPhaseEmbed: "计算向量",
       wzMigrated: "已迁移 {imported} 条记忆（{vectors}；已存在而跳过 {skipped} 条，无正文 {empty} 条）。旧数据仍在 Qdrant，不再使用，可以自行删除或停掉 Qdrant 服务。",
+      wzForeign: "有 {count} 个点的用户 id 存成了别的形式（比如数字），没有迁移。",
+      wzMigrateAgain: "再迁移一次（第一次迁移后删掉的记忆会回来）",
+      wzLegacyPossible: "如果以前用过本地模式，记忆可能还在 Qdrant（{endpoint}）里，可以在第 5 步迁移。",
+      wzRefusedSummary: "没有运行：{list}。如果其中某个其实在运行，它的端口可能落在 Windows 保留的范围里：",
       wzVectorsCopied: "向量直接拷贝",
       wzVectorsRecomputed: "向量重新计算",
       wzMigrateFailed: "迁移在「{step}」这一步失败：{error}。没有写入任何内容，记忆文件保持原样。",
-      wzQdrantDown: "请按之前的方式重新启动 Qdrant（见 README 的「Windows 排障」），再检查一次。",
+      wzQdrantDown: "请按之前的方式重新启动 Qdrant（比如 docker start 或 qdrant 命令），再检查一次。",
+      wzQdrantDownWin: "请按之前的方式重新启动 Qdrant（见 README 的「Windows 排障」），再检查一次。",
+      wzStepName_preflight: "检查",
+      wzStepName_read: "读取 Qdrant",
+      wzStepName_map: "整理记忆",
+      wzStepName_embed: "计算向量",
+      wzStepName_write: "写入",
+      wzStepName_verify: "核对",
+      wzStepName_switch: "切换",
+      wzStepName_merge: "合并",
+      wzStepName_embedder: "embedding 模型",
+      wzStepName_store: "记忆文件",
+      wzStepName_credentials: "凭据",
+      wzStepName_reembed: "重新计算向量",
+      wzErr_LOCAL_BACKEND_OFF: "请先完成设置：保存并启用本地后端。",
+      wzErr_ALREADY_MIGRATED: "这个记忆文件已经从 Qdrant 迁移过一次。",
+      wzErr_FORBIDDEN_COLLECTION: "这个 collection 属于别的应用，不会读取。",
+      wzErr_COLLECTION_NOT_ALLOWED: "只读取这套配置用的 collection。",
+      wzErr_COLLECTION_NOT_FOUND: "Qdrant 里没有这个 collection。",
+      wzErr_QDRANT_UNREACHABLE: "这个地址连不上 Qdrant。",
+      wzErr_QDRANT_AUTH: "Qdrant 拒绝了请求（API key）。",
+      wzErr_QDRANT_EMBEDDED_UNSUPPORTED: "oss.json 里配的是嵌入式 Qdrant 目录，迁移需要 Qdrant 服务。",
+      wzErr_VERIFY_FAILED: "复制后的核对没有通过。",
+      wzErr_EMBEDDER_MISMATCH: "记忆文件里的向量来自另一个 embedding 模型。",
+      wzErr_BAD_VECTOR: "Qdrant 里有记忆的向量维度不对。",
+      wzErr_CONFIG_INVALID: "有一项设置无效。",
+      wzErr_REF_NOT_ALLOWED: "向导只使用自己的凭据名，或者当前配置正在用的那个。",
+      wzErr_EMBEDDER_FAILED: "embedding 模型没有响应。",
+      wzErr_REEMBED_CONFLICT: "重新计算向量期间记忆一直在变，请在 DSH 空闲时再试。",
+      wzErr_STORE_REFUSED: "记忆文件不能放在这里。",
       wzSkip: "跳过，从空库开始",
       wzSkipHint: "跳过的话旧记忆留在 Qdrant，召回从空库开始。以后仍可以在这个向导里迁移。",
       wzSkipped: "已跳过迁移。",
@@ -1949,7 +2029,39 @@ window.__ModuleLoader__.load({
       // A local server needs no key: drop a leftover credential name.
       if (draft.embedder.mode === 'local' && !draft.embedder.keyTyped) embedder.apiKeyRef = ''
       delete embedder.keyTyped
-      return { embedder, llm: { ...draft.llm, maxTokens: Number(draft.llm.maxTokens) || undefined }, storePath: draft.storePath, useLiteralKey: draft.useLiteralKey }
+      return { embedder, llm: { ...draft.llm, maxTokens: Number(draft.llm.maxTokens) || undefined }, storePath: draft.storePath, storeConfirmed: draft.storeConfirmed === true, useLiteralKey: draft.useLiteralKey }
+    }
+
+    /** `provider|host` of a server, as lib/setup-routes.js compares them. */
+    function wizardServer(component, block) {
+      const provider = component === 'llm' ? 'openai' : String(block?.provider || 'openai')
+      const base = String(block?.baseUrl ?? '').trim()
+      if (!base) return `${provider}|default`
+      const match = /^https?:\/\/([^/?#]+)/i.exec(base)
+      return `${provider}|${match ? match[1].toLowerCase() : 'invalid'}`
+    }
+
+    /** Whether the stored key applies to the draft (same name, provider and host as saved). */
+    function storedKeyApplies(state, component, block) {
+      const saved = state?.current?.[component]
+      const info = state?.credentials?.[component]
+      if (!saved || !info?.configured || !block?.apiKeyRef) return false
+      return info.ref === block.apiKeyRef && (saved.apiKeyRef || '') === block.apiKeyRef && wizardServer(component, saved) === wizardServer(component, block)
+    }
+
+    /** A route's failure in the page language; the server's English text after it. */
+    function wizardError(t, result) {
+      const code = result?.code
+      const key = code ? `wzErr_${code}` : ''
+      const local = key && t(key) !== key ? t(key) : ''
+      const detail = String(result?.error ?? result?.message ?? '')
+      if (local) return detail ? `${local} (${detail})` : local
+      return template(t('wzFailed'), { error: detail })
+    }
+
+    function wizardStepName(t, name) {
+      const key = `wzStepName_${name}`
+      return name && t(key) !== key ? t(key) : String(name ?? '?')
     }
 
     function wizardKeys(keys) {
@@ -1964,6 +2076,7 @@ window.__ModuleLoader__.load({
       if (!result.writable) return template(t('wzStoreNotWritable'), { path: result.path, error: result.error ?? '' })
       if (result.kind === 'sync') return template(t('wzStoreSync'), { path: result.path, provider: result.provider ?? '' })
       if (result.kind === 'network') return template(t('wzStoreNetwork'), { path: result.path })
+      if (result.kind === 'unverified') return template(t('wzStoreUnverified'), { path: result.path, reason: result.reason ?? '' })
       if (result.kind === 'external') return template(t('wzStoreExternal'), { path: result.path })
       return template(t('wzStoreOk'), { path: result.path })
     }
@@ -2026,7 +2139,21 @@ window.__ModuleLoader__.load({
       }, [])
 
       useEffect(() => {
-        void load()
+        let resumed = false
+        void load().then((data) => {
+          // A job still running (page reloaded): show it and keep polling.
+          for (const job of data?.jobs ?? []) {
+            if (resumed) break
+            const key = job.kind === 'migrate' ? 'migrate' : job.kind === 'save' ? 'save' : null
+            if (!key) continue
+            resumed = true
+            setStep(key === 'migrate' ? 'migrate' : 'selftest')
+            setResults((current) => ({ ...current, [key]: { running: true, progress: job.progress } }))
+            void pollJobRef.current?.(job.id, key).then((done) => {
+              if (done?.state === 'done') void load()
+            })
+          }
+        })
       }, [load])
 
       const post = async (action, extra = {}) => {
@@ -2057,6 +2184,7 @@ window.__ModuleLoader__.load({
         record('selftest', null)
       }
 
+      const pollJobRef = useRef(null)
       const pollJob = async (id, key) => {
         for (let attempt = 0; attempt < 3600; attempt += 1) {
           await delay(attempt < 5 ? 300 : 1000)
@@ -2073,6 +2201,7 @@ window.__ModuleLoader__.load({
         }
         return null
       }
+      pollJobRef.current = pollJob
 
       if (loadError) {
         return h('div', { className: 'mem0-card mem0-section mem0-wz' }, h('p', { className: 'mem0-error' }, template(t('wzFailed'), { error: loadError })), h('button', { type: 'button', className: 'mem0-secondary', onClick: onClose }, t('wzClose')))
@@ -2087,12 +2216,13 @@ window.__ModuleLoader__.load({
       const keyField = (component, value, setValue) => {
         const info = state.credentials?.[component]
         const ref = draft[component].apiKeyRef
-        const stored = info?.configured && info.ref === ref
+        const stored = storedKeyApplies(state, component, draft[component])
+        const moved = !stored && info?.configured && info.ref === ref && !value.trim()
         return [
           h(TextField, {
             key: `${component}-key`,
             label: t('wzKey'),
-            hint: stored ? template(t('wzKeyStored'), { ref }) : t('wzKeyHint'),
+            hint: stored ? template(t('wzKeyStored'), { ref }) : moved ? t('wzKeyNewServer') : t('wzKeyHint'),
             type: 'password',
             autoComplete: 'off',
             value,
@@ -2198,6 +2328,13 @@ window.__ModuleLoader__.load({
                 service.hint ? h(ReservedPortHint, { t, hint: service.hint }) : null,
               ),
             )))
+            const refused = services.filter((service) => !service.ok && !service.hint && service.error === 'not running')
+            if (isWindows && refused.length > 0) {
+              body.push(h('div', { key: 'refused', className: 'mem0-hint mem0-wz-note' },
+                h('span', null, template(t('wzRefusedSummary'), { list: refused.map((service) => `${service.label} (${service.port})`).join(', ') })),
+                h('code', { className: 'mem0-wz-code' }, 'netsh int ipv4 show excludedportrange protocol=tcp'),
+              ))
+            }
           }
           body.push(h('p', { key: 'recommended', className: 'mem0-hint' }, `${t('wzRecommended')}: ${(state.recommendations?.local ?? []).map((item, i) => template(t(i === 0 ? 'wzModelDimsBest' : 'wzModelDims'), { model: item.model, dims: item.dims })).join(' · ')}`))
           body.push(h(SelectField, {
@@ -2242,32 +2379,15 @@ window.__ModuleLoader__.load({
             body.push(h(ResultLine, { key: 'ok', ok: true, text: template(t('wzEmbedOk'), { dims: result.dims }) }))
             if (result.dimsDiffer) body.push(h(ResultLine, { key: 'dims', ok: false, text: template(t('wzDimsDiffer'), result.dimsDiffer) }))
           } else {
-            body.push(h(ResultLine, { key: 'err', ok: false, text: result.authFailed ? t('wzAuthFailed') : template(t('wzFailed'), { error: result.error ?? '' }) }))
+            body.push(h(ResultLine, { key: 'err', ok: false, text: result.authFailed ? t('wzAuthFailed') : wizardError(t, result) }))
             if (result.hint) body.push(h(ReservedPortHint, { key: 'hint', t, hint: result.hint }))
           }
           if (result.storeMismatch) {
-            const reembed = results.reembed
             body.push(
               h(ResultLine, { key: 'mismatch', ok: false, text: template(t('wzStoreMismatch'), result.storeMismatch) }),
-              h('div', { key: 'reembed', className: 'mem0-wz-row' },
-                h('button', {
-                  type: 'button',
-                  className: 'mem0-secondary',
-                  disabled: Boolean(reembed?.running),
-                  onClick: async () => {
-                    if (!window.confirm(template(t('wzReembedConfirm'), result.storeMismatch))) return
-                    const started = await post('reembed')
-                    if (!started?.ok || !started.job?.id) return record('reembed', { error: { message: started?.error ?? '' } })
-                    record('reembed', { running: true })
-                    const job = await pollJob(started.job.id, 'reembed')
-                    if (job?.state === 'done') await testEmbedderNow()
-                  },
-                }, reembed?.running ? template(t('wzProgress'), { done: reembed.progress?.done ?? 0, total: reembed.progress?.total ?? '?' }) : t('wzReembed')),
-              ),
+              h('p', { key: 'reembed', className: 'mem0-hint' }, template(t('wzReembedOnSave'), result.storeMismatch)),
             )
-            if (reembed?.error) body.push(h(ResultLine, { key: 'reembed-err', ok: false, text: template(t('wzFailed'), { error: reembed.error.message ?? '' }) }))
           }
-          if (results.reembed?.result) body.push(h(ResultLine, { key: 'reembed-ok', ok: true, text: template(t('wzReembedDone'), { count: results.reembed.result.updated ?? 0 }) }))
         }
         return body
       }
@@ -2308,7 +2428,7 @@ window.__ModuleLoader__.load({
         if (result) {
           if (result.ok) body.push(h(ResultLine, { key: 'ok', ok: true, text: template(t('wzLlmOk'), { facts: result.facts ?? 0, stats: result.statsText ?? '' }) }))
           else if (result.reason) body.push(h(ResultLine, { key: 'bad', ok: false, text: template(t('wzLlmBad'), { reason: result.reason, stats: result.statsText ?? '' }) }))
-          else body.push(h(ResultLine, { key: 'err', ok: false, text: result.authFailed ? t('wzAuthFailed') : template(t('wzFailed'), { error: result.error ?? '' }) }))
+          else body.push(h(ResultLine, { key: 'err', ok: false, text: result.authFailed ? t('wzAuthFailed') : wizardError(t, result) }))
           for (const [i, line] of llmAdvice(t, result.advice).entries()) body.push(h('p', { key: `advice-${i}`, className: 'mem0-hint' }, line))
           if (result.hint) body.push(h(ReservedPortHint, { key: 'hint', t, hint: result.hint }))
         }
@@ -2317,29 +2437,63 @@ window.__ModuleLoader__.load({
 
       const storeStep = () => {
         const result = results.store
+        const editing = Boolean(draft.storePath) || results.storeEditing === true
         return [
-          h(TextField, {
-            key: 'path',
-            label: t('wzStorePath'),
-            hint: t('wzStoreHint'),
-            value: draft.storePath,
-            placeholder: '~/.dsh/mem0/memory.sqlite',
-            className: 'mem0-grid-single',
-            onChange: (value) => {
-              setDraft((current) => ({ ...current, storePath: value }))
-              record('store', null)
-              record('selftest', null)
-            },
-          }),
+          h('p', { key: 'where', className: 'mem0-hint' }, template(t('wzStoreWhere'), { path: draft.storePath || state.store?.path || '~/.dsh/mem0/memory.sqlite' })),
+          editing
+            ? h(TextField, {
+                key: 'path',
+                label: t('wzStorePath'),
+                hint: t('wzStoreHint'),
+                value: draft.storePath,
+                placeholder: '~/.dsh/mem0/memory.sqlite',
+                className: 'mem0-grid-single',
+                onChange: (value) => {
+                  setDraft((current) => ({ ...current, storePath: value, storeConfirmed: false }))
+                  record('store', null)
+                  record('selftest', null)
+                },
+              })
+            : h('div', { key: 'change', className: 'mem0-wz-row' }, h('button', { type: 'button', className: 'mem0-secondary', onClick: () => record('storeEditing', true) }, t('wzStoreChange'))),
           h('div', { key: 'actions', className: 'mem0-wz-row' },
             h('button', { type: 'button', className: 'mem0-primary', disabled: busy === 'checkStore', onClick: async () => record('store', await post('checkStore')) }, busy === 'checkStore' ? t('wzTesting') : t('wzCheck')),
           ),
           result ? h(ResultLine, { key: 'result', ok: Boolean(result.ok), text: result.error && !result.path ? template(t('wzFailed'), { error: result.error }) : storeCheckText(t, result) }) : null,
+          result?.kind === 'unverified'
+            ? h(ToggleRow, {
+                key: 'confirm',
+                label: t('wzStoreConfirm'),
+                checked: draft.storeConfirmed === true,
+                onChange: (checked) => {
+                  setDraft((current) => ({ ...current, storeConfirmed: checked }))
+                  record('selftest', null)
+                },
+              })
+            : null,
           state.store?.memoryCount > 0 && !draft.storePath ? h('p', { key: 'count', className: 'mem0-hint' }, template(t('wzStoreHas'), { count: state.store.memoryCount })) : null,
         ]
       }
 
       const stepLabel = (name) => t({ write: 'wzCheckWrite', search: 'wzCheckSearch', delete: 'wzCheckDelete', leftover: 'wzCheckLeftover', store: 'wzStepStore', credentials: 'wzCheckCredentials' }[name] ?? 'wzCheckWrite')
+
+      const saveNow = async (extra = {}) => {
+        let outcome = await post('save', extra)
+        if (outcome?.ok && outcome.job?.id) {
+          // Vectors to recompute first: a job.
+          record('save', { running: true })
+          const job = await pollJob(outcome.job.id, 'save')
+          outcome = job?.state === 'done' ? job.result : { ok: false, step: job?.error?.step ?? 'reembed', code: job?.error?.code ?? null, error: job?.error?.message ?? '' }
+        }
+        record('save', outcome)
+        if (outcome?.ok) {
+          setKeys({ embedder: '', llm: '' })
+          if (backend !== 'oss') await onEnable?.()
+          await delay(800)
+          const fresh = await load()
+          const legacy = fresh?.legacy ?? state.legacy
+          if ((legacy?.detected || legacy?.possible) && !(fresh?.migration ?? state.migration)) setStep('migrate')
+        }
+      }
 
       const selfTestStep = () => {
         const result = results.selftest
@@ -2353,17 +2507,7 @@ window.__ModuleLoader__.load({
               type: 'button',
               className: 'mem0-primary',
               disabled: Boolean(busy) || !result?.ok,
-              onClick: async () => {
-                const outcome = await post('save')
-                record('save', outcome)
-                if (outcome?.ok) {
-                  setKeys({ embedder: '', llm: '' })
-                  if (backend !== 'oss') await onEnable?.()
-                  await delay(800)
-                  await load()
-                  if (state.legacy?.detected && !state.migration) setStep('migrate')
-                }
-              },
+              onClick: () => saveNow(),
             }, busy === 'save' ? t('wzSaving') : t('wzSaveEnable')),
           ),
         ]
@@ -2374,10 +2518,12 @@ window.__ModuleLoader__.load({
         }
         if (result) {
           if (result.ok) body.push(h(ResultLine, { key: 'ok', ok: true, text: t('wzSelfTestOk') }))
-          else if (!result.steps?.length || result.step === 'store') body.push(h(ResultLine, { key: 'err', ok: false, text: result.location ? storeCheckText(t, result.location) : template(t('wzFailed'), { error: result.error ?? '' }) }))
+          else if (!result.steps?.length || result.step === 'store') body.push(h(ResultLine, { key: 'err', ok: false, text: result.location ? storeCheckText(t, result.location) : result.authFailed || result.probe?.authFailed ? t('wzAuthFailed') : wizardError(t, result) }))
+          if (result.ok && result.reembed > 0) body.push(h('p', { key: 'reembed', className: 'mem0-hint' }, template(t('wzReembedOnSave'), { memories: result.reembed })))
           if (result.code === 'EMBEDDER_MISMATCH') body.push(h('p', { key: 'mismatch', className: 'mem0-hint' }, t('wzMismatchGoBack')))
         }
-        if (saved) {
+        if (saved?.running) body.push(h('p', { key: 'saving', className: 'mem0-hint' }, template(t('wzProgress'), { done: saved.progress?.done ?? 0, total: saved.progress?.total ?? '?' })))
+        if (saved && !saved.running) {
           if (saved.ok) {
             body.push(h(ResultLine, {
               key: 'saved',
@@ -2388,10 +2534,17 @@ window.__ModuleLoader__.load({
                 refs: saved.storedCredentials?.length ? saved.storedCredentials.join(', ') : t('wzNone'),
               }),
             }))
+            if (saved.reembedded > 0) body.push(h(ResultLine, { key: 'reembedded', ok: true, text: template(t('wzReembedDone'), { count: saved.reembedded }) }))
+            if (saved.written?.backupHasKeys) body.push(h('p', { key: 'backup-keys', className: 'mem0-hint' }, template(t('wzBackupHasKeys'), { backup: saved.written.backup ?? '' })))
+          } else if (saved.code === 'REF_EXISTS') {
+            body.push(
+              h(ResultLine, { key: 'ref-exists', ok: false, text: template(t('wzRefExists'), { ref: saved.ref ?? '' }) }),
+              h('div', { key: 'ref-replace', className: 'mem0-wz-row' }, h('button', { type: 'button', className: 'mem0-secondary', disabled: Boolean(busy), onClick: () => saveNow({ overwriteRefs: [saved.ref] }) }, template(t('wzRefReplace'), { ref: saved.ref ?? '' }))),
+            )
           } else if (saved.step === 'credentials') {
             body.push(h(ResultLine, { key: 'cred', ok: false, text: template(t(saved.reason === 'no-service' || saved.reason === 'read-only' ? 'wzCredNoService' : 'wzFailed'), { ref: saved.ref ?? '', error: saved.error ?? '' }) }))
           } else {
-            body.push(h(ResultLine, { key: 'save-err', ok: false, text: template(t('wzFailed'), { error: saved.error ?? '' }) }))
+            body.push(h(ResultLine, { key: 'save-err', ok: false, text: wizardError(t, saved) }))
           }
         }
         return body
@@ -2403,6 +2556,7 @@ window.__ModuleLoader__.load({
         const enabled = state.backend === 'oss'
         const body = [
           h('p', { key: 'intro', className: 'mem0-hint' }, template(t('wzMigrateIntro'), { user: state.userId ?? '', collection: qdrant.collection || 'dsh_mem0' })),
+          state.legacy?.possible && !state.legacy?.detected && !state.migration ? h('p', { key: 'possible', className: 'mem0-hint' }, template(t('wzLegacyPossible'), { endpoint: state.legacy.endpoint ?? '' })) : null,
         ]
         if (state.migration) {
           body.push(h(ResultLine, { key: 'done', ok: true, text: template(t('wzAlreadyMigrated'), { at: activityTime(state.migration.at), imported: state.migration.imported, endpoint: state.migration.endpoint ?? '' }) }))
@@ -2414,16 +2568,22 @@ window.__ModuleLoader__.load({
         }
         body.push(
           h(TextField, { key: 'url', label: t('wzQdrantUrl'), hint: t('wzQdrantHint'), value: qdrant.url, placeholder: isWindows ? '127.0.0.1:15333' : '127.0.0.1:6333', onChange: (value) => { setQdrant((current) => ({ ...current, url: value })); record('preflight', null) } }),
-          h(TextField, { key: 'collection', label: t('wzCollection'), value: qdrant.collection, onChange: (value) => { setQdrant((current) => ({ ...current, collection: value.trim() })); record('preflight', null) } }),
+          // Only the collections of this setup; never typed freely.
+          (state.legacy?.collections ?? []).length > 1
+            ? h(SelectField, { key: 'collection', label: t('wzCollection'), value: qdrant.collection, options: state.legacy.collections.map((name) => ({ value: name, label: name })), onChange: (value) => { setQdrant((current) => ({ ...current, collection: value })); record('preflight', null) } })
+            : h('p', { key: 'collection', className: 'mem0-hint' }, `${t('wzCollection')}: ${qdrant.collection || 'dsh_mem0'}`),
+          state.migration
+            ? h(ToggleRow, { key: 'again', label: t('wzMigrateAgain'), checked: qdrant.again === true, onChange: (checked) => setQdrant((current) => ({ ...current, again: checked })) })
+            : null,
           h('div', { key: 'actions', className: 'mem0-wz-row' },
             h('button', { type: 'button', className: 'mem0-secondary', disabled: Boolean(busy) || Boolean(run?.running), onClick: async () => record('preflight', await post('migratePreflight', { url: qdrant.url, collection: qdrant.collection })) }, busy === 'migratePreflight' ? t('wzTesting') : t('wzPreflight')),
             h('button', {
               type: 'button',
               className: 'mem0-primary',
-              disabled: !pre?.ok || Boolean(run?.running) || Boolean(busy),
+              disabled: !pre?.ok || Boolean(run?.running) || Boolean(busy) || (Boolean(state.migration) && qdrant.again !== true),
               onClick: async () => {
-                const started = await post('migrate', { url: qdrant.url, collection: qdrant.collection, copyVectors: qdrant.copyVectors })
-                if (!started?.ok || !started.job?.id) return record('migrate', { error: { message: started?.error ?? '', step: started?.step ?? 'preflight' } })
+                const started = await post('migrate', { url: qdrant.url, collection: qdrant.collection, copyVectors: qdrant.copyVectors, again: qdrant.again === true })
+                if (!started?.ok || !started.job?.id) return record('migrate', { error: { message: started?.error ?? '', step: started?.step ?? 'preflight', code: started?.code ?? null } })
                 record('migrate', { running: true })
                 const job = await pollJob(started.job.id, 'migrate')
                 if (job?.state === 'done') await load()
@@ -2440,13 +2600,15 @@ window.__ModuleLoader__.load({
               ? h(ToggleRow, { key: 'copy', label: template(t('wzCopyVectors'), { model: pre.embedder.model, dims: pre.embedder.dims }), checked: qdrant.copyVectors, onChange: (checked) => setQdrant((current) => ({ ...current, copyVectors: checked })) })
               : h('p', { key: 'recompute', className: 'mem0-hint' }, template(t('wzRecompute'), { model: pre.embedder.model })))
           } else {
-            body.push(h(ResultLine, { key: 'pre-err', ok: false, text: template(t('wzFailed'), { error: pre.error ?? '' }) }))
-            if (pre.code === 'QDRANT_UNREACHABLE') body.push(h('p', { key: 'down', className: 'mem0-hint' }, t('wzQdrantDown')))
+            body.push(h(ResultLine, { key: 'pre-err', ok: false, text: wizardError(t, pre) }))
+            if (pre.code === 'QDRANT_UNREACHABLE') body.push(h('p', { key: 'down', className: 'mem0-hint' }, t(isWindows ? 'wzQdrantDownWin' : 'wzQdrantDown')))
             if (pre.hint) body.push(h(ReservedPortHint, { key: 'hint', t, hint: pre.hint }))
           }
         }
         if (run?.result) body.push(h(ResultLine, { key: 'done-now', ok: true, text: migrationText(t, run.result) }))
-        if (run?.error) body.push(h(ResultLine, { key: 'run-err', ok: false, text: template(t('wzMigrateFailed'), { step: run.error.step ?? '?', error: run.error.message ?? '' }) }))
+        if (run?.result?.skippedForeign > 0) body.push(h('p', { key: 'foreign', className: 'mem0-hint' }, template(t('wzForeign'), { count: run.result.skippedForeign })))
+        if (run?.error) body.push(h(ResultLine, { key: 'run-err', ok: false, text: template(t('wzMigrateFailed'), { step: wizardStepName(t, run.error.step), error: wizardError(t, run.error) }) }))
+        if (run?.running && run.progress) body.push(h('p', { key: 'progress', className: 'mem0-hint' }, template(t('wzMigrating'), { phase: run.progress.phase === 'embed' ? t('wzPhaseEmbed') : t('wzPhaseRead'), done: run.progress.done ?? 0, total: run.progress.total ?? '?' })))
         if (skipped) body.push(h(ResultLine, { key: 'skipped', ok: true, text: t('wzSkipped') }))
         return body
       }
@@ -3901,6 +4063,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName } }
   },
 })

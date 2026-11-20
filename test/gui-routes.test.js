@@ -5,19 +5,20 @@ import {
   GUI_HYGIENE_PATH,
   GUI_MEMORIES_PATH,
   GUI_PROFILE_PATH,
+  GUI_SETUP_PATH,
   GUI_STATUS_PATH,
   GUI_TEST_PATH,
   registerGuiRoutes,
 } from '../lib/gui-routes.js'
 
-function harness(runtime) {
+function harness(runtime, { connection = { requestRejection: () => undefined } } = {}) {
   const routes = new Map()
   const ctx = {
     inject(names, register) {
       assert.deepEqual(names, ['webServer', 'connection'])
       register({
         get(name) {
-          if (name === 'connection') return { requestRejection: () => undefined }
+          if (name === 'connection') return connection
           return undefined
         },
         webServer: {
@@ -465,4 +466,18 @@ test('activity route reports the local store and its last failure (home shortene
   // REST backends have no local store.
   const rest = harness({ config: { ...config, backend: 'platform' }, activity: {}, client: {} })
   assert.equal((await invoke(rest.get(GUI_ACTIVITY_PATH), 'GET', '/?translate=0')).body.store, null)
+})
+
+test('setup route: refused without a trust fence (503), and for a POST that is not JSON', async () => {
+  const fenceless = harness({ config: { backend: 'platform' } }, { connection: {} })
+  const refused = await invoke(fenceless.get(GUI_SETUP_PATH), 'GET', GUI_SETUP_PATH)
+  assert.equal(refused.status, 503)
+  const routes = harness({ config: { backend: 'platform' } })
+  const res = response()
+  const req = { method: 'POST', url: GUI_SETUP_PATH, headers: { host: '127.0.0.1:4096', 'content-type': 'text/plain' } }
+  req[Symbol.asyncIterator] = async function* () {
+    yield Buffer.from('{"action":"probe"}')
+  }
+  await routes.get(GUI_SETUP_PATH)(req, res)
+  assert.equal(res.statusCode, 415)
 })

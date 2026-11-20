@@ -237,11 +237,11 @@ config:
 
 1. **Embedding 模型。** 优先用云端 API（任意 OpenAI 兼容的 `/embeddings`；推荐 OpenAI `text-embedding-3-small`、硅基流动或阿里云的 `bge-m3` 类模型）；也可以用本地模型：向导在 `127.0.0.1` 上探测 Ollama（11434、15434）、LM Studio（1234），只在 macOS 上探测 oMLX（8000），并列出可用的 embedding 模型（中英文推荐 bge-m3，1024 维）。试调一次得到维度。
 2. **抽取 LLM。** 填地址、模型和 key；用 Mem0 的 prompt 和一段固定示例试抽一次，并给出 `max_tokens`（推理模型至少 8000）和 `reasoning_effort` 的建议。
-3. **记忆文件。** 检查能写入，且不在网络盘或同步目录（iCloud、OneDrive、Dropbox、Google Drive 等）上，这些位置会损坏 SQLite 文件。
-4. **自测并保存。** 用测试用户 `dsh-mem0-wizard-selftest` 写入一条探针记忆，检索到它，再删掉，并确认这个用户没有残留。通过后才把 key 存进 DSH 凭据库（默认名 `DSH_MEM0_EMBEDDER_API_KEY`、`DSH_MEM0_LLM_API_KEY`），写入 `oss.json` 的 `dsh_mem0` 段（原文件备份为 `oss.json.bak-<时间>`），并启用本地后端。失败时什么都不改。
+3. **记忆文件。** 只显示，不用选：默认是 `~/.dsh/mem0/memory.sqlite`，要改在「高级」里改。检查能写入，且不在网络盘（Windows 的 UNC 路径和映射盘、macOS `/Volumes` 下的 SMB/NFS/AFP 共享、Linux 的网络文件系统）或同步目录（iCloud、OneDrive、Dropbox、Google Drive 等）上，这些位置会损坏 SQLite 文件。判断不出类型的卷需要你确认。
+4. **自测并保存。** 用测试用户 `dsh-mem0-wizard-selftest` 写入一条探针记忆，检索到它，再删掉，并确认这个用户没有残留。通过后才把 key 存进 DSH 凭据库（默认名 `DSH_MEM0_EMBEDDER_API_KEY`、`DSH_MEM0_LLM_API_KEY`），写入 `oss.json` 的 `dsh_mem0` 段（原文件备份为 `oss.json.bak-<时间>`），并启用本地后端。失败时什么都不改。你选择移走的明文 key 会从 `oss` 段删除；备份文件里仍有，确认一切正常后请删掉备份。
 5. **从旧版迁移记忆**（只针对旧版用户，见下文）。
 
-向导只探测 `127.0.0.1`；你手动填的地址只在点「测试」时才连接。记忆文件的 embedding 换了模型时，第 1 步会提供「重新计算向量」。
+向导只探测 `127.0.0.1`；你手动填的地址只在点「测试」时才连接。已存的 key 只发给保存时的那个服务：换了服务商或地址，要重新填 key。向导只读写自己的凭据名或当前配置正在用的那个，要替换别的 key 会先问你。记忆文件里的向量来自另一个 embedding 时，自测改用临时文件，保存时先重算向量；在这之前当前配置照常运行。
 
 也可以手动在 `~/.dsh/mem0/oss.json` 的 `dsh_mem0` 段里配置，DSH 的设置同步不会重写这个文件（见 [examples/oss-config.example.json](examples/oss-config.example.json)）：
 
@@ -279,7 +279,7 @@ config:
 
 **工作方式。** 写入遵循 Mem0 2.2.1 的 V3 追加式流程：取该对话范围最近 10 条消息和最相似的 10 条记忆，用 Mem0 自己的抽取 prompt（逐字复制，开启「按输入语言回答」）调用一次 LLM，然后只做 ADD：md5 与已有记忆或同批新事实相同的会跳过。同一用户/agent 的写入依次执行。检索时把查询向量化，与所有已存向量逐一比较（余弦，暴力检索；几千条记忆只要几毫秒），丢掉低于 0.1 的分数。向量缓存在内存里；另一个 DSH 进程写了同一个文件时，通过 SQLite 的 `data_version` 发现。WAL 模式和 5 秒 busy timeout 让多个 DSH profile 可以共用这个文件。哪些部分来自 Mem0 见 [NOTICE](NOTICE)。
 
-**更换 embedding 模型。** 存储会记住写入向量的 embedding（模型和维度）。配置了另一个模型时，召回和保存会停下并给出明确的 `EMBEDDER_MISMATCH` 配置错误，而不是把两种向量混在一起。可以换回原模型，或用新模型重算向量（配置向导第 1 步的「重新计算向量」）。空存储会直接采用新模型。
+**更换 embedding 模型。** 存储会记住写入向量的 embedding（模型和维度）。配置了另一个模型时，召回和保存会停下并给出明确的 `EMBEDDER_MISMATCH` 配置错误，而不是把两种向量混在一起。可以换回原模型，或在配置向导里保存新模型，保存时会先重算向量再切换。空存储会直接采用新模型。
 
 **抽取失败。** 回复被截断（`finish_reason=length`）时，这次保存会用加倍的输出上限（最多 65536）重试一次。回复不是 JSON 或为空时重试一次；模型拒答不重试。抽取失败会把 `finish_reason`、输出上限和 token 数记进失败历史和「记忆活动」卡片（只有数字，不含文本）。抽取失败不计入熔断：LLM 已经回答了，暂停记忆也没用。
 
@@ -292,9 +292,10 @@ config:
 <a id="migrating-from-qdrant"></a>
 **从 Python sidecar（0.3.x）升级。** 旧版的 Python sidecar、Qdrant 和旧版回退路径已移除。旧设置（`pythonPath`、`mem0ConfigPath`、`historyDbPath`、`sidecarEnv`）会被忽略，只记一条 debug 日志，不报错，也不会触发「配置疑似被重写」的提示。请用[配置向导](#setup-wizard)重新配置，它的最后一步负责迁移记忆：
 
-- 从正在运行的 Qdrant **服务端**读取一个 collection（默认 `dsh_mem0`；地址取 `oss.json` 里的值，没有就用 `127.0.0.1:6333`，Windows 上常见 `127.0.0.1:15333`），而且只读你的 `userId` 的记忆。其他 collection 一概不读、不列出，`mem0` 按名字直接拒绝。Qdrant 只读不写：里面的数据不改、不删，**也不做备份**。
+- 从正在运行的 Qdrant **服务端**读取一个 collection（`oss.json` 或 `collectionName` 指定的那个，没有就是 `dsh_mem0`；地址取 `oss.json` 里的值，没有就用 `127.0.0.1:6333`，Windows 上常见 `127.0.0.1:15333`），而且只读你的 `userId` 的记忆。不能选别的 collection，也不列出任何 collection，以 `mem0` 开头的名字一律拒绝。`oss.json` 里的 Qdrant API key 只发给那个 Qdrant。Qdrant 只读不写：里面的数据不改、不删，**也不做备份**。
 - 新旧 embedding 是同一个模型、同样维度，并且你勾选了，就直接拷贝向量；否则用新的 embedding 重新计算。时间戳统一成 UTC（原值保留在 metadata 里）；手动编辑过的记忆摘要会一起带过来。
-- 先全部写进 `memory.sqlite.importing`，在一个事务里提交，校验（条数、抽样比对 hash、固定查询的 top-5）通过后，才成为记忆文件或合并进去。失败时删掉临时文件并写明失败在哪一步，记忆文件不变。重复执行会跳过已经迁过的记忆。
+- 先全部写进 `memory.sqlite.importing`，在一个事务里提交，校验（条数和 Qdrant 的 count 对比、抽样读回比对、固定查询的 top-5）通过后，才成为记忆文件或合并进去。`user_id` 存成别的形式（比如数字）的点会单独计数，不迁移。失败时删掉临时文件并写明失败在哪一步，记忆文件不变。迁移过一次后，再迁移需要你确认：之后删掉的记忆会被导回来。
+- 以前用过本地后端、但 `oss.json` 里没有 Qdrant 配置（旧版可能从别处读取配置）时，向导也会提示这一步，地址用默认值。
 - 迁移之后插件不再连接 Qdrant。旧数据仍在 Qdrant，不再使用；确认没问题后可以自行删除，或停掉 Qdrant 服务。
 - Qdrant 起不来？见 [Windows 排障](#windows-troubleshooting)。也可以跳过迁移、从空库开始，旧记忆留在 Qdrant，以后还能再迁。嵌入式 Qdrant（配置里是 `path` 而不是服务端）读不了，请启动服务端或跳过。
 
