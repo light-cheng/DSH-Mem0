@@ -65,6 +65,7 @@ test('registers the memory tools with the expected names', () => {
     'mem0_add',
     'mem0_delete',
     'mem0_get',
+    'mem0_pin',
     'mem0_profile_get',
     'mem0_profile_reset',
     'mem0_profile_update',

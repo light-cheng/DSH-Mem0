@@ -33,8 +33,6 @@ function config(overrides = {}) {
     agentId: 'dsh',
     profileEnabled: true,
     profileBudgetTokens: 2000,
-    storeMaxMemories: 500,
-    storeMaxTokens: 200_000,
     hygieneEnabled: true,
     hygieneIntervalDays: 7,
     autoRecall: true,
@@ -85,6 +83,21 @@ function memoryStore(initial = []) {
   }
 }
 
+/** A fake `ctx.llm` whose answer for each group comes from `answer(records)`. */
+function reviewLlm(answer) {
+  return {
+    llm: {
+      async *stream(options) {
+        const records = JSON.parse(options.messages[0].content[0].text.split('\n')[1]).records
+        yield { type: 'text-delta', text: JSON.stringify(answer(records)) }
+        yield { type: 'usage', usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      },
+    },
+    agentDefaultModel: { currentSelection: () => ({ provider: 'mock', model: 'mock-model' }) },
+  }
+}
+
 function tempState(prefix) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
   const file = path.join(dir, 'maintenance.json')
@@ -93,6 +106,14 @@ function tempState(prefix) {
 
 function maintenanceFor(client, state, overrides = {}) {
   return new MemoryMaintenance({ client, config: config(overrides), state, activity: {}, logger: quiet })
+}
+
+/**
+ * `count` memories of which only `unique` texts differ: the rest are exact
+ * duplicates, the deletions a hygiene pass plans (no size pruning since P2).
+ */
+function duplicateRows(count, unique, prefix = 'm', text = 'Fact', extra = {}) {
+  return Array.from({ length: count }, (_, index) => memory(`${prefix}${String(index).padStart(3, '0')}`, `${text} ${index % unique}`, extra))
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5))
@@ -178,9 +199,8 @@ async function invoke(handler, method, url = '/', body) {
 test('P1-2: a resent confirmation (lost response) deletes the previewed 100 once, never 200', async () => {
   const { dir, state } = tempState('dsh-mem0-p1-2-')
   try {
-    const rows = Array.from({ length: 250 }, (_, index) => memory(`m${String(index).padStart(3, '0')}`, `Fact number ${index}`))
-    const store = memoryStore(rows)
-    const maintenance = maintenanceFor(store, state, { storeMaxMemories: 20 })
+    const store = memoryStore(duplicateRows(250, 150))
+    const maintenance = maintenanceFor(store, state)
     const routes = routeHarness({ config: config(), client: store, maintenance })
     const hygiene = routes.get(GUI_HYGIENE_PATH)
 
@@ -219,8 +239,8 @@ test('P1-2: a resent confirmation (lost response) deletes the previewed 100 once
 test('P1-2: concurrent confirmations of one plan share a single pass', async () => {
   const { dir, state } = tempState('dsh-mem0-p1-2b-')
   try {
-    const store = memoryStore(Array.from({ length: 30 }, (_, index) => memory(`m${index}`, `Fact ${index}`)))
-    const maintenance = maintenanceFor(store, state, { storeMaxMemories: 20 })
+    const store = memoryStore(duplicateRows(30, 20))
+    const maintenance = maintenanceFor(store, state)
     const preview = await maintenance.run('manual', { dryRun: true })
     const request = { planId: preview.planId, idempotencyKey: 'k' }
     const [a, b] = await Promise.all([maintenance.runPlan(request), maintenance.runPlan(request)])
@@ -235,8 +255,8 @@ test('P1-2: concurrent confirmations of one plan share a single pass', async () 
 test('P1-2: a plan deletes only its own ids that still exist unchanged', async () => {
   const { dir, state } = tempState('dsh-mem0-p1-2c-')
   try {
-    const store = memoryStore(Array.from({ length: 24 }, (_, index) => memory(`m${index}`, `Fact ${index}`)))
-    const maintenance = maintenanceFor(store, state, { storeMaxMemories: 20 })
+    const store = memoryStore(duplicateRows(24, 20))
+    const maintenance = maintenanceFor(store, state)
     const preview = await maintenance.run('manual', { dryRun: true })
     assert.equal(preview.planned, 4)
     const [gone, edited] = preview.plannedDetails.map((item) => item.id)
@@ -267,19 +287,16 @@ test('P1-2: the settings page sends the confirmation without retry, with planId 
 test('P1-3: switching user in one profile does not carry the deletion authorisation', async () => {
   const { dir, file } = tempState('dsh-mem0-p1-3-')
   try {
-    const rowsA = Array.from({ length: 25 }, (_, index) => memory(`a${index}`, `A fact ${index}`))
-    const rowsB = Array.from({ length: 25 }, (_, index) =>
-      memory(`b${index}`, `B fact ${index}`, { user_id: 'dsh-mem0-test-user-b' }),
-    )
+    const rowsA = duplicateRows(25, 20, 'a', 'A fact')
+    const rowsB = duplicateRows(25, 20, 'b', 'B fact', { user_id: 'dsh-mem0-test-user-b' })
     const store = memoryStore([...rowsA, ...rowsB])
-    const asA = maintenanceFor(store, new MaintenanceState(file), { storeMaxMemories: 20 })
+    const asA = maintenanceFor(store, new MaintenanceState(file))
     const preview = await asA.run('manual', { dryRun: true })
     await asA.runPlan({ planId: preview.planId, idempotencyKey: 'k' })
     assert.ok(asA.status().lastRunAt)
     assert.equal(store.removed.length, 5)
 
     const asB = maintenanceFor(store, new MaintenanceState(file), {
-      storeMaxMemories: 20,
       userId: 'dsh-mem0-test-user-b',
     })
     assert.equal(asB.status().previewOnly, true)
@@ -287,7 +304,7 @@ test('P1-3: switching user in one profile does not carry the deletion authorisat
     assert.equal(report.dryRun, true)
     assert.equal(store.removed.filter((id) => id.startsWith('b')).length, 0)
     // A's authorisation is untouched.
-    assert.ok(maintenanceFor(store, new MaintenanceState(file), { storeMaxMemories: 20 }).status().lastRunAt)
+    assert.ok(maintenanceFor(store, new MaintenanceState(file)).status().lastRunAt)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -354,14 +371,14 @@ test('P1-4: dispose before the list returns stops the pass: no delete, no state 
       list(_filters, options) {
         listSignal = options?.signal
         return new Promise((resolve) => {
-          release = () => resolve({ results: Array.from({ length: 30 }, (_, index) => memory(`m${index}`, `Fact ${index}`)) })
+          release = () => resolve({ results: duplicateRows(30, 20) })
         })
       },
       async remove(id) {
         removed.push(id)
       },
     }
-    const maintenance = maintenanceFor(client, state, { storeMaxMemories: 20 })
+    const maintenance = maintenanceFor(client, state)
     const running = maintenance.run('manual')
     await settle()
     assert.ok(listSignal, 'the list request carries an abort signal')
@@ -389,7 +406,7 @@ test('P1-4: dispose mid-way stops before the next delete, and a reloaded instanc
     const client = {
       async list() {
         order.push('list')
-        return { results: Array.from({ length: 30 }, (_, index) => memory(`m${index}`, `Fact ${index}`)) }
+        return { results: duplicateRows(30, 20) }
       },
       remove(id, options) {
         removed.push(id)
@@ -402,14 +419,14 @@ test('P1-4: dispose mid-way stops before the next delete, and a reloaded instanc
         return Promise.resolve()
       },
     }
-    const old = maintenanceFor(client, new MaintenanceState(file), { storeMaxMemories: 20 })
+    const old = maintenanceFor(client, new MaintenanceState(file))
     const oldRun = old.run('manual')
     await settle()
     assert.equal(removed.length, 1)
     old.dispose()
     assert.equal(first.aborted, true)
     // The reloaded instance starts a pass at once, but it must wait.
-    const fresh = maintenanceFor(client, new MaintenanceState(file), { storeMaxMemories: 20, hygieneEnabled: false })
+    const fresh = maintenanceFor(client, new MaintenanceState(file), { hygieneEnabled: false })
     const freshRun = fresh.run('startup', { profileOnly: true })
     await settle()
     assert.deepEqual(order, ['list'])
@@ -615,7 +632,7 @@ test('P2-8: the report counts what is really left, with the 100-per-run cap and 
   for (const failing of [0, 3]) {
     const { dir, state } = tempState('dsh-mem0-p2-8-')
     try {
-      const store = memoryStore(Array.from({ length: 125 }, (_, index) => memory(`m${index}`, `Fact ${index}`)))
+      const store = memoryStore(duplicateRows(125, 25))
       const remove = store.remove.bind(store)
       let calls = 0
       store.remove = async (id) => {
@@ -623,7 +640,7 @@ test('P2-8: the report counts what is really left, with the 100-per-run cap and 
         if (calls <= failing) throw new Error('backend unavailable')
         return remove(id)
       }
-      const maintenance = maintenanceFor(store, state, { storeMaxMemories: 20 })
+      const maintenance = maintenanceFor(store, state)
       const preview = await maintenance.run('manual', { dryRun: true })
       assert.equal(preview.planned, 100)
       assert.equal(preview.storeCount, 25)
@@ -642,10 +659,21 @@ test('P2-8: an automatic preview summary keeps facts that are still stored', asy
   const { dir, state } = tempState('dsh-mem0-p2-8b-')
   try {
     const store = memoryStore(Array.from({ length: 22 }, (_, index) => memory(`m${index}`, `Fact ${index}`)))
-    const maintenance = maintenanceFor(store, state, { storeMaxMemories: 20 })
+    // The model wants two memories gone; an automatic first pass only previews.
+    const maintenance = new MemoryMaintenance({
+      client: store,
+      config: config(),
+      state,
+      activity: {},
+      logger: quiet,
+      llm: reviewLlm((records) => ({
+        actions: records.filter((record) => record.text === 'Fact 1' || record.text === 'Fact 2').map((record) => ({ type: 'delete', ids: [record.id], reason: 'outdated' })),
+      })),
+    })
     const report = await maintenance.maybeRun('startup')
     assert.equal(report.dryRun, true)
     assert.equal(report.planned, 2)
+    assert.equal(store.removed.length, 0)
     assert.equal(maintenance.status().profile.items, 22)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })

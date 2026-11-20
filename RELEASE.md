@@ -6,6 +6,16 @@ English is the default; the Chinese version follows below.
 
 ### Unreleased
 
+- **Model-led memory hygiene, on by default** (scripts check every step).
+  - The pass asks the model currently set in DSH (`ctx.llm`, the background default model, no session; lowest reasoning effort, an explicit output cap of 1536 tokens, doubled once when cut off) about one group of memories at a time: the memories new or changed since the last review, each with its most similar older ones. The model answers one JSON object of `merge`, `delete`, `keep` and `importance` (1–5) actions, each with a reason and the record ids of the group. Scripts remove exact duplicates, pick and group the candidates, and check each action: ids must belong to the group, delete and merge only touch this plugin's own memories (`source=dsh`) and never pinned ones, no memory is used twice, merged text must be plain text, a memory whose text had a secret redacted is never merged. Anything else is dropped and counted. A merge writes one new memory (`metadata.merged_from`) and deletes its sources.
+  - All #24 safety rules stay: automatic passes only preview deletes and merges until you confirm one manual run; a confirmed preview runs once (planId + idempotency key) and only on memories still unchanged; at most 100 memories go per pass; the store's scope is kept; dispose stops the pass; deleted memories invalidate the summary. Importance is stored by every pass except a manual preview (it deletes nothing).
+  - Billing: these calls are billed to your provider in DSH and do not appear in DSH usage statistics. Each report shows the calls and tokens used. Turn **Model-led hygiene** (`modelHygiene`) off to run the script checks only.
+  - Fallback: with no DSH model service, no adapter or key, an unreachable provider, an exhausted quota, a timeout or an answer that is not the required JSON, the pass runs its script part only, says why in the report and activity, and does not count as a failure.
+  - Memory text is redacted and stripped of recall tags before it is sent; records go in as one JSON document and the prompt says they are data, not instructions.
+- **No more deleting for size.** `storeMaxMemories` and `storeMaxTokens` are removed (ignored if set). Above `storeSafetyLimit` (default 20000) hygiene only warns.
+- **Importance and pinning.** Importance orders the summary and weighs recall (`importanceWeight`, default 0.2: × 0.8 for importance 1 up to × 1.2 for 5; recall fetches a few extra hits to reorder). Pin or unpin a memory in the settings page's memory list or with the new `mem0_pin` tool (local backend): pinned memories are never deleted or merged by hygiene.
+- **Cancelling a migration or re-embedding.** A running move from Qdrant or vector recomputation has a **Cancel** button; it stops at the next step and changes nothing (the migration cannot be cancelled once it switches the store over). A retried re-embedding reuses the vectors of memories whose text did not change and recomputes only new or edited ones.
+
 - **Local setup wizard and one-time move from Qdrant** (settings page → Local OSS → Local setup wizard). Part of the breaking change below: together they replace the removed fallback paths.
   - Steps: embedding model (cloud API first; or a local server found on 127.0.0.1: Ollama 11434/15434, LM Studio 1234, oMLX 8000 on macOS only; Windows gets the reserved-port / 10013 hint), extraction LLM (one test extraction with `max_tokens` / `reasoning_effort` advice), memory file (shown, changeable under advanced; writable, not on a network drive, including mapped Windows drives and SMB/NFS shares under `/Volumes`, or a synced folder), and a self-test with the test user `dsh-mem0-wizard-selftest` (write, find, delete, nothing left). Nothing is saved before the self-test passes.
   - Saving stores typed keys only in DSH credentials and writes credential names to the `dsh_mem0` block of `oss.json` (previous file kept as `oss.json.bak-<time>`); a plain-text key you move is removed from the `oss` block, and the result says the backup still holds it. A stored key is sent only to the server it was saved for, and only the wizard's own credential names or the one in use are read or written (replacing another key asks first). The setup route takes same-origin JSON only and refuses to run without DSH's trust fence. Switching the backend to Local OSS checks first and offers the wizard when something is missing.
@@ -154,6 +164,16 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 ## 简体中文
 
 ### 未发布
+
+- **记忆巡检改成以模型为主，默认开启**（脚本逐步校验）。
+  - 巡检调用你当前在 DSH 配置的模型（`ctx.llm`，后台默认模型，不带会话；推理强度取最低一档，输出上限 1536 token，被截断时加倍重试一次），每次只看一组记忆：上次审阅之后新增或改过的记忆，各自带上最相似的旧记忆。模型返回一个 JSON 对象，里面是 `merge`、`delete`、`keep`、`importance`（1–5）几种动作，每个动作都带理由和本组记录的 id。脚本负责精确去重、挑选和分组候选，并逐条校验：id 必须属于本组；删除和合并只碰本插件写入的记忆（`source=dsh`），不碰置顶的记忆；同一条记忆不能用在两个动作里；合并后的正文必须是纯文本；正文里有密钥被脱敏的记忆不参与合并。不合规的动作直接丢弃并计数。合并的做法是写入一条新记忆（带 `metadata.merged_from`），再删除原来的几条。
+  - #24 的安全机制全部保留：确认过一次手动巡检之前，自动巡检只预览删除和合并；确认的预览只执行一次（planId 加幂等键），只处理预览后没改过的记忆；每次最多处理 100 条；按记忆库隔离；停用插件时中止巡检；删除记忆后摘要失效。重要度不删除任何东西，除手动预览外每次巡检都会写入。
+  - 计费：这些调用的费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计。每份巡检报告都显示调用次数和用掉的 token。关掉「模型巡检」（`modelHygiene`）后只做脚本巡检。
+  - 降级：DSH 没有模型服务、没有 adapter 或 key、provider 连不上、额度用完、超时，或者模型的回答不是要求的 JSON 时，本次只做脚本巡检，在报告和活动记录里写明原因，不算失败。
+  - 记忆正文发出前先脱敏，并去掉召回块标记；记录作为一个 JSON 文档发送，提示词里写明它们是数据，不是指令。
+- **不再按条数删除记忆。** 去掉 `storeMaxMemories` 和 `storeMaxTokens`（旧配置里有也会忽略）。超过 `storeSafetyLimit`（默认 20000）时巡检只提醒。
+- **重要度和置顶。** 重要度用于摘要排序和召回加权（`importanceWeight`，默认 0.2：重要度 1 乘 0.8，重要度 5 乘 1.2；召回会多取几条再重排）。在设置页的记忆列表里，或用新的 `mem0_pin` 工具（本地后端）置顶、取消置顶；置顶的记忆不会被巡检删除或合并。
+- **迁移和重算向量可以取消。** 正在进行的 Qdrant 迁移或向量重算有「取消」按钮，会在下一步停下，不做任何改动（迁移开始切换数据库之后就不能取消了）。重算向量重试时，正文没变的记忆沿用已算好的向量，只重算新增或改过的。
 
 - **本地配置向导，以及从 Qdrant 一次性迁移**（设置页 → 本地 OSS →「本地配置向导」）。属于下面那条不兼容变更的一部分：两者一起取代已移除的旧版回退路径。
   - 步骤：embedding 模型（优先云端 API；也可以用在 127.0.0.1 上探测到的本地服务：Ollama 11434/15434、LM Studio 1234，oMLX 8000 只在 macOS 上探测；Windows 上给出端口保留段 / 10013 的提示），抽取 LLM（试抽一次，给出 `max_tokens` 和 `reasoning_effort` 的建议），记忆文件（只显示，在「高级」里可改；能写入，不在网络盘上，包括 Windows 映射盘和 `/Volumes` 下的 SMB/NFS 共享，也不在同步目录上），以及用测试用户 `dsh-mem0-wizard-selftest` 自测（写入、检索、删除、无残留）。自测通过之前什么都不保存。

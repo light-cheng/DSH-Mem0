@@ -427,3 +427,45 @@ test('a baseUrl set in dsh_mem0 never receives the literal key of the oss block'
   assert.equal(seen[0].url, 'http://127.0.0.1:18001/v1/embeddings')
   assert.equal(seen[0].authorization, undefined)
 })
+
+test('reembed retry reuses the vectors of unchanged memories and recomputes only new or edited ones (PR #27 review 16)', async (t) => {
+  const first = setup(t)
+  for (const text of ['tea', 'coffee', 'pnpm']) await first.client.add([{ role: 'user', content: text }], { infer: false })
+  await first.client.dispose()
+  let inserted = false
+  const switched = setup(t, {
+    storePath: first.file,
+    embedModel: 'other-embed',
+    dims: 8,
+    // During the first attempt another process adds a memory and edits one.
+    embedGate: () => {
+      if (inserted) return
+      inserted = true
+      const other = new SqliteStore({ filePath: first.file }).open()
+      other.insert([{ id: 'late', text: 'falcon', hash: md5('falcon'), vector: embedText('falcon', 8), payload: { user_id: USER }, embedModel: 'other-embed' }])
+      const edited = other.list({ user_id: USER }).find((item) => item.memory === 'coffee')
+      other.update(edited.id, { text: 'green coffee', hash: md5('green coffee'), vector: embedText('green coffee', 8), embedModel: 'other-embed' })
+      other.close()
+    },
+  })
+  const result = await switched.client.reembed({ batchSize: 32 })
+  assert.equal(result.updated, 4)
+  // First attempt: 3 texts. Retry: only 'falcon' (new) and 'green coffee' (edited).
+  assert.deepEqual(switched.calls.embed.map((call) => call.body.input.length), [3, 2])
+  assert.deepEqual(switched.calls.embed[1].body.input.sort(), ['falcon', 'green coffee'])
+  assert.deepEqual(switched.client.lastReembed, { computed: 5, reused: 2 })
+  await switched.client.dispose()
+})
+
+test('reembed stops on a cancelled signal before writing any vector', async (t) => {
+  const first = setup(t)
+  await first.client.add([{ role: 'user', content: 'tea' }], { infer: false })
+  await first.client.dispose()
+  const controller = new AbortController()
+  const switched = setup(t, { storePath: first.file, embedModel: 'other-embed', dims: 8, embedGate: () => controller.abort() })
+  await assert.rejects(switched.client.reembed({ signal: controller.signal }), { code: 'ABORTED' })
+  await switched.client.dispose()
+  const store = new SqliteStore({ filePath: first.file }).open()
+  assert.deepEqual(store.embedderInfo(), { model: 'test-embed', dims: VOCAB.length + 1 })
+  store.close()
+})

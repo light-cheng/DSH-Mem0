@@ -521,3 +521,39 @@ test('reembed writes nothing when the memories change meanwhile (one transaction
   store.update('a', { text: 'one, edited', hash: md5('one, edited'), vector: [1, 2, 3], embedModel: 'new' })
   assert.equal(store.replaceVectors([{ id: 'a', vector: new Float32Array([9, 9, 9]) }], { model: 'new', dims: 3, expected: before }), false)
 })
+
+test('a running migration can be cancelled: the job ends cancelled and leaves no .importing file (PR #27 review 15)', async () => {
+  const dir = tempDir()
+  const ossConfigPath = path.join(dir, 'oss.json')
+  fs.writeFileSync(ossConfigPath, JSON.stringify({ oss: { vector_store: { provider: 'qdrant', config: { url: 'http://127.0.0.1:6333', collection_name: 'dsh_mem0' } } } }))
+  const storePath = path.join(dir, 'memory.sqlite')
+  const settings = { storePath, embedder: { provider: 'openai', baseUrl: 'https://embed.example.test/v1', model: 'test-embed', apiKey: 'sk' } }
+  const runtime = { config: { backend: 'oss', ossConfigPath, userId: 'u', collectionName: 'dsh_mem0', profileFields: [] }, client: { settings: () => settings } }
+  let scrolls = 0
+  const fetchImpl = async (url, init = {}) => {
+    const target = String(url)
+    if (target.endsWith('/embeddings')) return providerFetch()(url, init)
+    if (target.endsWith('/points/count')) return new Response(JSON.stringify({ result: { count: 2 }, status: 'ok' }), { status: 200 })
+    if (target.endsWith('/points/scroll')) {
+      scrolls += 1
+      // Hangs until the job is cancelled.
+      return new Promise((resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true })
+      })
+    }
+    return new Response(JSON.stringify({ result: { points_count: 2, config: { params: { vectors: { size: DIMS, distance: 'Cosine' } } } }, status: 'ok' }), { status: 200 })
+  }
+  const started = await handleSetupAction({ logger: {} }, runtime, { action: 'migrate' }, { fetchImpl })
+  assert.equal(started.ok, true, JSON.stringify(started))
+  const id = started.job.id
+  for (let wait = 0; wait < 50 && scrolls === 0; wait += 1) await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(jobStatus(id).cancellable, true)
+  assert.deepEqual(await handleSetupAction({ logger: {} }, runtime, { action: 'cancelJob', job: id }), { ok: true, state: 'cancelling' })
+  for (let wait = 0; wait < 50 && jobStatus(id).state === 'running'; wait += 1) await new Promise((resolve) => setTimeout(resolve, 10))
+  const job = jobStatus(id)
+  assert.equal(job.state, 'cancelled')
+  assert.equal(job.error.code, 'CANCELLED')
+  assert.equal(fs.existsSync(`${storePath}.importing`), false)
+  assert.equal(fs.existsSync(storePath), false)
+  assert.equal((await handleSetupAction({ logger: {} }, runtime, { action: 'cancelJob', job: 'nope' })).code, 'UNKNOWN_JOB')
+})

@@ -48,7 +48,9 @@ window.__ModuleLoader__.load({
       captureStrataFoldsHint: 'Off by default. Needs Automatic capture and the dsh-strata plugin. Also saves each first-level fold summary that Strata writes, a cleaner second copy of turns already captured; Mem0 dedupes repeated facts.',
       activityBudget: 'recall budget',
       hygieneItemDuplicate: 'duplicate',
-      hygieneItemBudget: 'over budget',
+      hygieneItemModel: 'outdated (model)',
+      hygieneItemMerged: 'merged',
+      hygieneItemImportance: 'importance {level}',
       statusCollection: 'Collection',
       statusUser: 'User',
       statusAgent: 'Agent',
@@ -113,12 +115,14 @@ window.__ModuleLoader__.load({
       profileBudgetTokensHint: 'Upper bound for the injected profile, 128–8000.',
       memoryBudgetTokens: 'Recall memory budget (tokens)',
       memoryBudgetTokensHint: 'Token limit for the recalled memories injected each turn, 128–20000 (CJK ≈ 1 token per character, Latin ≈ 4 characters per token).',
-      storeMaxMemories: 'Maximum stored memories',
-      storeMaxMemoriesHint: 'Hygiene prunes the lowest-value facts above this count, 20–5000.',
-      storeMaxTokens: 'Maximum stored tokens',
-      storeMaxTokensHint: 'Hygiene prunes the lowest-value facts above this estimate, 500–200000.',
+      storeSafetyLimit: 'Safety limit (memories)',
+      storeSafetyLimitHint: 'Above this count hygiene warns; it never deletes for size. Default 20000.',
+      importanceWeight: 'Importance weight in recall',
+      importanceWeightHint: 'How much the importance rated by hygiene reorders recall, 0–1 (0 = off). Default 0.2.',
+      modelHygiene: 'Model-led hygiene',
+      modelHygieneHint: 'Hygiene asks the model currently set in DSH to merge, retire and rate memories; scripts dedupe and check every action. The calls are billed to your provider in DSH and do not appear in DSH usage statistics; each report shows the tokens used. Off: script checks only.',
       hygieneEnabled: 'Weekly memory hygiene',
-      hygieneEnabledHint: 'Runs at startup when due and hourly checks afterwards. Automatic passes only preview until you confirm a manual run.',
+      hygieneEnabledHint: 'Runs at startup when due and hourly checks afterwards. Automatic passes only preview deletes and merges until you confirm a manual run.',
       hygieneIntervalDays: 'Hygiene interval (days)',
       hygieneIntervalDaysHint: 'Default 7 days, 1–90.',
       hygieneLastRun: 'Last run',
@@ -130,7 +134,25 @@ window.__ModuleLoader__.load({
       hygieneRunning: 'Running…',
       hygieneOk: 'Hygiene completed',
       hygieneFailed: 'Hygiene failed',
-      hygieneReport: 'Scanned {scanned}, duplicates {duplicates}, pruned {pruned}, deleted {deleted}, failed {failed}.',
+      hygieneReport: 'Scanned {scanned}, duplicates {duplicates}, merged {merged}, deleted {deleted}, failed {failed}.',
+      hygieneModelOk: 'Model review: {calls} calls, {tokens} tokens.',
+      hygieneModelOff: 'Model review is off: script checks only.',
+      hygieneModelDegraded: 'This pass ran the script checks only: {reason}.',
+      hygieneModelReason_NO_SERVICE: 'DSH model service not available',
+      hygieneModelReason_NO_MODEL: 'no model is selected in DSH',
+      hygieneModelReason_NO_ADAPTER: 'the selected provider is not set up',
+      hygieneModelReason_MISSING_CREDENTIAL: 'the provider has no API key',
+      hygieneModelReason_AUTH: 'the provider refused the API key',
+      hygieneModelReason_INVALID_CREDENTIAL: 'the provider refused the API key',
+      hygieneModelReason_TRANSPORT: 'the provider could not be reached',
+      hygieneModelReason_TIMEOUT: 'the model did not answer in time',
+      hygieneModelReason_RATE_LIMIT: 'rate limited by the provider',
+      hygieneModelReason_QUOTA: 'the provider quota is used up',
+      hygieneModelReason_ACCOUNT_QUOTA: 'the provider account has no balance',
+      hygieneModelReason_BAD_JSON: 'the model did not answer in the required format',
+      hygieneOverLimit: '{count} memories are stored, above the safety limit of {limit}. Nothing was deleted for size; review them in the memory list.',
+      hygieneMergeDetails: 'Merges',
+      hygieneImportanceDetails: 'Importance',
       hygieneLastReport: 'Last hygiene report',
       hygieneReasonSchedule: 'Scheduled',
       hygieneReasonStartup: 'Startup',
@@ -148,7 +170,7 @@ window.__ModuleLoader__.load({
       hygieneNoDetails: 'None',
       hygieneLegacyDetails: 'This report was created by an older version; only summary counts are available.',
       hygienePreviewing: 'Checking…',
-      hygieneConfirm: 'Hygiene will permanently delete {planned} memories written by this plugin (memories from other apps are never deleted). This cannot be undone. Continue?',
+      hygieneConfirm: 'Hygiene will permanently delete {planned} memories written by this plugin ({merges} merges: each writes one merged memory and deletes its sources). Memories from other apps and pinned memories are never deleted. This cannot be undone. Continue?',
       hygieneNothingToDelete: 'Nothing to delete.',
       hygieneCancelled: 'Cancelled, nothing deleted.',
       hygienePreviewTag: 'Preview, nothing deleted',
@@ -325,9 +347,12 @@ window.__ModuleLoader__.load({
       wzReembedOnSave: "Saving recomputes the vectors of {memories} memories first (the text is not changed; one embedder call per 32 memories). Until then everything keeps running as it is; the self-test uses a temporary file.",
       wzReembedDone: "Vectors recomputed: {count}.",
       wzProgress: "Working… {done}/{total}",
+      wzCancel: 'Cancel',
+      wzErr_CANCELLED: 'Cancelled; nothing was changed',
       wzFailed: "Failed: {error}",
       wzAuthFailed: "The server refused the key (HTTP 401/403).",
       wzLlmHint: "An OpenAI-compatible chat API that turns conversations into facts. The test sends a fixed sample conversation, not your data.",
+      wzHygieneBilling: 'Memory hygiene is separate: by default it uses the model currently set in DSH (not this one), billed to your provider in DSH and not counted in DSH usage statistics. Each hygiene report shows the tokens used; switch "Model-led hygiene" off in the settings to run script checks only.',
       wzMaxTokens: "Output budget (max_tokens)",
       wzEffort: "reasoning_effort (optional)",
       wzEffortHint: "For reasoning models: \"low\", or \"none\" if the gateway supports it. Leave blank for other models.",
@@ -456,6 +481,11 @@ window.__ModuleLoader__.load({
       memoryCountFiltered: '{shown} of {total} memories',
       memoryBrowserError: 'Could not read memories',
       memoryDelete: 'Delete',
+      memoryPin: 'Pin',
+      memoryUnpin: 'Unpin',
+      memoryPinnedTag: 'Pinned',
+      memoryImportance: 'Importance {level}',
+      memoryPinError: 'Could not change the pin',
       memoryDeleting: 'Deleting…',
       memoryDeleteConfirm: 'Permanently delete this memory? This cannot be undone.\n\nID: {id}\n\n{memory}',
       memoryDeleted: 'Deleted',
@@ -513,7 +543,9 @@ window.__ModuleLoader__.load({
       captureStrataFoldsHint: '默认关闭。需要开启自动保存并安装 dsh-strata。额外保存 Strata 写下的每份一级折叠摘要，相当于已保存回合的一份更干净的副本；重复的事实由 Mem0 自己去重。',
       activityBudget: '召回预算',
       hygieneItemDuplicate: '重复',
-      hygieneItemBudget: '超出预算',
+      hygieneItemModel: '过时（模型判断）',
+      hygieneItemMerged: '已合并',
+      hygieneItemImportance: '重要度 {level}',
       statusCollection: '集合',
       statusUser: '用户',
       statusAgent: 'Agent',
@@ -578,12 +610,14 @@ window.__ModuleLoader__.load({
       profileBudgetTokensHint: '注入画像的上限，128–8000。',
       memoryBudgetTokens: '召回记忆预算（tokens）',
       memoryBudgetTokensHint: '每轮注入的召回记忆 token 上限，128–20000（中文约 1 字 1 token，英文约 4 字符 1 token）。',
-      storeMaxMemories: '最大记忆条数',
-      storeMaxMemoriesHint: '超过后按价值清理最低的记忆，20–5000。',
-      storeMaxTokens: '最大存储 tokens',
-      storeMaxTokensHint: '超过估算上限后按价值清理最低的记忆，500–200000。',
+      storeSafetyLimit: '安全上限（条）',
+      storeSafetyLimitHint: '超过后巡检只提醒，不会因为条数多而删除记忆。默认 20000。',
+      importanceWeight: '召回时的重要度权重',
+      importanceWeightHint: '巡检评出的重要度对召回排序的影响，0–1（0 表示不用）。默认 0.2。',
+      modelHygiene: '模型巡检',
+      modelHygieneHint: '巡检会调用你当前在 DSH 配置的模型，判断哪些记忆该合并、删除，并评出重要度；脚本负责去重，并逐条校验模型给出的动作。费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计；每次巡检报告都会显示用了多少 token。关闭后只做脚本巡检。',
       hygieneEnabled: '每周记忆卫生巡检',
-      hygieneEnabledHint: '到期时在启动后运行，之后每小时检查。确认过一次手动巡检之前，自动巡检只出预览、不删除。',
+      hygieneEnabledHint: '到期时在启动后运行，之后每小时检查。确认过一次手动巡检之前，自动巡检只出预览，不删除也不合并。',
       hygieneIntervalDays: '巡检间隔（天）',
       hygieneIntervalDaysHint: '默认 7 天，范围 1–90。',
       hygieneLastRun: '上次运行',
@@ -595,7 +629,25 @@ window.__ModuleLoader__.load({
       hygieneRunning: '正在巡检…',
       hygieneOk: '巡检完成',
       hygieneFailed: '巡检失败',
-      hygieneReport: '扫描 {scanned}，重复 {duplicates}，预算清理 {pruned}，删除 {deleted}，失败 {failed}。',
+      hygieneReport: '扫描 {scanned}，重复 {duplicates}，合并 {merged}，删除 {deleted}，失败 {failed}。',
+      hygieneModelOk: '模型审阅：调用 {calls} 次，用了 {tokens} tokens。',
+      hygieneModelOff: '模型巡检已关闭，只做了脚本巡检。',
+      hygieneModelDegraded: '本次只做了脚本巡检：{reason}。',
+      hygieneModelReason_NO_SERVICE: 'DSH 的模型服务不可用',
+      hygieneModelReason_NO_MODEL: 'DSH 里没有选模型',
+      hygieneModelReason_NO_ADAPTER: '所选的 provider 没有配置好',
+      hygieneModelReason_MISSING_CREDENTIAL: 'provider 没有配置 API key',
+      hygieneModelReason_AUTH: 'provider 拒绝了 API key',
+      hygieneModelReason_INVALID_CREDENTIAL: 'provider 拒绝了 API key',
+      hygieneModelReason_TRANSPORT: '连不上 provider',
+      hygieneModelReason_TIMEOUT: '模型没有按时回答',
+      hygieneModelReason_RATE_LIMIT: 'provider 限流',
+      hygieneModelReason_QUOTA: 'provider 额度已用完',
+      hygieneModelReason_ACCOUNT_QUOTA: 'provider 账户余额不足',
+      hygieneModelReason_BAD_JSON: '模型没有按要求的格式回答',
+      hygieneOverLimit: '当前存了 {count} 条记忆，超过安全上限 {limit}。不会因为条数多而删除，请在记忆列表里自行查看。',
+      hygieneMergeDetails: '合并明细',
+      hygieneImportanceDetails: '重要度',
       hygieneLastReport: '上次巡检报告',
       hygieneReasonSchedule: '定时',
       hygieneReasonStartup: '启动检查',
@@ -613,7 +665,7 @@ window.__ModuleLoader__.load({
       hygieneNoDetails: '无',
       hygieneLegacyDetails: '该报告由旧版本生成，只有汇总数量。',
       hygienePreviewing: '正在检查…',
-      hygieneConfirm: '巡检将永久删除 {planned} 条本插件写入的记忆（其他应用写入的记忆不会被删除），无法恢复。继续吗？',
+      hygieneConfirm: '巡检将永久删除 {planned} 条本插件写入的记忆（其中合并 {merges} 组：每组先写入一条合并后的记忆，再删除原来的几条）。其他应用写入的记忆和置顶的记忆不会被删除。删除后无法恢复，继续吗？',
       hygieneNothingToDelete: '没有需要删除的记忆。',
       hygieneCancelled: '已取消，未删除任何记忆。',
       hygienePreviewTag: '预览，未删除',
@@ -790,9 +842,12 @@ window.__ModuleLoader__.load({
       wzReembedOnSave: "保存时会先重新计算 {memories} 条记忆的向量（正文不变，每 32 条调用一次 embedding）。在这之前一切照常运行；自测用的是临时文件。",
       wzReembedDone: "已重新计算 {count} 条向量。",
       wzProgress: "处理中… {done}/{total}",
+      wzCancel: '取消',
+      wzErr_CANCELLED: '已取消，没有做任何改动',
       wzFailed: "失败：{error}",
       wzAuthFailed: "服务拒绝了这个 key（HTTP 401/403）。",
       wzLlmHint: "用来从对话里抽取事实的 OpenAI 兼容聊天接口。测试时发送一段固定的示例对话，不发送你的数据。",
+      wzHygieneBilling: '记忆巡检是另一回事：默认调用你当前在 DSH 配置的模型（不是这里填的模型），费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计。每次巡检报告都会显示用了多少 token；在设置里关掉「模型巡检」后只做脚本巡检。',
       wzMaxTokens: "输出上限（max_tokens）",
       wzEffort: "reasoning_effort（可选）",
       wzEffortHint: "推理模型可填 \"low\"，网关支持的话填 \"none\"；其他模型留空。",
@@ -921,6 +976,11 @@ window.__ModuleLoader__.load({
       memoryCountFiltered: '显示 {shown} / 共 {total} 条',
       memoryBrowserError: '读取记忆失败',
       memoryDelete: '删除',
+      memoryPin: '置顶',
+      memoryUnpin: '取消置顶',
+      memoryPinnedTag: '已置顶',
+      memoryImportance: '重要度 {level}',
+      memoryPinError: '置顶操作失败',
       memoryDeleting: '正在删除…',
       memoryDeleteConfirm: '永久删除这条记忆吗？删除后无法恢复。\n\nID：{id}\n\n{memory}',
       memoryDeleted: '已删除',
@@ -1100,8 +1160,8 @@ window.__ModuleLoader__.load({
       'addTimeoutMs',
       'profileBudgetTokens',
       'memoryBudgetTokens',
-      'storeMaxMemories',
-      'storeMaxTokens',
+      'storeSafetyLimit',
+      'importanceWeight',
       'hygieneIntervalDays',
     ])
     const FIELD_ORDER = [
@@ -1126,9 +1186,10 @@ window.__ModuleLoader__.load({
       'profileEnabled',
       'profileBudgetTokens',
       'memoryBudgetTokens',
-      'storeMaxMemories',
-      'storeMaxTokens',
+      'storeSafetyLimit',
       'hygieneEnabled',
+      'modelHygiene',
+      'importanceWeight',
       'hygieneIntervalDays',
       'translateMemories',
       'captureStrataFolds',
@@ -1157,9 +1218,10 @@ window.__ModuleLoader__.load({
         profileEnabled: value?.profileEnabled !== false,
         profileBudgetTokens: Number(value?.profileBudgetTokens ?? 1375),
         memoryBudgetTokens: Number(value?.memoryBudgetTokens ?? 2200),
-        storeMaxMemories: Number(value?.storeMaxMemories ?? 500),
-        storeMaxTokens: Number(value?.storeMaxTokens ?? 20000),
+        storeSafetyLimit: Number(value?.storeSafetyLimit ?? 20000),
         hygieneEnabled: value?.hygieneEnabled !== false,
+        modelHygiene: value?.modelHygiene !== false,
+        importanceWeight: Number(value?.importanceWeight ?? 0.2),
         hygieneIntervalDays: Number(value?.hygieneIntervalDays ?? 7),
         translateMemories: value?.translateMemories === true,
         captureStrataFolds: value?.captureStrataFolds === true,
@@ -1481,11 +1543,20 @@ window.__ModuleLoader__.load({
       const base = t('hygieneReport')
         .replace('{scanned}', String(value.scanned ?? 0))
         .replace('{duplicates}', String(value.duplicates ?? 0))
-        .replace('{pruned}', String(value.pruned ?? 0))
+        .replace('{merged}', String(value.merged ?? 0))
         .replace('{deleted}', String(value.deleted ?? 0))
         .replace('{failed}', String(value.failed ?? 0))
       const parts = [base]
       if (value.foreign > 0) parts.push(template(t('hygieneForeign'), value))
+      const model = value.model
+      if (model?.status === 'ok') parts.push(template(t('hygieneModelOk'), { calls: model.calls ?? 0, tokens: model.usage?.totalTokens ?? 0 }))
+      if (model?.status === 'degraded' || model?.status === 'skipped') {
+        const key = `hygieneModelReason_${model.reason}`
+        parts.push(template(t('hygieneModelDegraded'), { reason: t(key) !== key ? t(key) : String(model.reason ?? '?') }))
+        if (model.usage?.totalTokens > 0) parts.push(template(t('hygieneModelOk'), { calls: model.calls ?? 0, tokens: model.usage.totalTokens }))
+      }
+      if (model?.status === 'off') parts.push(t('hygieneModelOff'))
+      if (value.overLimit) parts.push(template(t('hygieneOverLimit'), { count: value.scanned ?? 0, limit: value.safetyLimit ?? 20000 }))
       if (value.dryRun) parts.unshift(`[${t('hygienePreviewTag')}]`)
       return parts.join(' ')
     }
@@ -1502,9 +1573,13 @@ window.__ModuleLoader__.load({
       const reason =
         item?.reason === 'duplicate'
           ? t('hygieneItemDuplicate')
-          : item?.reason === 'budget'
-            ? t('hygieneItemBudget')
-            : ''
+          : item?.reason === 'model'
+            ? t('hygieneItemModel')
+            : item?.reason === 'merged'
+              ? t('hygieneItemMerged')
+              : item?.reason === 'importance'
+                ? template(t('hygieneItemImportance'), { level: item.level ?? '?' })
+                : ''
       return reason ? `${item?.id ?? '—'} · ${reason}` : String(item?.id ?? '—')
     }
 
@@ -2148,7 +2223,7 @@ window.__ModuleLoader__.load({
             if (!key) continue
             resumed = true
             setStep(key === 'migrate' ? 'migrate' : 'selftest')
-            setResults((current) => ({ ...current, [key]: { running: true, progress: job.progress } }))
+            setResults((current) => ({ ...current, [key]: { id: job.id, cancellable: job.cancellable === true, running: true, progress: job.progress } }))
             void pollJobRef.current?.(job.id, key).then((done) => {
               if (done?.state === 'done') void load()
             })
@@ -2196,12 +2271,17 @@ window.__ModuleLoader__.load({
           }
           const job = data?.job
           if (!job) continue
-          record(key, { running: job.state === 'running', progress: job.progress, result: job.result, error: job.error })
+          record(key, { id: job.id, cancellable: job.cancellable === true, running: job.state === 'running', progress: job.progress, result: job.result, error: job.error })
           if (job.state !== 'running') return job
         }
         return null
       }
       pollJobRef.current = pollJob
+      // A running migration or re-embedding can be stopped; nothing is changed then.
+      const cancelButton = (entry, key) =>
+        entry?.running && entry.id && entry.cancellable
+          ? h('button', { key, type: 'button', className: 'mem0-secondary', onClick: () => void post('cancelJob', { job: entry.id }) }, t('wzCancel'))
+          : null
 
       if (loadError) {
         return h('div', { className: 'mem0-card mem0-section mem0-wz' }, h('p', { className: 'mem0-error' }, template(t('wzFailed'), { error: loadError })), h('button', { type: 'button', className: 'mem0-secondary', onClick: onClose }, t('wzClose')))
@@ -2397,6 +2477,7 @@ window.__ModuleLoader__.load({
         const result = results.llm
         const body = [
           h('p', { key: 'hint', className: 'mem0-hint' }, t('wzLlmHint')),
+          h('p', { key: 'hygiene-billing', className: 'mem0-hint' }, t('wzHygieneBilling')),
           h(TextField, { key: 'url', label: t('wzBaseUrl'), value: l.baseUrl, placeholder: 'https://api.deepseek.com', onChange: (value) => setLlm({ baseUrl: value }) }),
           models.llm.length > 0
             ? h(SelectField, {
@@ -2522,7 +2603,7 @@ window.__ModuleLoader__.load({
           if (result.ok && result.reembed > 0) body.push(h('p', { key: 'reembed', className: 'mem0-hint' }, template(t('wzReembedOnSave'), { memories: result.reembed })))
           if (result.code === 'EMBEDDER_MISMATCH') body.push(h('p', { key: 'mismatch', className: 'mem0-hint' }, t('wzMismatchGoBack')))
         }
-        if (saved?.running) body.push(h('p', { key: 'saving', className: 'mem0-hint' }, template(t('wzProgress'), { done: saved.progress?.done ?? 0, total: saved.progress?.total ?? '?' })))
+        if (saved?.running) body.push(h('p', { key: 'saving', className: 'mem0-hint' }, template(t('wzProgress'), { done: saved.progress?.done ?? 0, total: saved.progress?.total ?? '?' })), cancelButton(saved, 'cancel-save'))
         if (saved && !saved.running) {
           if (saved.ok) {
             body.push(h(ResultLine, {
@@ -2609,6 +2690,7 @@ window.__ModuleLoader__.load({
         if (run?.result?.skippedForeign > 0) body.push(h('p', { key: 'foreign', className: 'mem0-hint' }, template(t('wzForeign'), { count: run.result.skippedForeign })))
         if (run?.error) body.push(h(ResultLine, { key: 'run-err', ok: false, text: template(t('wzMigrateFailed'), { step: wizardStepName(t, run.error.step), error: wizardError(t, run.error) }) }))
         if (run?.running && run.progress) body.push(h('p', { key: 'progress', className: 'mem0-hint' }, template(t('wzMigrating'), { phase: run.progress.phase === 'embed' ? t('wzPhaseEmbed') : t('wzPhaseRead'), done: run.progress.done ?? 0, total: run.progress.total ?? '?' })))
+        if (run?.running) body.push(cancelButton(run, 'cancel-migrate'))
         if (skipped) body.push(h(ResultLine, { key: 'skipped', ok: true, text: t('wzSkipped') }))
         return body
       }
@@ -2752,6 +2834,22 @@ window.__ModuleLoader__.load({
           },
         })
         setDeleteState({ id: null, outcome: result.outcome, message: result.message })
+      }
+
+      // Pin or unpin (local backend): pinned memories are never deleted or merged by hygiene.
+      const pinMemory = async (id, pinned) => {
+        try {
+          const outcome = await fetchJson(MEMORIES_PATH, {
+            method: 'POST',
+            retry: false,
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id, pinned }),
+          })
+          if (!outcome?.ok) throw new Error(outcome?.error || t('memoryPinError'))
+          await loadMemories(memoryQuery)
+        } catch (error) {
+          setDeleteState({ id: null, outcome: 'error', message: `${t('memoryPinError')}: ${error.message}` })
+        }
       }
 
       const toggleBrowser = () => {
@@ -2960,7 +3058,7 @@ window.__ModuleLoader__.load({
             }),
           )
           const planned = Number(preview.planned ?? 0)
-          if (planned > 0 && !window.confirm(template(t('hygieneConfirm'), { planned }))) {
+          if (planned > 0 && !window.confirm(template(t('hygieneConfirm'), { planned, merges: Array.isArray(preview.mergePlan) ? preview.mergePlan.length : 0 }))) {
             setHygieneState('cancelled')
             setHygieneMessage(t('hygieneCancelled'))
             return
@@ -3646,6 +3744,17 @@ window.__ModuleLoader__.load({
                                       typeof memory.score === 'number'
                                         ? h('span', { className: 'mem0-hint' }, `${t('memoryScore')} ${memory.score.toFixed(3)}`)
                                         : null,
+                                      memory.pinned ? h('span', { className: 'mem0-chip' }, t('memoryPinnedTag')) : null,
+                                      Number.isInteger(memory.importance)
+                                        ? h('span', { className: 'mem0-hint' }, template(t('memoryImportance'), { level: memory.importance }))
+                                        : null,
+                                      memory.id && memory.pinnable
+                                        ? h(
+                                            'button',
+                                            { type: 'button', className: 'mem0-secondary', onClick: () => void pinMemory(memory.id, !memory.pinned) },
+                                            memory.pinned ? t('memoryUnpin') : t('memoryPin'),
+                                          )
+                                        : null,
                                       // Only memories this plugin wrote; the server checks again.
                                       memory.id && memory.deletable
                                         ? h(
@@ -3842,6 +3951,12 @@ window.__ModuleLoader__.load({
               checked: draft.hygieneEnabled,
               onChange: (value) => setField('hygieneEnabled', value),
             }),
+            h(ToggleRow, {
+              label: t('modelHygiene'),
+              hint: t('modelHygieneHint'),
+              checked: draft.modelHygiene,
+              onChange: (value) => setField('modelHygiene', value),
+            }),
           ),
           h(
             'div',
@@ -3861,18 +3976,18 @@ window.__ModuleLoader__.load({
               onChange: (value) => setField('memoryBudgetTokens', value === '' ? '' : Number(value)),
             }),
             h(TextField, {
-              label: t('storeMaxMemories'),
-              hint: t('storeMaxMemoriesHint'),
+              label: t('storeSafetyLimit'),
+              hint: t('storeSafetyLimitHint'),
               type: 'number',
-              value: draft.storeMaxMemories,
-              onChange: (value) => setField('storeMaxMemories', value === '' ? '' : Number(value)),
+              value: draft.storeSafetyLimit,
+              onChange: (value) => setField('storeSafetyLimit', value === '' ? '' : Number(value)),
             }),
             h(TextField, {
-              label: t('storeMaxTokens'),
-              hint: t('storeMaxTokensHint'),
+              label: t('importanceWeight'),
+              hint: t('importanceWeightHint'),
               type: 'number',
-              value: draft.storeMaxTokens,
-              onChange: (value) => setField('storeMaxTokens', value === '' ? '' : Number(value)),
+              value: draft.importanceWeight,
+              onChange: (value) => setField('importanceWeight', value === '' ? '' : Number(value)),
             }),
             h(TextField, {
               label: t('hygieneIntervalDays'),
@@ -3908,7 +4023,7 @@ window.__ModuleLoader__.load({
                   h('span', null, `${t('hygieneReportStoreTokens')}: ${lastReport.storeTokensBefore ?? 0} → ${lastReport.storeTokens ?? 0}`),
                   h('span', null, `${t('hygieneReportProfile')}: ${lastReport.profileItems ?? 0} · ${lastReport.profileTokens ?? 0} tok`),
                 ),
-                ['duplicateDetails', 'prunedDetails', 'deletedDetails', 'failedDetails'].some((key) => Array.isArray(lastReport[key]))
+                ['duplicateDetails', 'mergedDetails', 'deletedDetails', 'failedDetails', 'prunedDetails'].some((key) => Array.isArray(lastReport[key]))
                   ? h(
                       'div',
                       { className: 'mem0-report-details-list' },
@@ -3916,7 +4031,9 @@ window.__ModuleLoader__.load({
                         ? reportDetail(t, `${t('hygienePlannedDetails')} (${lastReport.planned ?? 0})`, lastReport.plannedDetails, (item) => reportItem(t, item))
                         : null,
                       reportDetail(t, t('hygieneDuplicateDetails'), lastReport.duplicateDetails, (item) => reportItem(t, item)),
-                      reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => reportItem(t, item)),
+                      Array.isArray(lastReport.prunedDetails) ? reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => reportItem(t, item)) : null,
+                      reportDetail(t, t('hygieneMergeDetails'), lastReport.dryRun ? lastReport.mergePlan : lastReport.mergedDetails, (item) => `${item.preview ? `${item.preview} ← ` : item.id ? `${item.id} ← ` : ''}${(item.ids ?? []).join(', ')}`),
+                      reportDetail(t, t('hygieneImportanceDetails'), lastReport.reviewDetails, (item) => reportItem(t, item)),
                       reportDetail(t, t('hygieneDeletedDetails'), lastReport.deletedDetails, (item) => reportItem(t, item)),
                       reportDetail(t, t('hygieneFailedDetails'), lastReport.failedDetails, (item) => `${item.id}: ${item.error}`),
                     )
