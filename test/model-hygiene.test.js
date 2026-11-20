@@ -903,14 +903,69 @@ test('a manual run while another pass runs is busy, never that pass\'s result', 
   await running
 })
 
-test('startup: the pass waits for the model services injected after it started', async (t) => {
+/** Resolves once `check()` holds (polled; the startup wait polls too). */
+async function until(check, ms = 3_000) {
+  const deadline = Date.now() + ms
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('timed out')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+}
+
+test('startup: with the model injected late, the pass is deferred and runs once the provider is registered', async (t) => {
   const llm = fakeLlm(() => ({ actions: [] }))
-  const { maintenance } = maintenanceWith(t, memoryStore([memory('a', 'Likes tea')]), null)
-  const pass = maintenance.maybeRun('startup')
-  setTimeout(() => maintenance.setLlmServices(llm.services), 20)
-  const report = await pass
+  const { maintenance } = maintenanceWith(t, memoryStore([memory('a', 'Likes tea')]), null, {}, { awaitModel: true })
+  assert.equal(await maintenance.maybeRun('startup'), null)
+  assert.equal(maintenance.status().waitingForModel, true)
+  // Services first, the provider ~170 ms later (DSH): still waiting.
+  let registered = false
+  const listProviders = llm.services.llm.listProviders
+  llm.services.llm.listProviders = () => (registered ? listProviders() : [])
+  maintenance.setLlmServices(llm.services)
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.equal(llm.calls.length, 0)
+  assert.equal(maintenance.status().waitingForModel, true)
+  registered = true
+  await until(() => maintenance.status().lastReport)
+  const report = maintenance.status().lastReport
   assert.equal(report.model.status, 'ok')
   assert.equal(llm.calls.length, 1)
+  assert.equal(maintenance.status().waitingForModel, false)
+})
+
+test('startup: a model still missing at the first hourly check degrades the pass then', async (t) => {
+  const { maintenance, failures } = maintenanceWith(t, memoryStore([memory('a', 'Likes tea')]), null, {}, { awaitModel: true })
+  assert.equal(await maintenance.maybeRun('startup'), null)
+  assert.equal(maintenance.status().lastReport, null)
+  const report = await maintenance.maybeRun('schedule')
+  assert.equal(report.model.status, 'skipped')
+  assert.equal(report.model.reason, 'NO_SERVICE')
+  assert.equal(maintenance.status().waitingForModel, false)
+  assert.deepEqual(failures.records, [])
+})
+
+test('startup: a manual run before the model is ready is told it is starting, with no report or failure', async (t) => {
+  const { maintenance, failures } = maintenanceWith(t, memoryStore([memory('a', 'Likes tea')]), null, {}, { awaitModel: true })
+  await assert.rejects(maintenance.run('manual', { dryRun: true }), { code: 'model-starting' })
+  assert.equal(maintenance.status().lastReport, null)
+  assert.equal(maintenance.status().lastError, null)
+  assert.deepEqual(failures.records, [])
+  // With model-led hygiene off there is nothing to wait for.
+  const off = maintenanceWith(t, memoryStore([memory('a', 'Likes tea')]), null, { modelHygiene: false }, { awaitModel: true }).maintenance
+  assert.equal((await off.run('manual', { dryRun: true })).model.status, 'off')
+})
+
+test('startup: dispose cancels a pass waiting for the model', async (t) => {
+  const llm = fakeLlm(() => ({ actions: [] }))
+  const { maintenance } = maintenanceWith(t, memoryStore([memory('a', 'Likes tea')]), null, {}, { awaitModel: true })
+  await maintenance.maybeRun('startup')
+  assert.equal(maintenance.status().waitingForModel, true)
+  await maintenance.dispose()
+  assert.equal(maintenance.status().waitingForModel, false)
+  maintenance.setLlmServices(llm.services)
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  assert.equal(llm.calls.length, 0)
+  assert.equal(maintenance.status().lastReport, null)
 })
 
 test('a route that refuses temperature is asked once more without it', async (t) => {

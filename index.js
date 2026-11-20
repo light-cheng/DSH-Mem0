@@ -182,6 +182,8 @@ export async function apply(ctx, rawConfig) {
     localizer,
     failures,
     llm: llmServices.current,
+    // DSH injects the model services after startup: passes wait for them.
+    awaitModel: typeof ctx.inject === 'function',
   })
   const lifecycle = new MemoryLifecycle({
     client,

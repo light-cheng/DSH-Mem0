@@ -167,6 +167,7 @@ window.__ModuleLoader__.load({
       hygieneMergesPending: '{count} merges are written but not confirmed yet; their sources stay until a later pass.',
       hygieneScanLimited: 'Only the first {limit} memories were scanned (this backend lists one page); the safety limit is checked on the local backend only.',
       hygieneBusy: 'A hygiene pass is running. Try again when it has finished.',
+      hygieneModelStarting: 'The model service is still starting. Please try again shortly.',
       hygieneOverLimit: 'More than {limit} memories are stored (the safety limit). Nothing was deleted for size; review them in the memory list.',
       hygieneMergeDetails: 'Merges',
       hygieneImportanceDetails: 'Importance',
@@ -679,6 +680,7 @@ window.__ModuleLoader__.load({
       hygieneMergesPending: '{count} 组合并已写入但还没确认，原记忆保留，下次巡检再处理。',
       hygieneScanLimited: '只扫描了前 {limit} 条（这个后端一次只列一页）；安全上限的提醒只在本地后端有效。',
       hygieneBusy: '巡检正在进行，请等它结束后再试。',
+      hygieneModelStarting: '模型服务还在启动，请稍后再试。',
       hygieneOverLimit: '记忆超过 {limit} 条（安全上限）。不会因为条数多而删除，请在记忆列表里自行查看。',
       hygieneMergeDetails: '合并明细',
       hygieneImportanceDetails: '重要度',
@@ -3085,7 +3087,7 @@ window.__ModuleLoader__.load({
             current.data ? { ...current, data: { ...current.data, maintenance: response.maintenance } } : current,
           )
         }
-        if (!response?.ok) throw new Error(response?.reason === 'busy' ? t('hygieneBusy') : response?.error || t('hygieneFailed'))
+        if (!response?.ok) throw new Error(response?.reason === 'busy' ? t('hygieneBusy') : response?.reason === 'model-starting' ? t('hygieneModelStarting') : response?.error || t('hygieneFailed'))
         return response.report ?? {}
       }
 
@@ -3129,7 +3131,7 @@ window.__ModuleLoader__.load({
           await refreshStatus()
         } catch (error) {
           setHygieneState('error')
-          setHygieneMessage(error.reason === 'busy' ? t('hygieneBusy') : error.message || t('hygieneFailed'))
+          setHygieneMessage(error.reason === 'busy' ? t('hygieneBusy') : error.reason === 'model-starting' ? t('hygieneModelStarting') : error.message || t('hygieneFailed'))
         }
       }
 
