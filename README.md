@@ -23,7 +23,7 @@ Three backends are supported:
 - **Explicit tools**: `mem0_search`, `mem0_add`, `mem0_get`, `mem0_update`, `mem0_delete`, `mem0_pin`, `mem0_status`, plus `mem0_profile_get`, `mem0_profile_update`, `mem0_profile_reset` for the memory summary.
 - **Switchable backends**: Platform, self-hosted server and the local SQLite backend share the same tools and automatic memory logic.
 - **Verifiable memory activity**: the settings page shows the last automatic capture / recall status and the most recently written memories (text, ID, time); it can open a **Memory library** to search every memory stored for the current user. **Last recalled memories** shows the texts that the most recent recall actually matched.
-- **Foreground status icon**: below the chat composer there is a hollow globe made of dots of different sizes. It rolls along a tilted direction while automatic capture/recall is active, turns light blue and keeps rolling on success, and turns red on failure. The silhouette stays circular while rolling and never squashes. It uses dark dots in light themes and light dots in dark themes.
+- **Foreground status icon**: below the chat composer, an 18 px sphere of dots (the ThinkingOrb from [dissolve](https://github.com/rs-4/dissolve), MIT) shows what memory is doing: a slowly turning sphere while idle, a radar disc while recalling, three tilted rings while saving, a light-blue check after a recall or save, and red falling dots on failure. Dark dots in light themes, light dots in dark themes; still when the system asks for reduced motion.
 - **Bilingual UI and memory text**: labels follow DSH's language setting. With `translateMemories` on (off by default), stored memory text is translated into the page language with the current DSH model, cached, and falls back to the original text when no model is available.
 - **Security boundaries**: the local backend opens no port and runs no extra process; common secrets are redacted before capture/recall; `mem0_status` never returns an API key.
 
@@ -61,9 +61,9 @@ The **Memory maintenance** section lets you adjust the memory summary budget, re
 
 ![Memory maintenance](assets/screenshots/en/09-maintenance.png)
 
-The dot-matrix globe below the chat composer stays still while idle, rolls along a tilted direction while recording, and turns light blue and keeps rolling on success. The rolling animation uses a 3D projection, so the dot sphere keeps a circular silhouette and does not squash or deform; it stays still when the system requests reduced motion.
+The status orb below the chat composer is dissolve's ThinkingOrb (36 dots at 18 px): idle turns slowly, recalling sweeps a radar disc, saving splits into three rings, success draws a light-blue check that stays until the next action, failure drops the dots and reforms them in red. Every change morphs the dots from where they are. With reduced motion requested by the system it draws each state still. The orb is vendored at a pinned commit (`vendor/dissolve`, see NOTICE); nothing is loaded from a CDN.
 
-![Dot-matrix globe states](assets/globe-states.png)
+![Status orb states, light and dark: idle, recalling, saving, done, failed](assets/orb-states.png)
 
 The actual status bar at the bottom of a conversation (cropped):
 
@@ -97,7 +97,7 @@ On the local backend (`backend: oss`) memories live in three partitions: **globa
 - Hygiene and summaries handle only global memories while it is off.
 - It applies from the next turn. The memory page still shows every partition.
 
-The chip next to the globe below the input box shows where this conversation's new memories go: **Memory: project dsh-mem0** when a project is known and the switch is on, **Memory: global** when the switch is off or the conversation is not in a project. Hover for what it means; click to flip the same switch as the settings page (the two stay in step).
+The chip next to the orb below the input box shows where this conversation's new memories go: **Memory: project dsh-mem0** when a project is known and the switch is on, **Memory: global** when the switch is off or the conversation is not in a project. Hover for what it means; click to flip the same switch as the settings page (the two stay in step).
 
 **Project memories never go to global on their own.** A project summary is never merged into the global summary, and hygiene never merges across partitions. A project memory becomes global only when you click **Make global** on the memory page. The one cross-partition rule (a project copy identical to a global memory is deleted) removes the project copy and brings no project content into global.
 

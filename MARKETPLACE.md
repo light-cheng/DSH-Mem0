@@ -108,7 +108,7 @@ marketplace screenshots; the market reads that file from this repository.
   configured collection with IDs and timestamps; the English UI rendered from
   the same code with DSH's locale set to `en`.
 - Foreground composer dock rendered in a real session (`Mem0 ready` with the
-  dotted globe); active/success states were exercised in the browser with a
+  dotted globe, since replaced by dissolve's ThinkingOrb); active/success states were exercised in the browser with a
   synthetic activity payload and show the tilted 3D rolling sphere (light blue
   on success); the activity route itself is covered by tests. The rolling
   silhouette was checked across frames and stays circular without squashing.
