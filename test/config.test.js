@@ -34,6 +34,8 @@ test('config defaults use automatic backend detection and an independent DSH col
   assert.equal(config.memoryBudgetTokens, 2200)
   assert.equal(config.storeSafetyLimit, 20000)
   assert.equal(config.modelHygiene, true)
+  assert.equal(config.projectPartitions, true, 'partition by project is on by default')
+  assert.equal(resolveConfig({ projectPartitions: false }).projectPartitions, false)
   assert.equal(config.importanceWeight, 0.2)
   assert.equal('storeMaxMemories' in config, false)
   assert.equal(config.hygieneEnabled, true)

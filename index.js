@@ -25,6 +25,7 @@ import { FailureHistory } from './lib/failure-history.js'
 import { CONFIG_FINGERPRINT_FILE, ConfigGuard, describeConfigWarning } from './lib/config-guard.js'
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
+import { ProjectResolver } from './lib/project-scope.js'
 
 export const name = 'dsh-mem0'
 export const inject = ['tools', 'systemPrompt']
@@ -185,7 +186,22 @@ export async function apply(ctx, rawConfig) {
     // DSH injects the model services after startup: passes wait for them.
     awaitModel: typeof ctx.inject === 'function',
   })
+  // Partitions (global / project / session) are stored by the local
+  // backend; REST backends keep every memory global. The project comes from
+  // the session's starting directory (its header, else DSH's
+  // workingDirectory service). The store records each project's name and
+  // aliases (lib/project-scope.js).
+  const projects =
+    config.backend === 'oss'
+      ? new ProjectResolver({
+          logger,
+          workingDirectory: () => ctx.get?.('workingDirectory'),
+          known: () => (typeof client.projects === 'function' ? client.projects() : {}),
+          record: (identity) => client.setProject?.(identity.projectId, { name: identity.name, kind: identity.kind, aliases: identity.aliases }),
+        })
+      : undefined
   const lifecycle = new MemoryLifecycle({
+    projects,
     client,
     config,
     logger,
@@ -196,11 +212,14 @@ export async function apply(ctx, rawConfig) {
     // dsh-strata's optional `strataBudget` service (interop §2). Looked up on
     // every recall, never injected: Strata may load later or not at all.
     budget: () => ctx.get?.('strataBudget'),
+    // DSH's session registry, for folds that carry only a session id.
+    sessions: () => ctx.get?.('sessions') ?? ctx.sessions,
   })
   runtime.client = client
   runtime.breaker = breaker
   runtime.lifecycle = lifecycle
   runtime.maintenance = maintenance
+  runtime.projects = projects
 
   ctx.effect(() => () => {
     lifecycle.dispose()
@@ -229,7 +248,7 @@ export async function apply(ctx, rawConfig) {
     )
   }
 
-  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard })
+  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard, projects })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
     return () => {

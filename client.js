@@ -119,6 +119,10 @@ window.__ModuleLoader__.load({
       storeSafetyLimitHint: 'Above this count hygiene warns; it never deletes for size. Default 20000.',
       importanceWeight: 'Importance weight in recall',
       importanceWeightHint: 'How much the importance rated by hygiene reorders recall, 0–1 (0 = off). Default 0.2.',
+      projectPartitions: 'Partition by project',
+      projectPartitionsHint: 'On: memories made in a project stay in that project, and recall reads the current project, this session and global. Off: new memories all go to global and recall reads only global and this session; existing project memories are kept unchanged and come back when you turn this on again. Project memories never move to global on their own. Takes effect from the next turn.',
+      projectRecallBoost: 'Current project weight in recall',
+      projectRecallBoostHint: 'Recall reads the current project and global memories together; the project’s scores are multiplied by this, 1–2 (1 = no preference). Default 1.1.',
       modelHygiene: 'Model-led hygiene',
       modelHygieneHint: 'Hygiene asks the model currently set in DSH to merge, retire and rate memories; scripts dedupe and check every action. The calls are billed to your provider in DSH and do not appear in DSH usage statistics; each report shows the tokens used. Off: script checks only.',
       hygieneEnabled: 'Weekly memory hygiene',
@@ -482,6 +486,12 @@ window.__ModuleLoader__.load({
       failureStep_store: 'storing',
       failureStepRunning: '{step} still running after {ms} ms',
       dockOpen: 'Open Mem0 settings',
+      scopeChipProject: 'Memory: project {name}',
+      scopeChipGlobal: 'Memory: global',
+      scopeChipOnHint: 'Partition by project is on: new memories from this conversation stay in its project, and recall reads this project, this session and global. Click to turn it off (new memories then go to global). Applies from the next turn; the same switch is in Mem0 settings.',
+      scopeChipOnNoProjectHint: 'Partition by project is on, but this conversation is not in a project folder, so its new memories go to global. Click to turn the switch off. Applies from the next turn; the same switch is in Mem0 settings.',
+      scopeChipOffHint: 'Partition by project is off: new memories go to global, and recall reads only global and this session. Project memories are kept and come back when you turn it on. Click to turn it on. Applies from the next turn; the same switch is in Mem0 settings.',
+      scopeChipSaveFailed: 'Could not change the switch; open Mem0 settings to change it there.',
 
       activityAsyncHint: 'Platform extraction runs in the background. Queued memories can take a few seconds before they appear in the list below.',
       recentTitle: 'Recent memories',
@@ -504,6 +514,27 @@ window.__ModuleLoader__.load({
       memoryPinnedTag: 'Pinned',
       memoryImportance: 'Importance {level}',
       memoryPinError: 'Could not change the pin',
+      memoryMakeGlobal: 'Make global',
+      memoryMakeGlobalError: 'Could not move the memory',
+      memoryMakeGlobalNotProject: 'only a project memory can be made global',
+      memoryMakeGlobalNotOwn: 'only memories this plugin wrote can be moved',
+      memoryMakeGlobalNotFound: 'the memory no longer exists',
+      memoryMakeGlobalOtherUser: 'the memory belongs to another Mem0 user',
+      tokUnit: 'tok',
+      sessionAt: 'Session · {time}',
+      memorySource: 'source {source}',
+      memoryTreeTitle: 'Memory page',
+      memoryTreeHint: 'Memories by where they apply: global (everywhere), a project (one repository or folder) or a session. Browse, search, pin and delete; memories cannot be edited here.',
+      treeAll: 'All',
+      treeProjects: 'Projects',
+      treeSessions: 'Sessions without a project',
+      scopeGlobal: 'Global',
+      scopeProject: 'Project {name}',
+      scopeSession: 'Session {id}',
+      reportDeleted: 'deleted',
+      reportPending: 'merge pending',
+      projectSummaries: 'Project summaries: {list}',
+      projectSummaryStale: 'being rebuilt',
       memoryDeleting: 'Deleting…',
       memoryDeleteConfirm: 'Permanently delete this memory? This cannot be undone.\n\nID: {id}\n\n{memory}',
       memoryDeleted: 'Deleted',
@@ -516,7 +547,7 @@ window.__ModuleLoader__.load({
       profileStale: 'A memory this summary was built from was deleted or changed; the summary is not injected until it is rebuilt.',
       recallPreviewTitle: 'Last recalled memories',
       profileSummaryTitle: 'Memory summary',
-      profileSummaryHint: 'Editable memory summary, injected before relevant memories during recall.',
+      profileSummaryHint: 'Editable global memory summary, injected with the current project’s summary during recall. Hygiene has the model rewrite summaries whose memories changed; a delete or an edit stops a summary until it is rebuilt.',
       profileSummaryEmpty: 'No memory summary yet. It is generated after the next maintenance pass.',
       profileSummaryDisabled: 'Memory summary is disabled.',
       profileSummaryItems: 'items',
@@ -632,6 +663,10 @@ window.__ModuleLoader__.load({
       storeSafetyLimitHint: '超过后巡检只提醒，不会因为条数多而删除记忆。默认 20000。',
       importanceWeight: '召回时的重要度权重',
       importanceWeightHint: '巡检评出的重要度对召回排序的影响，0–1（0 表示不用）。默认 0.2。',
+      projectPartitions: '按项目分区',
+      projectPartitionsHint: '开启：在项目里产生的记忆只存在这个项目，召回时读取当前项目、本会话和全局的记忆。关闭：新记忆一律写进全局，召回只读全局和本会话；已有的项目记忆原样保留，重新开启后照常能用。项目记忆不会自动进入全局。从下一轮开始生效。',
+      projectRecallBoost: '召回时当前项目的权重',
+      projectRecallBoostHint: '召回同时读取当前项目和全局的记忆，当前项目的分数乘以这个系数，1–2（1 表示不偏向）。默认 1.1。',
       modelHygiene: '模型巡检',
       modelHygieneHint: '巡检会调用你当前在 DSH 配置的模型，判断哪些记忆该合并、删除，并评出重要度；脚本负责去重，并逐条校验模型给出的动作。费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计；每次巡检报告都会显示用了多少 token。关闭后只做脚本巡检。',
       hygieneEnabled: '每周记忆卫生巡检',
@@ -995,6 +1030,12 @@ window.__ModuleLoader__.load({
       failureStep_store: '写入',
       failureStepRunning: '{step}已运行 {ms} ms 仍未完成',
       dockOpen: '打开 Mem0 设置',
+      scopeChipProject: '记忆：项目 {name}',
+      scopeChipGlobal: '记忆：全局',
+      scopeChipOnHint: '「按项目分区」已开启：这个对话产生的新记忆只存在它所在的项目，召回时读取这个项目、本会话和全局的记忆。点击关闭（关闭后新记忆写进全局）。从下一轮开始生效；Mem0 设置里是同一个开关。',
+      scopeChipOnNoProjectHint: '「按项目分区」已开启，但这个对话不在项目文件夹里，新记忆写进全局。点击关闭这个开关。从下一轮开始生效；Mem0 设置里是同一个开关。',
+      scopeChipOffHint: '「按项目分区」已关闭：新记忆一律写进全局，召回只读全局和本会话。已有的项目记忆保留，重新开启后照常能用。点击开启。从下一轮开始生效；Mem0 设置里是同一个开关。',
+      scopeChipSaveFailed: '没能切换开关，请到 Mem0 设置里修改。',
 
       activityAsyncHint: 'Platform 的事实抽取在后台进行；显示“后台抽取中”时，稍等几秒再刷新最近记忆。',
       recentTitle: '最近写入的记忆',
@@ -1017,6 +1058,27 @@ window.__ModuleLoader__.load({
       memoryPinnedTag: '已置顶',
       memoryImportance: '重要度 {level}',
       memoryPinError: '置顶操作失败',
+      memoryMakeGlobal: '改为全局',
+      memoryMakeGlobalError: '移动记忆失败',
+      memoryMakeGlobalNotProject: '只有项目记忆可以改为全局',
+      memoryMakeGlobalNotOwn: '只能移动本插件写入的记忆',
+      memoryMakeGlobalNotFound: '这条记忆已经不存在',
+      memoryMakeGlobalOtherUser: '这条记忆属于另一个 Mem0 用户',
+      tokUnit: 'token',
+      sessionAt: '会话 · {time}',
+      memorySource: '来源 {source}',
+      memoryTreeTitle: '记忆页',
+      memoryTreeHint: '按适用范围浏览记忆：全局（处处适用）、项目（一个仓库或文件夹）或会话。可以搜索、置顶和删除，这里不能编辑记忆。',
+      treeAll: '全部',
+      treeProjects: '项目',
+      treeSessions: '不属于项目的会话',
+      scopeGlobal: '全局',
+      scopeProject: '项目 {name}',
+      scopeSession: '会话 {id}',
+      reportDeleted: '已删除',
+      reportPending: '合并待完成',
+      projectSummaries: '项目摘要：{list}',
+      projectSummaryStale: '重建中',
       memoryDeleting: '正在删除…',
       memoryDeleteConfirm: '永久删除这条记忆吗？删除后无法恢复。\n\nID：{id}\n\n{memory}',
       memoryDeleted: '已删除',
@@ -1029,7 +1091,7 @@ window.__ModuleLoader__.load({
       profileStale: '生成这份摘要的记忆中有被删除或修改的，摘要重建前不会注入。',
       recallPreviewTitle: '上次召回的记忆',
       profileSummaryTitle: '记忆摘要',
-      profileSummaryHint: '可编辑的记忆摘要，召回时优先注入。',
+      profileSummaryHint: '可编辑的全局记忆摘要，召回时和当前项目的摘要一起注入。巡检时由模型重写记忆有变化的摘要；删改记忆后，相关摘要会先停用，等待重建。',
       profileSummaryEmpty: '尚未生成记忆摘要；下次维护后会自动生成。',
       profileSummaryDisabled: '记忆摘要已关闭。',
       profileSummaryItems: '条',
@@ -1134,6 +1196,15 @@ window.__ModuleLoader__.load({
       .mem0-memory-delete:hover:not(:disabled){color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}
       .mem0-section-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
       .mem0-search-row{display:flex;align-items:center;gap:8px;margin:10px 0}
+      .mem0-explorer{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:16px;align-items:start}
+      .mem0-explorer-flat{display:block}
+      .mem0-tree{display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--dsw-alias-border-l1);padding-right:12px}
+      .mem0-tree-row{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:4px 8px;font-size:12px;color:var(--dsw-alias-label-primary);cursor:pointer}
+      .mem0-tree-row:hover{background:var(--dsw-alias-fill-l1,rgba(127,127,127,.08))}
+      .mem0-tree-row[aria-current="true"]{background:var(--dsw-alias-fill-l2,rgba(127,127,127,.16));font-weight:600}
+      .mem0-tree-head{font-size:11px;color:var(--dsw-alias-label-tertiary);padding:8px 8px 2px}
+      .mem0-tree-count{color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+      @media (max-width:640px){.mem0-explorer{grid-template-columns:1fr}.mem0-tree{border-right:0;border-bottom:1px solid var(--dsw-alias-border-l1);padding:0 0 8px}}
       .mem0-search-row .mem0-input{flex:1;min-width:0}
       .mem0-recall-preview{margin-top:9px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
       .mem0-profile{margin:10px 0 0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto}
@@ -1159,6 +1230,9 @@ window.__ModuleLoader__.load({
       .mem0-globe.is-active .mem0-globe-static,.mem0-globe.is-success .mem0-globe-static{opacity:0}
       .mem0-globe.is-active .mem0-globe-roll,.mem0-globe.is-success .mem0-globe-roll{opacity:1}
       .mem0-dock-text{overflow:hidden;text-overflow:ellipsis}
+      .mem0-scope{display:inline-flex;align-items:center;margin-left:4px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:10.5px;line-height:1.4;padding:0 6px;cursor:pointer;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
+      .mem0-scope:hover{color:var(--dsw-alias-label-secondary)}
+      .mem0-scope:disabled{opacity:.6;cursor:default}
       .mem0-dock-wrap{position:relative;display:inline-flex;max-width:100%}
       .mem0-dock-pop{position:fixed;z-index:1000;width:max-content;max-width:min(360px,80vw);white-space:normal;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));box-shadow:0 6px 24px rgba(0,0,0,.18);padding:9px 11px;display:flex;flex-direction:column;gap:3px;font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
       .mem0-dock-pop-title{font-weight:600;color:var(--dsw-alias-state-error-primary)}
@@ -1198,8 +1272,22 @@ window.__ModuleLoader__.load({
       'memoryBudgetTokens',
       'storeSafetyLimit',
       'importanceWeight',
+      'projectRecallBoost',
       'hygieneIntervalDays',
     ])
+    // Numeric fields that take decimals (the rest must be whole numbers).
+    const DECIMAL_FIELDS = new Set(['importanceWeight', 'projectRecallBoost'])
+    /** The draft with numeric fields as numbers; null when one is empty or not a number (decimals only where allowed). */
+    function numericDraft(draft) {
+      const next = { ...draft }
+      for (const key of NUMERIC_FIELDS) {
+        const raw = next[key]
+        const number = raw === '' || raw === null || raw === undefined ? NaN : Number(raw)
+        if (DECIMAL_FIELDS.has(key) ? !Number.isFinite(number) : !Number.isInteger(number)) return null
+        next[key] = number
+      }
+      return next
+    }
     const FIELD_ORDER = [
       'backend',
       'apiKey',
@@ -1226,6 +1314,8 @@ window.__ModuleLoader__.load({
       'hygieneEnabled',
       'modelHygiene',
       'importanceWeight',
+      'projectPartitions',
+      'projectRecallBoost',
       'hygieneIntervalDays',
       'translateMemories',
       'captureStrataFolds',
@@ -1258,6 +1348,8 @@ window.__ModuleLoader__.load({
         hygieneEnabled: value?.hygieneEnabled !== false,
         modelHygiene: value?.modelHygiene !== false,
         importanceWeight: Number(value?.importanceWeight ?? 0.2),
+        projectPartitions: value?.projectPartitions !== false,
+        projectRecallBoost: Number(value?.projectRecallBoost ?? 1.1),
         hygieneIntervalDays: Number(value?.hygieneIntervalDays ?? 7),
         translateMemories: value?.translateMemories === true,
         captureStrataFolds: value?.captureStrataFolds === true,
@@ -1629,6 +1721,90 @@ window.__ModuleLoader__.load({
       return reason ? `${item?.id ?? '—'} · ${reason}` : String(item?.id ?? '—')
     }
 
+    // Ids of the memories a report's merge and importance rows name.
+    function reportMemoryIds(report) {
+      const ids = new Set()
+      for (const item of [...(Array.isArray(report?.mergedDetails) ? report.mergedDetails : []), ...(Array.isArray(report?.mergePlan) ? report.mergePlan : [])]) {
+        if (item?.id) ids.add(String(item.id))
+        for (const id of Array.isArray(item?.ids) ? item.ids : []) ids.add(String(id))
+      }
+      for (const item of Array.isArray(report?.reviewDetails) ? report.reviewDetails : []) if (item?.id) ids.add(String(item.id))
+      return [...ids].slice(0, 60)
+    }
+
+    // The current text of a memory a report names (looked up by id), or
+    // "deleted" when it is gone; the id while the lookup has not answered.
+    function reportBody(t, texts, id) {
+      if (!texts || !Object.hasOwn(texts, String(id))) return String(id ?? '—')
+      const entry = texts[String(id)]
+      const text = String(entry?.memory ?? '').trim()
+      if (!entry || !text) return t('reportDeleted')
+      return text.length > 120 ? `${text.slice(0, 119)}…` : text
+    }
+
+    function mergeLine(t, texts, item) {
+      const head = item?.preview ? item.preview : item?.id ? reportBody(t, texts, item.id) : item?.pending ? t('reportPending') : ''
+      const sources = (Array.isArray(item?.ids) ? item.ids : []).map((id) => reportBody(t, texts, id)).join(' · ')
+      return head ? `${head} ← ${sources}` : sources
+    }
+
+    function importanceLine(t, texts, item) {
+      return `${reportBody(t, texts, item?.id)} · ${template(t('hygieneItemImportance'), { level: item?.level ?? '?' })}`
+    }
+
+    function shortId(id) {
+      return String(id ?? '').slice(0, 8)
+    }
+
+    // Rows of the memory page's tree: all, global, projects (with their
+    // sessions), sessions without a project. Headers are not selectable.
+    // A session node: the time of its latest memory, else its short id.
+    function sessionLabel(t, session) {
+      const date = session?.newest ? new Date(session.newest) : null
+      if (date && !Number.isNaN(date.getTime())) {
+        const pad = (value) => String(value).padStart(2, '0')
+        return template(t('sessionAt'), { time: `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}` })
+      }
+      return template(t('scopeSession'), { id: shortId(session?.id) })
+    }
+
+    // The localized reason a move to global was refused.
+    function makeGlobalReason(t, error) {
+      const keys = { 'not-project': 'memoryMakeGlobalNotProject', 'not-own': 'memoryMakeGlobalNotOwn', 'not-found': 'memoryMakeGlobalNotFound', 'other-user': 'memoryMakeGlobalOtherUser' }
+      const key = keys[error?.reason]
+      return key ? t(key) : String(error?.message ?? '')
+    }
+
+    function treeEntries(t, tree) {
+      if (!tree?.partitioned) return []
+      const rows = [
+        { key: '', label: t('treeAll'), count: tree.total ?? 0, depth: 0 },
+        { key: 'global', label: t('scopeGlobal'), count: tree.global ?? 0, depth: 0 },
+      ]
+      const projects = Array.isArray(tree.projects) ? tree.projects : []
+      if (projects.length > 0) rows.push({ key: null, label: t('treeProjects'), header: true, depth: 0 })
+      for (const project of projects) {
+        rows.push({ key: project.key, label: project.name || shortId(project.id), count: project.count ?? 0, depth: 1 })
+        for (const session of Array.isArray(project.sessions) ? project.sessions : []) {
+          rows.push({ key: session.key, label: sessionLabel(t, session), count: session.count ?? 0, depth: 2 })
+        }
+      }
+      const loose = Array.isArray(tree.sessions) ? tree.sessions : []
+      if (loose.length > 0) rows.push({ key: null, label: t('treeSessions'), header: true, depth: 0 })
+      for (const session of loose) rows.push({ key: session.key, label: sessionLabel(t, session), count: session.count ?? 0, depth: 1 })
+      return rows
+    }
+
+    // The partition chip of one memory on the memory page.
+    function scopeLabel(t, memory, tree) {
+      if (memory?.scope === 'project') {
+        const project = (tree?.projects ?? []).find((item) => item.id === memory.projectId)
+        return template(t('scopeProject'), { name: project?.name || shortId(memory.projectId) })
+      }
+      if (memory?.scope === 'session') return template(t('scopeSession'), { id: shortId(memory.sessionId) })
+      return t('scopeGlobal')
+    }
+
     function backendChoiceText(t, data) {
       const values = { env: data?.apiKeyEnv || 'MEM0_API_KEY', endpoint: data?.endpoint ?? '—' }
       switch (data?.backendSource) {
@@ -1921,7 +2097,90 @@ window.__ModuleLoader__.load({
       return { state: 'idle', kind: 'idle', label: t('dockIdle'), details: null }
     }
 
-    function MemoryDockStatus({ ctx, t }) {
+    /**
+     * The composer chip: where this conversation's new memories go. Null when
+     * the backend has no partitions (REST backends keep everything global).
+     * `partitions` is the switch as the config form holds it (it changes at
+     * once on a click), else as the server last reported it.
+     */
+    function scopeChipView(t, scope, partitions) {
+      if (!scope || scope.available === false) return null
+      const on = typeof partitions === 'boolean' ? partitions : scope.partitions !== false
+      const name = on && scope.project?.name ? String(scope.project.name).replace(/\s+/g, ' ').trim().slice(0, 40) : ''
+      if (!on) return { on, label: t('scopeChipGlobal'), hint: t('scopeChipOffHint'), kind: 'global' }
+      if (!name) return { on, label: t('scopeChipGlobal'), hint: t('scopeChipOnNoProjectHint'), kind: 'global' }
+      return { on, label: template(t('scopeChipProject'), { name }), hint: t('scopeChipOnHint'), kind: 'project' }
+    }
+
+    /** The "partition by project" switch as the config form holds it (undefined: not loaded). */
+    function formPartitions(form) {
+      try {
+        const snapshot = form?.getSnapshot?.()
+        if (snapshot?.status !== 'ready') return undefined
+        return snapshot.value?.projectPartitions !== false
+      } catch {
+        return undefined
+      }
+    }
+
+    /** The scope chip: shows where new memories go; a click flips the switch (same config as the settings page). */
+    function ScopeChip({ ctx, t, scope }) {
+      const form = useMemo(() => {
+        try {
+          return ctx.configForms?.get?.(ENTRY_ID) ?? null
+        } catch {
+          return null
+        }
+      }, [ctx])
+      const [partitions, setPartitions] = useState(() => formPartitions(form))
+      const [busy, setBusy] = useState(false)
+      const [failed, setFailed] = useState(false)
+      useEffect(() => {
+        if (!form?.subscribe) return undefined
+        setPartitions(formPartitions(form))
+        return form.subscribe(() => setPartitions(formPartitions(form)))
+      }, [form])
+      const view = scopeChipView(t, scope, partitions)
+      if (!view) return null
+      const flip = async () => {
+        if (busy) return
+        setFailed(false)
+        const openSettings = () => {
+          try {
+            ctx.get('pluginNavigation')?.openBundle?.(PKG)
+          } catch {
+            // Navigation is optional.
+          }
+        }
+        if (!form?.mutate || !form.getSnapshot) return openSettings()
+        setBusy(true)
+        try {
+          const snapshot = form.getSnapshot()
+          if (snapshot?.status !== 'ready' || snapshot.writable === false) return openSettings()
+          const accepted = await form.mutate([{ op: 'set', path: ['projectPartitions'], value: !view.on }], snapshot.revision)
+          if (!accepted) setFailed(true)
+        } catch {
+          setFailed(true)
+        } finally {
+          setBusy(false)
+        }
+      }
+      return h(
+        'button',
+        {
+          type: 'button',
+          className: 'mem0-scope',
+          'data-scope-kind': view.kind,
+          'aria-pressed': view.on,
+          disabled: busy,
+          title: failed ? `${view.hint}\n${t('scopeChipSaveFailed')}` : view.hint,
+          onClick: () => void flip(),
+        },
+        view.label,
+      )
+    }
+
+    function MemoryDockStatus({ ctx, t, sessionId }) {
       const [data, setData] = useState(null)
       const [readFailure, setReadFailure] = useState(null)
       // Popover position (fixed, from the button's rect): the composer dock
@@ -1947,7 +2206,8 @@ window.__ModuleLoader__.load({
         let live = true
         const load = async () => {
           try {
-            const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(ctx)}&translate=0`)
+            const session = sessionId ? `&session=${encodeURIComponent(String(sessionId))}` : ''
+            const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(ctx)}&translate=0${session}`)
             if (live) {
               setData(next)
               setReadFailure(null)
@@ -1968,7 +2228,7 @@ window.__ModuleLoader__.load({
           live = false
           clearInterval(timer)
         }
-      }, [])
+      }, [sessionId])
 
       const view = dockView(t, {
         data,
@@ -2035,6 +2295,7 @@ window.__ModuleLoader__.load({
           h(GlobeStatus, { state: view.state }),
           h('span', { className: 'mem0-dock-text' }, view.label),
         ),
+        h(ScopeChip, { ctx, t, scope: data?.memoryScope ?? null }),
         details && open
           ? h(
               'div',
@@ -2788,6 +3049,11 @@ window.__ModuleLoader__.load({
       const [hygieneMessage, setHygieneMessage] = useState('')
       const [browserOpen, setBrowserOpen] = useState(false)
       const [memoryQuery, setMemoryQuery] = useState('')
+      // The memory page's tree and the partition it shows ('' = all).
+      const [memoryTree, setMemoryTree] = useState(null)
+      const [memoryPartition, setMemoryPartition] = useState('')
+      // Current text of the memories the last hygiene report names, by id.
+      const [reportTexts, setReportTexts] = useState(null)
       const [memoryState, setMemoryState] = useState({ phase: 'idle', data: null, message: '' })
       const [deleteState, setDeleteState] = useState({ id: null, outcome: 'idle', message: '' })
       const [profileDraft, setProfileDraft] = useState(null)
@@ -2811,6 +3077,16 @@ window.__ModuleLoader__.load({
           setInitial(next)
           setLoaded(true)
         }
+      }, [snapshot, loaded])
+
+      // The composer chip saves "partition by project" too: follow it while
+      // this field has no unsaved change here.
+      useEffect(() => {
+        if (!loaded || snapshot.status !== 'ready' || !initial || !draft) return
+        const saved = snapshot.value?.projectPartitions !== false
+        if (saved === initial.projectPartitions || draft.projectPartitions !== initial.projectPartitions) return
+        setInitial((current) => ({ ...current, projectPartitions: saved }))
+        setDraft((current) => ({ ...current, projectPartitions: saved }))
       }, [snapshot, loaded])
 
       useEffect(() => {
@@ -2856,13 +3132,26 @@ window.__ModuleLoader__.load({
         }
       }, [status, profileEditing])
 
-      const loadMemories = useCallback(async (query) => {
+      const loadTree = useCallback(async () => {
+        try {
+          setMemoryTree(await fetchJson(`${MEMORIES_PATH}?tree=1`))
+        } catch {
+          setMemoryTree(null)
+        }
+      }, [])
+
+      // Only the latest request's answer is shown (quick clicks on the tree).
+      const memoryRequest = useRef(0)
+      const loadMemories = useCallback(async (query, partition = '') => {
         const q = String(query ?? '').trim()
+        const request = ++memoryRequest.current
         setMemoryState((current) => ({ phase: 'loading', data: current.data, message: '' }))
         try {
-          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(ctx)}`)
+          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(ctx)}&partition=${encodeURIComponent(partition)}`)
+          if (request !== memoryRequest.current) return
           setMemoryState({ phase: 'ready', data, message: '' })
         } catch (error) {
+          if (request !== memoryRequest.current) return
           setMemoryState({ phase: 'error', data: null, message: error.message })
         }
       }, [])
@@ -2875,7 +3164,8 @@ window.__ModuleLoader__.load({
           request: fetchJson,
           confirm: (text) => window.confirm(text),
           reload: async () => {
-            await loadMemories(memoryQuery)
+            await loadMemories(memoryQuery, memoryPartition)
+            void loadTree()
             void refreshStatus({ translate: false })
           },
         })
@@ -2892,14 +3182,38 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ id, pinned }),
           })
           if (!outcome?.ok) throw new Error(outcome?.error || t('memoryPinError'))
-          await loadMemories(memoryQuery)
+          await loadMemories(memoryQuery, memoryPartition)
         } catch (error) {
           setDeleteState({ id: null, outcome: 'error', message: `${t('memoryPinError')}: ${error.message}` })
         }
       }
 
+      // Move a project memory to global (text unchanged; no other edit).
+      const makeGlobal = async (id) => {
+        try {
+          const outcome = await fetchJson(MEMORIES_PATH, {
+            method: 'POST',
+            retry: false,
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id, scope: 'global' }),
+          })
+          if (!outcome?.ok) throw Object.assign(new Error(outcome?.error || t('memoryMakeGlobalError')), { reason: outcome?.reason })
+          await Promise.all([loadMemories(memoryQuery, memoryPartition), loadTree()])
+        } catch (error) {
+          setDeleteState({ id: null, outcome: 'error', message: `${t('memoryMakeGlobalError')}: ${makeGlobalReason(t, error)}` })
+        }
+      }
+
+      const selectPartition = (key) => {
+        setMemoryPartition(key)
+        void loadMemories(memoryQuery, key)
+      }
+
       const toggleBrowser = () => {
-        if (!browserOpen) void loadMemories(memoryQuery)
+        if (!browserOpen) {
+          void loadMemories(memoryQuery, memoryPartition)
+          void loadTree()
+        }
         setBrowserOpen((open) => !open)
       }
 
@@ -2953,15 +3267,11 @@ window.__ModuleLoader__.load({
 
       const save = async () => {
         if (!draft || !snapshot.writable) return false
-        const next = { ...draft }
-        for (const key of NUMERIC_FIELDS) {
-          const number = Number(next[key])
-          if (!Number.isInteger(number)) {
-            setSaveState('error')
-            setSaveMessage(t('invalidNumber'))
-            return false
-          }
-          next[key] = number
+        const next = numericDraft(draft)
+        if (!next) {
+          setSaveState('error')
+          setSaveMessage(t('invalidNumber'))
+          return false
         }
         const ops = []
         for (const key of FIELD_ORDER) {
@@ -3161,6 +3471,25 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const reportIdsKey = reportMemoryIds(status.data?.maintenance?.lastReport ?? null).join(',')
+      useEffect(() => {
+        // Stored reports keep ids only: read the current text by id.
+        if (!reportIdsKey) {
+          setReportTexts(null)
+          return undefined
+        }
+        let cancelled = false
+        fetchJson(`${MEMORIES_PATH}?ids=${encodeURIComponent(reportIdsKey)}`)
+          .then((data) => {
+            if (!cancelled) setReportTexts(data?.ok ? data.texts ?? {} : null)
+          })
+          .catch(() => {
+            if (!cancelled) setReportTexts(null)
+          })
+        return () => {
+          cancelled = true
+        }
+      }, [reportIdsKey])
       if (snapshot.status === 'unavailable') {
         return h('div', { className: 'mem0-page' }, h('p', { className: 'mem0-empty' }, t('unavailable')))
       }
@@ -3234,6 +3563,14 @@ window.__ModuleLoader__.load({
           profileMeta.push(`${t('profileSummaryUpdated')} ${activityTime(maintenance.profile.updatedAt)}`)
         }
       }
+      // Project summaries (partition L0): name, size, whether being rebuilt.
+      const projectSummaryLine = Array.isArray(maintenance?.projectProfiles) && maintenance.projectProfiles.length > 0
+        ? template(t('projectSummaries'), {
+            list: maintenance.projectProfiles
+              .map((item) => `${item.name || shortId(item.projectId)} (${item.items ?? 0} · ${item.tokens ?? 0} ${t('tokUnit')}${item.stale ? ` · ${t('projectSummaryStale')}` : ''})`)
+              .join(', '),
+          })
+        : ''
       const maintenanceMeta = []
       if (maintenance?.lastRunAt) {
         maintenanceMeta.push(`${t('hygieneLastRun')} ${activityTime(maintenance.lastRunAt)}`)
@@ -3466,6 +3803,7 @@ window.__ModuleLoader__.load({
             profileMeta.length > 0 ? h('span', { className: 'mem0-hint' }, profileMeta.join(' · ')) : null,
           ),
           h('p', { className: 'mem0-section-hint' }, t('profileSummaryHint')),
+          projectSummaryLine ? h('p', { className: 'mem0-hint' }, projectSummaryLine) : null,
           profileEditing
             ? h('textarea', {
                 className: 'mem0-profile-edit',
@@ -3710,14 +4048,43 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'mem0-section-head' },
-                h('h3', { className: 'mem0-section-title' }, t('memoryBrowserTitle')),
+                h('h3', { className: 'mem0-section-title' }, memoryTree?.partitioned ? t('memoryTreeTitle') : t('memoryBrowserTitle')),
                 h(
                   'button',
                   { type: 'button', className: 'mem0-secondary', onClick: toggleBrowser },
                   t('memoryBrowserClose'),
                 ),
               ),
-              h('p', { className: 'mem0-section-hint' }, t('memoryBrowserHint')),
+              h('p', { className: 'mem0-section-hint' }, memoryTree?.partitioned ? t('memoryTreeHint') : t('memoryBrowserHint')),
+              h(
+                'div',
+                { className: memoryTree?.partitioned ? 'mem0-explorer' : 'mem0-explorer mem0-explorer-flat' },
+                memoryTree?.partitioned
+                  ? h(
+                      'nav',
+                      { className: 'mem0-tree', 'aria-label': t('memoryTreeTitle') },
+                      treeEntries(t, memoryTree).map((row, index) =>
+                        row.header
+                          ? h('div', { key: `head-${index}`, className: 'mem0-tree-head' }, row.label)
+                          : h(
+                              'button',
+                              {
+                                key: row.key || 'all',
+                                type: 'button',
+                                className: 'mem0-tree-row',
+                                style: { paddingLeft: `${8 + row.depth * 12}px` },
+                                'aria-current': memoryPartition === row.key ? 'true' : 'false',
+                                onClick: () => selectPartition(row.key),
+                              },
+                              h('span', null, row.label),
+                              h('span', { className: 'mem0-tree-count' }, String(row.count ?? 0)),
+                            ),
+                      ),
+                    )
+                  : null,
+              h(
+                'div',
+                null,
               h(
                 'div',
                 { className: 'mem0-search-row' },
@@ -3730,7 +4097,7 @@ window.__ModuleLoader__.load({
                   onKeyDown: (event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault()
-                      void loadMemories(memoryQuery)
+                      void loadMemories(memoryQuery, memoryPartition)
                     }
                   },
                 }),
@@ -3739,7 +4106,7 @@ window.__ModuleLoader__.load({
                   {
                     type: 'button',
                     className: 'mem0-primary',
-                    onClick: () => void loadMemories(memoryQuery),
+                    onClick: () => void loadMemories(memoryQuery, memoryPartition),
                     disabled: memoryState.phase === 'loading',
                   },
                   t('memorySearch'),
@@ -3793,9 +4160,18 @@ window.__ModuleLoader__.load({
                                       typeof memory.score === 'number'
                                         ? h('span', { className: 'mem0-hint' }, `${t('memoryScore')} ${memory.score.toFixed(3)}`)
                                         : null,
+                                      memoryTree?.partitioned ? h('span', { className: 'mem0-chip' }, scopeLabel(t, memory, memoryTree)) : null,
                                       memory.pinned ? h('span', { className: 'mem0-chip' }, t('memoryPinnedTag')) : null,
                                       Number.isInteger(memory.importance)
                                         ? h('span', { className: 'mem0-hint' }, template(t('memoryImportance'), { level: memory.importance }))
+                                        : null,
+                                      memory.source ? h('span', { className: 'mem0-hint' }, template(t('memorySource'), { source: memory.source })) : null,
+                                      memory.id && memory.globalizable
+                                        ? h(
+                                            'button',
+                                            { type: 'button', className: 'mem0-secondary', onClick: () => void makeGlobal(memory.id) },
+                                            t('memoryMakeGlobal'),
+                                          )
                                         : null,
                                       memory.id && memory.pinnable
                                         ? h(
@@ -3826,6 +4202,8 @@ window.__ModuleLoader__.load({
                             : h('p', { className: 'mem0-empty' }, t('memoryEmpty')),
                         )
                       : h('p', { className: 'mem0-hint' }, t('memoryBrowserHint')),
+              ),
+              ),
             )
           : null,
         h(
@@ -4008,6 +4386,12 @@ window.__ModuleLoader__.load({
               checked: draft.modelHygiene,
               onChange: (value) => setField('modelHygiene', value),
             }),
+            h(ToggleRow, {
+              label: t('projectPartitions'),
+              hint: t('projectPartitionsHint'),
+              checked: draft.projectPartitions,
+              onChange: (value) => setField('projectPartitions', value),
+            }),
           ),
           h(
             'div',
@@ -4039,6 +4423,13 @@ window.__ModuleLoader__.load({
               type: 'number',
               value: draft.importanceWeight,
               onChange: (value) => setField('importanceWeight', value === '' ? '' : Number(value)),
+            }),
+            h(TextField, {
+              label: t('projectRecallBoost'),
+              hint: t('projectRecallBoostHint'),
+              type: 'number',
+              value: draft.projectRecallBoost,
+              onChange: (value) => setField('projectRecallBoost', value === '' ? '' : Number(value)),
             }),
             h(TextField, {
               label: t('hygieneIntervalDays'),
@@ -4083,8 +4474,8 @@ window.__ModuleLoader__.load({
                         : null,
                       reportDetail(t, t('hygieneDuplicateDetails'), lastReport.duplicateDetails, (item) => reportItem(t, item)),
                       Array.isArray(lastReport.prunedDetails) ? reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => reportItem(t, item)) : null,
-                      reportDetail(t, t('hygieneMergeDetails'), lastReport.dryRun ? lastReport.mergePlan : lastReport.mergedDetails, (item) => `${item.preview ? `${item.preview} ← ` : item.id ? `${item.id} ← ` : ''}${(item.ids ?? []).join(', ')}`),
-                      reportDetail(t, t('hygieneImportanceDetails'), lastReport.reviewDetails, (item) => reportItem(t, item)),
+                      reportDetail(t, t('hygieneMergeDetails'), lastReport.dryRun ? lastReport.mergePlan : lastReport.mergedDetails, (item) => mergeLine(t, reportTexts, item)),
+                      reportDetail(t, t('hygieneImportanceDetails'), lastReport.reviewDetails, (item) => importanceLine(t, reportTexts, item)),
                       reportDetail(t, t('hygieneDeletedDetails'), lastReport.deletedDetails, (item) => reportItem(t, item)),
                       reportDetail(t, t('hygieneFailedDetails'), lastReport.failedDetails, (item) => `${item.id}: ${item.error}`),
                     )
@@ -4226,11 +4617,12 @@ window.__ModuleLoader__.load({
             order: -1,
             locale: NS,
           },
-          () => h(MemoryDockStatus, { ctx, t }),
+          // A session-scoped slot: DSH passes the conversation's sessionId.
+          (props) => h(MemoryDockStatus, { ctx, t, sessionId: props?.sessionId }),
         ),
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, sessionLabel, makeGlobalReason, scopeChipView, numericDraft } }
   },
 })

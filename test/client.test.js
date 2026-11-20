@@ -255,3 +255,92 @@ test('setup wizard: a stored key only for its own server; errors in the page lan
   // Same keys in both languages.
   assert.deepEqual(Object.keys(en).filter((key) => key.startsWith('wz')).sort(), Object.keys(zh).filter((key) => key.startsWith('wz')).sort())
 })
+
+test('memory page helpers: sessions are labelled by time, refused moves by a localized reason', () => {
+  const { sessionLabel, makeGlobalReason, treeEntries, zh, en } = loadClient().exports.__test__
+  const t = (key) => zh[key] ?? key
+  const local = new Date(2026, 10, 20, 9, 5)
+  assert.equal(sessionLabel(t, { id: 'session-1a2b3c4d5e', newest: local.toISOString() }), '会话 · 11-20 09:05')
+  assert.match(sessionLabel(t, { id: 'session-1a2b3c4d5e' }), /^会话 /, 'no time: the short id')
+  assert.equal(makeGlobalReason(t, { reason: 'not-project', message: 'a memory can only be moved to global' }), '只有项目记忆可以改为全局')
+  assert.equal(makeGlobalReason(t, { reason: 'not-own' }), '只能移动本插件写入的记忆')
+  assert.equal(makeGlobalReason(t, { message: 'HTTP 500' }), 'HTTP 500')
+  assert.equal(zh.memoryTreeTitle, '记忆页')
+  assert.equal(zh.tokUnit, 'token')
+  assert.equal(en.tokUnit, 'tok')
+  const rows = treeEntries(t, { partitioned: true, total: 2, global: 0, projects: [{ id: 'p1', key: 'project:p1', name: 'alpha', count: 2, sessions: [{ id: 'S1', key: 'session:S1', count: 1, newest: local.toISOString() }] }], sessions: [] })
+  assert.equal(rows.at(-1).label, '会话 · 11-20 09:05')
+})
+
+test('memory page helpers: report rows show current text or "deleted"; the tree lists partitions', () => {
+  const { reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, zh, en } = loadClient().exports.__test__
+  const t = (key) => zh[key] ?? key
+  const report = {
+    mergedDetails: [{ id: 'new1', ids: ['a', 'b'] }, { id: null, ids: ['c'], pending: true }],
+    reviewDetails: [{ id: 'd', reason: 'importance', level: 4 }],
+  }
+  assert.equal(JSON.stringify(reportMemoryIds(report)), JSON.stringify(['new1', 'a', 'b', 'c', 'd']))
+  const texts = { new1: { memory: '合并后的记忆' }, a: null, b: null, c: null, d: { memory: '喜欢绿茶' } }
+  assert.equal(mergeLine(t, texts, report.mergedDetails[0]), '合并后的记忆 ← 已删除 · 已删除')
+  assert.equal(mergeLine(t, texts, report.mergedDetails[1]), '合并待完成 ← 已删除')
+  assert.equal(importanceLine(t, texts, report.reviewDetails[0]), '喜欢绿茶 · 重要度 4')
+  assert.equal(reportBody(t, null, 'd'), 'd', 'before the lookup answers: the id')
+  assert.equal(reportBody((key) => en[key], { x: null }, 'x'), 'deleted')
+
+  const tree = {
+    partitioned: true,
+    total: 6,
+    global: 2,
+    projects: [{ id: 'p0123456789abcdef', key: 'project:p0123456789abcdef', name: 'alpha', count: 3, sessions: [{ id: 'S1abcdefgh', key: 'session:S1abcdefgh', count: 1 }] }],
+    sessions: [{ id: 'S2', key: 'session:S2', count: 1 }],
+  }
+  const rows = treeEntries(t, tree)
+  assert.deepEqual(JSON.parse(JSON.stringify(rows.map((row) => [row.key, row.label, row.depth]))), [
+    ['', '全部', 0],
+    ['global', '全局', 0],
+    [null, '项目', 0],
+    ['project:p0123456789abcdef', 'alpha', 1],
+    ['session:S1abcdefgh', '会话 S1abcdef', 2],
+    [null, '不属于项目的会话', 0],
+    ['session:S2', '会话 S2', 1],
+  ])
+  assert.equal(treeEntries(t, { partitioned: false }).length, 0)
+  assert.equal(scopeLabel(t, { scope: 'project', projectId: 'p0123456789abcdef' }, tree), '项目 alpha')
+  assert.equal(scopeLabel(t, { scope: 'global' }, tree), '全局')
+})
+
+test('scope chip view: project, global, switch off, REST backends', () => {
+  const { exports } = loadClient()
+  const { scopeChipView, en, zh } = exports.__test__
+  const t = (key) => en[key]
+  assert.deepEqual({ ...scopeChipView(t, { available: true, partitions: true, project: { name: 'dsh-mem0' } }) }, { on: true, label: 'Memory: project dsh-mem0', hint: en.scopeChipOnHint, kind: 'project' })
+  const none = scopeChipView(t, { available: true, partitions: true, project: null })
+  assert.equal(none.label, 'Memory: global')
+  assert.equal(none.hint, en.scopeChipOnNoProjectHint)
+  // The config form's value wins over the server's last report: a click shows at once.
+  assert.deepEqual({ ...scopeChipView(t, { available: true, partitions: true, project: { name: 'dsh-mem0' } }, false) }, { on: false, label: 'Memory: global', hint: en.scopeChipOffHint, kind: 'global' })
+  assert.equal(scopeChipView(t, { available: true, partitions: false, project: null }).kind, 'global')
+  assert.equal(scopeChipView(t, { available: false, partitions: true, project: null }), null, 'REST backends: no chip')
+  assert.equal(scopeChipView(t, null), null)
+  const zt = (key) => zh[key]
+  assert.equal(scopeChipView(zt, { available: true, partitions: true, project: { name: 'dsh-mem0' } }).label, '记忆：项目 dsh-mem0')
+  assert.equal(scopeChipView(zt, { available: true, partitions: false, project: null }).label, '记忆：全局')
+  for (const key of ['projectPartitions', 'projectPartitionsHint', 'scopeChipProject', 'scopeChipGlobal', 'scopeChipOnHint', 'scopeChipOnNoProjectHint', 'scopeChipOffHint', 'scopeChipSaveFailed']) {
+    assert.ok(en[key] && zh[key], key)
+  }
+})
+
+test('settings save accepts decimal weights and refuses non-numbers (importanceWeight 0.2, projectRecallBoost 1.1)', () => {
+  const { exports } = loadClient()
+  const { numericDraft } = exports.__test__
+  const draft = { captureMaxChars: '450', recallTopK: 5, timeoutMs: 30000, recallTimeoutMs: 5000, addTimeoutMs: 120000, profileBudgetTokens: 1375, memoryBudgetTokens: 2200, storeSafetyLimit: 20000, importanceWeight: 0.2, projectRecallBoost: '1.1', hygieneIntervalDays: 7, projectPartitions: false }
+  const next = numericDraft(draft)
+  assert.ok(next, 'the defaults save')
+  assert.equal(next.importanceWeight, 0.2)
+  assert.equal(next.projectRecallBoost, 1.1)
+  assert.equal(next.captureMaxChars, 450)
+  assert.equal(next.projectPartitions, false)
+  assert.equal(numericDraft({ ...draft, recallTopK: 2.5 }), null, 'whole-number fields stay whole')
+  assert.equal(numericDraft({ ...draft, projectRecallBoost: '' }), null)
+  assert.equal(numericDraft({ ...draft, importanceWeight: 'abc' }), null)
+})

@@ -296,8 +296,9 @@ test('an authorised pass merges, deletes the outdated and stores importance; tok
   assert.deepEqual(report.mergedDetails, [{ id: 'new1', ids: ['a', 'b'] }])
   assert.equal(JSON.stringify(report).includes('green tea'), false, 'the stored report has no memory text')
   assert.equal(failures.records.length, 0)
-  // Lowest reasoning effort and an explicit output cap on every call.
-  assert.ok(llm.prepared.every((call) => call.reasoningEffort === 'low' && call.maxTokens === 1536 && call.temperature === 0))
+  // Lowest reasoning effort and an explicit output cap on every review call
+  // (the partition summary call that follows has its own cap).
+  assert.ok(llm.prepared.slice(0, report.model.calls).every((call) => call.reasoningEffort === 'low' && call.maxTokens === 1536 && call.temperature === 0))
   assert.ok(llm.calls.every((call) => !('sessionId' in call.options)))
 })
 
@@ -413,7 +414,7 @@ test('a cut-off answer is retried once with twice the room', async (t) => {
   const { maintenance } = maintenanceWith(t, store, llm)
   const report = await maintenance.run('manual')
   assert.equal(report.model.status, 'ok')
-  assert.deepEqual(llm.prepared.map((item) => item.maxTokens), [1536, 3072])
+  assert.deepEqual(llm.prepared.slice(0, report.model.calls).map((item) => item.maxTokens), [1536, 3072])
   assert.deepEqual(store.log.attributes, [{ id: 'a', importance: 2 }])
 })
 
