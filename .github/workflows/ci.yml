@@ -33,3 +33,19 @@ jobs:
       # a second connection's write seen through data_version, reopen.
       - run: node scripts/smoke-store.mjs
       - run: npm pack --dry-run
+
+  # One check named `test` for the main branch ruleset, which cannot match
+  # the matrix job names (`test (ubuntu-latest)`, …). Fails unless every
+  # platform succeeded; runs even when one of them failed or was cancelled.
+  test-summary:
+    name: test
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All platforms passed
+        env:
+          RESULT: ${{ needs.test.result }}
+        run: |
+          echo "matrix result: $RESULT"
+          test "$RESULT" = success
