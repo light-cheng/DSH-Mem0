@@ -36,3 +36,21 @@ Files derived from mem0:
   the turn is not remembered when the extraction will be retried.
 - test/fixtures/mem0-2.2.1-extraction.json: output of mem0 2.2.1's own helper
   functions, produced by scripts/mem0-extraction-fixture.py.
+
+This product includes software from dissolve (https://github.com/rs-4/dissolve),
+commit 06eddec11725e5874eafce69e97d10cca0f7f882 (dissolve-ui 0.0.6), licensed
+under the MIT License (full text in vendor/dissolve/LICENSE):
+
+  Copyright (c) 2026 Rayan Selmi
+
+Files from dissolve:
+
+- vendor/dissolve/src/thinking-orb.core.ts and vendor/dissolve/src/kit.ts:
+  registry/web/thinking-orb.core.ts and registry/web/kit.ts, copied verbatim.
+- vendor/dissolve/src/engine.head.ts: the first 20 lines of
+  registry/web/engine.ts (for its DPR constant), copied verbatim.
+- vendor/dissolve/thinking-orb.js, also inlined in client.js between the
+  <dissolve-thinking-orb> markers: the same code as plain JavaScript, made by
+  scripts/vendor-dissolve.mjs. Modified only mechanically: kit.ts reduced to
+  what the orb uses, engine.ts reduced to DPR, imports and exports removed,
+  TypeScript types stripped, wrapped in one function.
