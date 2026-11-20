@@ -90,6 +90,17 @@ On the local backend (`backend: oss`) memories live in three partitions: **globa
 - Hygiene merges and replaces only within one partition (an action across partitions is dropped and counted). Exact duplicates are removed within one partition too; across partitions only a project or session copy of a global memory goes, never the global one. The summary in the system prompt has a **Global** part and a part for the current **Project**, each written separately (see below).
 - The Mem0 Platform and self-hosted server backends have no partitions: everything is global and the tools have no `scope` parameter.
 
+**Partition by project** (`projectPartitions`, default on; settings page → Memory maintenance, or the chip below the input box). Turn it off for work that does not need its own memory, for example a project that lives for one conversation:
+
+- New memories (captures, folds, `mem0_add` without `scope`) all go to global; recall and `mem0_search` read only global and this session; the summary in the system prompt is the global one only.
+- Existing project memories are not changed, moved or deleted, and their project summaries are kept. Turn the switch on again and they are recalled, summarised and checked as before.
+- Hygiene and summaries handle only global memories while it is off.
+- It applies from the next turn. The memory page still shows every partition.
+
+The chip next to the globe below the input box shows where this conversation's new memories go: **Memory: project dsh-mem0** when a project is known and the switch is on, **Memory: global** when the switch is off or the conversation is not in a project. Hover for what it means; click to flip the same switch as the settings page (the two stay in step).
+
+**Project memories never go to global on their own.** A project summary is never merged into the global summary, and hygiene never merges across partitions. A project memory becomes global only when you click **Make global** on the memory page. The one cross-partition rule (a project copy identical to a global memory is deleted) removes the project copy and brings no project content into global.
+
 ## Memory maintenance
 
 The **Memory maintenance** section separates several budgets that are easy to confuse:
@@ -114,6 +125,8 @@ Hygiene runs every 7 days by default and can be set to 1–90 days. It runs once
 **Deleting or editing a memory and the summary.** When a memory is deleted or updated (the `mem0_delete` / `mem0_update` tools or the library's **Delete**), a generated summary built from it stops being injected at once and is rebuilt in the background, also when hygiene is off. A manual summary is your text and keeps being injected; if it was edited from a generated summary that used the memory (or its sources are unknown), the Memory summary card says it may contain deleted or outdated content until you edit or rebuild it. Summaries are redacted like captures, before they are saved and again before they are injected, and the plugin's own block tags are removed from them. Recall and `mem0_search` queries are redacted the same way before they reach the backend or the activity view.
 
 Each due hygiene pass (every interval, or daily during a catch-up) writes the generated summaries (one global, one per project; session memories are left out) with your DSH model: at most 6 calls per pass, each from that partition's memories ranked by importance and freshness (redacted, about 3000 input tokens, up to about 2000 output tokens). A summary whose sources did not change is kept without a call, and a partition whose answer was unusable twice for the same sources gets the script summary until they change. Nothing else calls the model for summaries: after a delete, an edit or **Make global** only the summaries built from that memory are rebuilt, 45 seconds later (a run of deletes gives one rebuild), with the local deterministic summary (no model call; facts grouped into sections by topic), and the hourly check does the same for a summary that is missing. The script summary is also used with model-led hygiene off, or when the model is unavailable or answers badly. An empty global partition is saved as an empty summary. You can edit it at any time; manual edits are stored in `maintenance.json` and are not overwritten by hygiene. Use **Rebuild from memories** to return to the generated version. Section headings follow the dominant language of the memories (Chinese when most facts are Chinese, English otherwise).
+
+**What each turn carries is the *project summary*, not an aggregate.** Every turn's system prompt holds the global summary and the current project's summary (the *project summary*; L0 in the design document: one summary per partition). It is not the design document's L1 aggregate summary: no summary across projects is written or injected. Injecting it every turn is deliberate and stays.
 
 To keep DeepSeek's prefix cache warm, the summary is a system-prompt section (`plugin:dsh-mem0:profile`) that changes only when the stored summary changes. The per-turn `<mem0-relevant-memories>` block is a runtime context (`mem0:recall`), which DSH appends next to the latest user message, so it never rewrites earlier history.
 

@@ -119,6 +119,8 @@ window.__ModuleLoader__.load({
       storeSafetyLimitHint: 'Above this count hygiene warns; it never deletes for size. Default 20000.',
       importanceWeight: 'Importance weight in recall',
       importanceWeightHint: 'How much the importance rated by hygiene reorders recall, 0–1 (0 = off). Default 0.2.',
+      projectPartitions: 'Partition by project',
+      projectPartitionsHint: 'On: memories made in a project stay in that project, and recall reads the current project, this session and global. Off: new memories all go to global and recall reads only global and this session; existing project memories are kept unchanged and come back when you turn this on again. Project memories never move to global on their own. Takes effect from the next turn.',
       projectRecallBoost: 'Current project weight in recall',
       projectRecallBoostHint: 'Recall reads the current project and global memories together; the project’s scores are multiplied by this, 1–2 (1 = no preference). Default 1.1.',
       modelHygiene: 'Model-led hygiene',
@@ -484,6 +486,12 @@ window.__ModuleLoader__.load({
       failureStep_store: 'storing',
       failureStepRunning: '{step} still running after {ms} ms',
       dockOpen: 'Open Mem0 settings',
+      scopeChipProject: 'Memory: project {name}',
+      scopeChipGlobal: 'Memory: global',
+      scopeChipOnHint: 'Partition by project is on: new memories from this conversation stay in its project, and recall reads this project, this session and global. Click to turn it off (new memories then go to global). Applies from the next turn; the same switch is in Mem0 settings.',
+      scopeChipOnNoProjectHint: 'Partition by project is on, but this conversation is not in a project folder, so its new memories go to global. Click to turn the switch off. Applies from the next turn; the same switch is in Mem0 settings.',
+      scopeChipOffHint: 'Partition by project is off: new memories go to global, and recall reads only global and this session. Project memories are kept and come back when you turn it on. Click to turn it on. Applies from the next turn; the same switch is in Mem0 settings.',
+      scopeChipSaveFailed: 'Could not change the switch; open Mem0 settings to change it there.',
 
       activityAsyncHint: 'Platform extraction runs in the background. Queued memories can take a few seconds before they appear in the list below.',
       recentTitle: 'Recent memories',
@@ -655,6 +663,8 @@ window.__ModuleLoader__.load({
       storeSafetyLimitHint: '超过后巡检只提醒，不会因为条数多而删除记忆。默认 20000。',
       importanceWeight: '召回时的重要度权重',
       importanceWeightHint: '巡检评出的重要度对召回排序的影响，0–1（0 表示不用）。默认 0.2。',
+      projectPartitions: '按项目分区',
+      projectPartitionsHint: '开启：在项目里产生的记忆只存在这个项目，召回时读取当前项目、本会话和全局的记忆。关闭：新记忆一律写进全局，召回只读全局和本会话；已有的项目记忆原样保留，重新开启后照常能用。项目记忆不会自动进入全局。从下一轮开始生效。',
       projectRecallBoost: '召回时当前项目的权重',
       projectRecallBoostHint: '召回同时读取当前项目和全局的记忆，当前项目的分数乘以这个系数，1–2（1 表示不偏向）。默认 1.1。',
       modelHygiene: '模型巡检',
@@ -1020,6 +1030,12 @@ window.__ModuleLoader__.load({
       failureStep_store: '写入',
       failureStepRunning: '{step}已运行 {ms} ms 仍未完成',
       dockOpen: '打开 Mem0 设置',
+      scopeChipProject: '记忆：项目 {name}',
+      scopeChipGlobal: '记忆：全局',
+      scopeChipOnHint: '「按项目分区」已开启：这个对话产生的新记忆只存在它所在的项目，召回时读取这个项目、本会话和全局的记忆。点击关闭（关闭后新记忆写进全局）。从下一轮开始生效；Mem0 设置里是同一个开关。',
+      scopeChipOnNoProjectHint: '「按项目分区」已开启，但这个对话不在项目文件夹里，新记忆写进全局。点击关闭这个开关。从下一轮开始生效；Mem0 设置里是同一个开关。',
+      scopeChipOffHint: '「按项目分区」已关闭：新记忆一律写进全局，召回只读全局和本会话。已有的项目记忆保留，重新开启后照常能用。点击开启。从下一轮开始生效；Mem0 设置里是同一个开关。',
+      scopeChipSaveFailed: '没能切换开关，请到 Mem0 设置里修改。',
 
       activityAsyncHint: 'Platform 的事实抽取在后台进行；显示“后台抽取中”时，稍等几秒再刷新最近记忆。',
       recentTitle: '最近写入的记忆',
@@ -1214,6 +1230,9 @@ window.__ModuleLoader__.load({
       .mem0-globe.is-active .mem0-globe-static,.mem0-globe.is-success .mem0-globe-static{opacity:0}
       .mem0-globe.is-active .mem0-globe-roll,.mem0-globe.is-success .mem0-globe-roll{opacity:1}
       .mem0-dock-text{overflow:hidden;text-overflow:ellipsis}
+      .mem0-scope{display:inline-flex;align-items:center;margin-left:4px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:10.5px;line-height:1.4;padding:0 6px;cursor:pointer;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
+      .mem0-scope:hover{color:var(--dsw-alias-label-secondary)}
+      .mem0-scope:disabled{opacity:.6;cursor:default}
       .mem0-dock-wrap{position:relative;display:inline-flex;max-width:100%}
       .mem0-dock-pop{position:fixed;z-index:1000;width:max-content;max-width:min(360px,80vw);white-space:normal;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));box-shadow:0 6px 24px rgba(0,0,0,.18);padding:9px 11px;display:flex;flex-direction:column;gap:3px;font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
       .mem0-dock-pop-title{font-weight:600;color:var(--dsw-alias-state-error-primary)}
@@ -1256,6 +1275,19 @@ window.__ModuleLoader__.load({
       'projectRecallBoost',
       'hygieneIntervalDays',
     ])
+    // Numeric fields that take decimals (the rest must be whole numbers).
+    const DECIMAL_FIELDS = new Set(['importanceWeight', 'projectRecallBoost'])
+    /** The draft with numeric fields as numbers; null when one is empty or not a number (decimals only where allowed). */
+    function numericDraft(draft) {
+      const next = { ...draft }
+      for (const key of NUMERIC_FIELDS) {
+        const raw = next[key]
+        const number = raw === '' || raw === null || raw === undefined ? NaN : Number(raw)
+        if (DECIMAL_FIELDS.has(key) ? !Number.isFinite(number) : !Number.isInteger(number)) return null
+        next[key] = number
+      }
+      return next
+    }
     const FIELD_ORDER = [
       'backend',
       'apiKey',
@@ -1282,6 +1314,7 @@ window.__ModuleLoader__.load({
       'hygieneEnabled',
       'modelHygiene',
       'importanceWeight',
+      'projectPartitions',
       'projectRecallBoost',
       'hygieneIntervalDays',
       'translateMemories',
@@ -1315,6 +1348,7 @@ window.__ModuleLoader__.load({
         hygieneEnabled: value?.hygieneEnabled !== false,
         modelHygiene: value?.modelHygiene !== false,
         importanceWeight: Number(value?.importanceWeight ?? 0.2),
+        projectPartitions: value?.projectPartitions !== false,
         projectRecallBoost: Number(value?.projectRecallBoost ?? 1.1),
         hygieneIntervalDays: Number(value?.hygieneIntervalDays ?? 7),
         translateMemories: value?.translateMemories === true,
@@ -2063,7 +2097,90 @@ window.__ModuleLoader__.load({
       return { state: 'idle', kind: 'idle', label: t('dockIdle'), details: null }
     }
 
-    function MemoryDockStatus({ ctx, t }) {
+    /**
+     * The composer chip: where this conversation's new memories go. Null when
+     * the backend has no partitions (REST backends keep everything global).
+     * `partitions` is the switch as the config form holds it (it changes at
+     * once on a click), else as the server last reported it.
+     */
+    function scopeChipView(t, scope, partitions) {
+      if (!scope || scope.available === false) return null
+      const on = typeof partitions === 'boolean' ? partitions : scope.partitions !== false
+      const name = on && scope.project?.name ? String(scope.project.name).replace(/\s+/g, ' ').trim().slice(0, 40) : ''
+      if (!on) return { on, label: t('scopeChipGlobal'), hint: t('scopeChipOffHint'), kind: 'global' }
+      if (!name) return { on, label: t('scopeChipGlobal'), hint: t('scopeChipOnNoProjectHint'), kind: 'global' }
+      return { on, label: template(t('scopeChipProject'), { name }), hint: t('scopeChipOnHint'), kind: 'project' }
+    }
+
+    /** The "partition by project" switch as the config form holds it (undefined: not loaded). */
+    function formPartitions(form) {
+      try {
+        const snapshot = form?.getSnapshot?.()
+        if (snapshot?.status !== 'ready') return undefined
+        return snapshot.value?.projectPartitions !== false
+      } catch {
+        return undefined
+      }
+    }
+
+    /** The scope chip: shows where new memories go; a click flips the switch (same config as the settings page). */
+    function ScopeChip({ ctx, t, scope }) {
+      const form = useMemo(() => {
+        try {
+          return ctx.configForms?.get?.(ENTRY_ID) ?? null
+        } catch {
+          return null
+        }
+      }, [ctx])
+      const [partitions, setPartitions] = useState(() => formPartitions(form))
+      const [busy, setBusy] = useState(false)
+      const [failed, setFailed] = useState(false)
+      useEffect(() => {
+        if (!form?.subscribe) return undefined
+        setPartitions(formPartitions(form))
+        return form.subscribe(() => setPartitions(formPartitions(form)))
+      }, [form])
+      const view = scopeChipView(t, scope, partitions)
+      if (!view) return null
+      const flip = async () => {
+        if (busy) return
+        setFailed(false)
+        const openSettings = () => {
+          try {
+            ctx.get('pluginNavigation')?.openBundle?.(PKG)
+          } catch {
+            // Navigation is optional.
+          }
+        }
+        if (!form?.mutate || !form.getSnapshot) return openSettings()
+        setBusy(true)
+        try {
+          const snapshot = form.getSnapshot()
+          if (snapshot?.status !== 'ready' || snapshot.writable === false) return openSettings()
+          const accepted = await form.mutate([{ op: 'set', path: ['projectPartitions'], value: !view.on }], snapshot.revision)
+          if (!accepted) setFailed(true)
+        } catch {
+          setFailed(true)
+        } finally {
+          setBusy(false)
+        }
+      }
+      return h(
+        'button',
+        {
+          type: 'button',
+          className: 'mem0-scope',
+          'data-scope-kind': view.kind,
+          'aria-pressed': view.on,
+          disabled: busy,
+          title: failed ? `${view.hint}\n${t('scopeChipSaveFailed')}` : view.hint,
+          onClick: () => void flip(),
+        },
+        view.label,
+      )
+    }
+
+    function MemoryDockStatus({ ctx, t, sessionId }) {
       const [data, setData] = useState(null)
       const [readFailure, setReadFailure] = useState(null)
       // Popover position (fixed, from the button's rect): the composer dock
@@ -2089,7 +2206,8 @@ window.__ModuleLoader__.load({
         let live = true
         const load = async () => {
           try {
-            const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(ctx)}&translate=0`)
+            const session = sessionId ? `&session=${encodeURIComponent(String(sessionId))}` : ''
+            const next = await fetchJson(`${ACTIVITY_PATH}?lang=${pageLanguage(ctx)}&translate=0${session}`)
             if (live) {
               setData(next)
               setReadFailure(null)
@@ -2110,7 +2228,7 @@ window.__ModuleLoader__.load({
           live = false
           clearInterval(timer)
         }
-      }, [])
+      }, [sessionId])
 
       const view = dockView(t, {
         data,
@@ -2177,6 +2295,7 @@ window.__ModuleLoader__.load({
           h(GlobeStatus, { state: view.state }),
           h('span', { className: 'mem0-dock-text' }, view.label),
         ),
+        h(ScopeChip, { ctx, t, scope: data?.memoryScope ?? null }),
         details && open
           ? h(
               'div',
@@ -2960,6 +3079,16 @@ window.__ModuleLoader__.load({
         }
       }, [snapshot, loaded])
 
+      // The composer chip saves "partition by project" too: follow it while
+      // this field has no unsaved change here.
+      useEffect(() => {
+        if (!loaded || snapshot.status !== 'ready' || !initial || !draft) return
+        const saved = snapshot.value?.projectPartitions !== false
+        if (saved === initial.projectPartitions || draft.projectPartitions !== initial.projectPartitions) return
+        setInitial((current) => ({ ...current, projectPartitions: saved }))
+        setDraft((current) => ({ ...current, projectPartitions: saved }))
+      }, [snapshot, loaded])
+
       useEffect(() => {
         const readSecrets = () => {
           const ns = mirror.getSnapshot().view?.namespaces?.find((item) => item.ns === ENTRY_ID)
@@ -3138,15 +3267,11 @@ window.__ModuleLoader__.load({
 
       const save = async () => {
         if (!draft || !snapshot.writable) return false
-        const next = { ...draft }
-        for (const key of NUMERIC_FIELDS) {
-          const number = Number(next[key])
-          if (!Number.isInteger(number)) {
-            setSaveState('error')
-            setSaveMessage(t('invalidNumber'))
-            return false
-          }
-          next[key] = number
+        const next = numericDraft(draft)
+        if (!next) {
+          setSaveState('error')
+          setSaveMessage(t('invalidNumber'))
+          return false
         }
         const ops = []
         for (const key of FIELD_ORDER) {
@@ -4261,6 +4386,12 @@ window.__ModuleLoader__.load({
               checked: draft.modelHygiene,
               onChange: (value) => setField('modelHygiene', value),
             }),
+            h(ToggleRow, {
+              label: t('projectPartitions'),
+              hint: t('projectPartitionsHint'),
+              checked: draft.projectPartitions,
+              onChange: (value) => setField('projectPartitions', value),
+            }),
           ),
           h(
             'div',
@@ -4486,11 +4617,12 @@ window.__ModuleLoader__.load({
             order: -1,
             locale: NS,
           },
-          () => h(MemoryDockStatus, { ctx, t }),
+          // A session-scoped slot: DSH passes the conversation's sessionId.
+          (props) => h(MemoryDockStatus, { ctx, t, sessionId: props?.sessionId }),
         ),
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, sessionLabel, makeGlobalReason } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, sessionLabel, makeGlobalReason, scopeChipView, numericDraft } }
   },
 })

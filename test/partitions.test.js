@@ -1100,3 +1100,263 @@ test('memory page: report texts are read a few at a time (REST backends answer o
   assert.equal(Object.keys(lookup.texts).length, 20)
   assert.ok(peak <= 6, `at most 6 at once (saw ${peak})`)
 })
+
+// ------------------------------------------------------------- "partition by project" switch
+
+const ALPHA = projectIdentity({ cwd: '/work/alpha', root: '/work/alpha', origin: 'git@github.com:org/alpha.git' }, { platform: 'linux' })
+
+/**
+ * A partition-aware client over a list of rows: search keeps the rows in the
+ * requested partitions whose text shares a word with the query, by score.
+ */
+function partitionClient(rows) {
+  const map = new Map(rows.map((row) => [row.id, { user_id: USER, metadata: { source: 'dsh' }, ...row }]))
+  const searches = []
+  const adds = []
+  const words = (text) => new Set(String(text).toLowerCase().match(/[a-z]{4,}/g) ?? [])
+  return {
+    map,
+    searches,
+    adds,
+    async search(query, filters, options = {}) {
+      searches.push(options)
+      const wanted = words(query)
+      const hits = [...map.values()]
+        .filter((row) => inPartitions(row, options.partitions))
+        .filter((row) => [...words(row.memory)].some((word) => wanted.has(word)))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, options.topK ?? 10)
+      return { results: hits.map((row) => ({ ...row })) }
+    },
+    async add(messages, options) {
+      adds.push(options)
+      const id = `n${adds.length}`
+      const row = { id, memory: String(messages.at(-1)?.content ?? ''), score: 0.5, user_id: USER, metadata: { source: 'dsh' } }
+      if (options.scope === 'project') Object.assign(row, { scope: 'project', project_id: options.projectId })
+      else if (options.scope === 'session') Object.assign(row, { scope: 'session', session_id: options.sessionId })
+      map.set(id, row)
+      return { results: [{ id, memory: row.memory, event: 'ADD' }] }
+    },
+    async list() {
+      return { results: [...map.values()].map((row) => ({ ...row })) }
+    },
+    async get(id) {
+      return map.has(id) ? { ...map.get(id) } : null
+    },
+    async remove(id) {
+      map.delete(id)
+      return { message: 'deleted' }
+    },
+    async projects() {
+      return { [ALPHA.projectId]: { name: 'alpha' } }
+    },
+    setProject() {},
+    async setScope() {},
+    async setAttributes() {},
+  }
+}
+
+async function recallText(lifecycle, session, query) {
+  session.deriveMessages = () => [userMessage(query)]
+  const out = await lifecycle.onSystemPromptAssemble({}, { agent: { session } }, async () => ({ contexts: [] }))
+  return out.contexts[0]?.text ?? ''
+}
+
+test('switch off: new memories go to global, recall reads only global and the session; back on, project memories return', async () => {
+  const client = partitionClient([
+    { id: 'g1', memory: 'Deploy with the shared release script', score: 0.7 },
+    { id: 'p1', memory: 'Deploy alpha with make ship', score: 0.9, scope: 'project', project_id: ALPHA.projectId },
+    { id: 's1', memory: 'Deploy notes kept for this session', score: 0.6, scope: 'session', session_id: 'session-1' },
+  ])
+  const asked = []
+  const maintenance = { profileBlock: (options) => (asked.push(options), '- g') }
+  const off = engine(client, { maintenance, overrides: { projectPartitions: false, profileEnabled: true } })
+  const session = fakeSession()
+  const offBlock = await recallText(off, session, 'how do we deploy here?')
+  assert.deepEqual(client.searches.at(-1).partitions, [{ scope: 'global' }, { scope: 'session', session_id: 'session-1' }])
+  assert.match(offBlock, /shared release script/)
+  assert.match(offBlock, /Deploy notes kept/)
+  assert.equal(offBlock.includes('make ship'), false, 'no project memory while the switch is off')
+  // The injected summary is the global one only.
+  assert.equal(off.profileSectionText({ agent: { session } }), off.profileSectionText({ agent: { session } }))
+  assert.ok(asked.every((options) => options.projectId === undefined))
+  assert.deepEqual(await off.memoryScope('session-1'), { partitions: false, available: true, project: null })
+
+  // A captured turn goes to global.
+  off.onSessionEvent(session, { type: 'turn/start', data: {} })
+  off.onSessionEvent(session, { type: 'user/message', data: userMessage('Please remember: deployments of this service need a change ticket first.') })
+  off.onSessionEvent(session, { type: 'assistant/message', data: { message: { role: 'assistant', content: [{ type: 'text', text: 'Noted, a change ticket first.' }] } } })
+  off.onSessionEvent(session, { type: 'turn/end', data: { reason: { kind: 'completed' } } })
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(client.adds.at(-1).scope, 'global')
+  assert.equal(client.adds.at(-1).projectId, undefined)
+  assert.equal(client.adds.at(-1).readPartitions, undefined)
+
+  // The tools follow the switch: a default add is global, search reads global + session.
+  const tools = createMem0Tools(client, { userId: USER, agentId: 'dsh', backend: 'oss', projectPartitions: false }, { projects: projectResolver() })
+  const tool = (name) => tools.find((item) => item.name === name)
+  assert.match(await tool('mem0_add').execute({ content: 'Deploy freeze on Fridays' }, { agent: { session } }), /as global/)
+  assert.equal(client.adds.at(-1).scope, 'global')
+  await tool('mem0_search').execute({ query: 'deploy' }, { agent: { session } })
+  assert.deepEqual(client.searches.at(-1).partitions, [{ scope: 'global' }, { scope: 'session', session_id: 'session-1' }])
+  off.dispose()
+
+  // The project memory was not changed or moved; back on, it is recalled again.
+  assert.deepEqual(client.map.get('p1').scope, 'project')
+  assert.equal(client.map.get('p1').project_id, ALPHA.projectId)
+  const on = engine(client)
+  const onBlock = await recallText(on, fakeSession(), 'how do we deploy here?')
+  assert.match(onBlock, /make ship/)
+  assert.deepEqual((await on.memoryScope('session-1')).project, { name: 'alpha', kind: 'git' })
+  on.dispose()
+})
+
+test('switch off: hygiene and summaries handle only global; project memories and summaries stay, and are handled again when on', async (t) => {
+  const client = listStore([
+    memory('g1', 'Prefers dark mode'),
+    memory('p1', 'Uses pnpm in this repository', { scope: 'project', project_id: PROJECT }),
+  ], { projects: { [PROJECT]: { name: 'alpha' } } })
+  const llm = summaryLlm((records) => `## Facts\n${records.map((record) => `- ${record.text}`).join('\n')}`)
+  const maintenance = maintenanceFor(t, client, llm)
+  await maintenance.run('manual')
+  assert.equal(llm.calls.length, 2)
+  const projectSummary = maintenance.profileBlock({ projectId: PROJECT })
+  assert.match(projectSummary, /pnpm/)
+
+  // Off: a project copy of a global memory, a new project memory and a new global one.
+  maintenance.config.projectPartitions = false
+  client.map.set('c1', memory('c1', 'Prefers dark mode', { scope: 'project', project_id: PROJECT }))
+  client.map.set('p2', memory('p2', 'Tests run with vitest', { scope: 'project', project_id: PROJECT }))
+  client.map.set('g2', memory('g2', 'Lives in Shanghai'))
+  const preview = await maintenance.run('manual', { dryRun: true })
+  assert.equal(preview.plannedDetails.some((item) => item.id === 'c1'), false, 'project memories are not touched while off')
+  const calls = llm.calls.length
+  const report = await maintenance.run('manual')
+  const newCalls = llm.calls.slice(calls)
+  assert.equal(newCalls.length, 1, 'only the global summary is rebuilt')
+  assert.match(newCalls[0].label, /global/)
+  assert.ok(newCalls[0].records.every((record) => !/pnpm|vitest/.test(record.text)), 'no project memory reaches the global summary')
+  assert.equal(report.summaries.model, 1)
+  assert.ok(client.map.has('c1') && client.map.has('p2'), 'nothing in a project is deleted')
+  assert.match(maintenance.profileBlock(), /Shanghai/)
+  // The saved project summary is kept as it was.
+  assert.equal(maintenance.profileBlock({ projectId: PROJECT }).includes(projectSummary.split('\n').at(-1)), true)
+  assert.equal(maintenance.status().projectProfiles.length, 1)
+  // A stale project summary does not bring passes while off.
+  client.map.delete('p1')
+  maintenance.invalidateMemories(['p1'])
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  while (maintenance.running) await maintenance.running.catch(() => {})
+  assert.equal(maintenance.status().projectProfiles[0].stale, true, 'kept, still stale: not rebuilt while off')
+  assert.equal(maintenance.needsProfileRebuild(), false)
+
+  // On again: the project is handled as before.
+  maintenance.config.projectPartitions = true
+  assert.equal(maintenance.needsProfileRebuild(), true)
+  await maintenance.run('manual')
+  assert.equal(client.map.has('c1'), false, 'the project copy of a global memory goes (B2)')
+  assert.ok(client.map.has('g1'), 'never the global one')
+  const rebuilt = maintenance.profileBlock({ projectId: PROJECT })
+  assert.match(rebuilt, /vitest/)
+  assert.equal(rebuilt.includes('pnpm'), false)
+  assert.equal(maintenance.profileBlock().includes('vitest'), false, 'the project summary is never merged into the global one')
+})
+
+// ------------------------------------------------------------- design 5.9 acceptance
+
+test('5.9 (a): the same term in two projects: a session sees only its project and global', async (t) => {
+  const BETA = 'pbeta000000000001'
+  const rows = [
+    { id: 'g', memory: 'Deploy only after the tests pass', score: 0.6 },
+    { id: 'pa', memory: 'Deploy alpha with make ship', score: 0.8, scope: 'project', project_id: ALPHA.projectId },
+    { id: 'pb', memory: 'Deploy beta with helm upgrade', score: 0.9, scope: 'project', project_id: BETA },
+  ]
+  const client = partitionClient(rows)
+  const lifecycle = engine(client, { overrides: { recallTopK: 5 } })
+  const block = await recallText(lifecycle, fakeSession(), 'how do we deploy?')
+  assert.match(block, /make ship/)
+  assert.match(block, /tests pass/)
+  assert.equal(block.includes('helm'), false, 'another project with the same term is not seen')
+  lifecycle.dispose()
+  const tools = createMem0Tools(client, { userId: USER, agentId: 'dsh', backend: 'oss' }, { projects: projectResolver() })
+  const search = tools.find((item) => item.name === 'mem0_search')
+  const current = await search.execute({ query: 'deploy' }, { agent: { session: fakeSession() } })
+  assert.equal(current.includes('helm'), false)
+  assert.match(current, /make ship/)
+  assert.match(await search.execute({ query: 'deploy', scope: 'all' }, { agent: { session: fakeSession() } }), /helm/, 'only an explicit all-projects search reaches it')
+
+  // The same in the real store.
+  const store = tempStore(t)
+  const base = { user_id: USER }
+  store.insert([
+    { id: 'g', text: rows[0].memory, hash: 'h1', vector: unit([0.9, 0.1, 0]), payload: base, scope: 'global' },
+    { id: 'pa', text: rows[1].memory, hash: 'h2', vector: unit([0.95, 0.05, 0]), payload: base, scope: 'project', projectId: ALPHA.projectId },
+    { id: 'pb', text: rows[2].memory, hash: 'h3', vector: unit([1, 0, 0]), payload: base, scope: 'project', projectId: BETA },
+  ])
+  const hits = store.search(unit([1, 0, 0]), base, { topK: 10, partitions: recallPartitions({ projectId: ALPHA.projectId, sessionId: 'session-1' }) }).map((item) => item.id).sort()
+  assert.deepEqual(hits, ['g', 'pa'])
+})
+
+test('5.9 (b): first-turn recall on pre-upgrade data (all global) is not worse than before', async (t) => {
+  const store = tempStore(t)
+  const base = { user_id: USER }
+  const texts = ['Uses pnpm for installs', 'Prefers vitest for tests', 'Deploys with make ship', 'Lives in Shanghai', 'Prefers dark mode', 'Writes commit messages in English']
+  const vectors = [[1, 0, 0], [0.9, 0.1, 0], [0.8, 0.2, 0], [0.1, 0.9, 0], [0.2, 0.8, 0], [0.7, 0.3, 0]]
+  // Rows written before partitions existed: no scope column value.
+  store.insert(texts.map((text, index) => ({ id: `old${index}`, text, hash: `h${index}`, vector: unit(vectors[index]), payload: base, scope: null })))
+  const client = {
+    async search(query, filters, options = {}) {
+      return { results: store.search(unit([1, 0, 0]), base, { topK: options.topK, ...(options.partitions ? { partitions: options.partitions } : {}) }) }
+    },
+    setProject() {},
+  }
+  for (const recallTopK of [2, 3, 5]) {
+    // Before the upgrade: no partitions, the plain top K.
+    const before = store.search(unit([1, 0, 0]), base, { topK: recallTopK }).map((item) => item.memory ?? item.text)
+    const lifecycle = engine(client, { overrides: { recallTopK } })
+    const block = await recallText(lifecycle, fakeSession(), 'which tools do we use?')
+    lifecycle.dispose()
+    for (const text of before) assert.ok(block.includes(text), `topK ${recallTopK}: "${text}" is still recalled`)
+    const shown = texts.filter((text) => block.includes(text))
+    assert.equal(shown.length, before.length, `topK ${recallTopK}: as many memories as before`)
+  }
+})
+
+test('5.9 (c): after a delete, summary and search agree and the deleted memory never comes back', async (t) => {
+  const client = partitionClient([
+    { ...memory('g1', 'Prefers dark mode themes'), score: 0.6 },
+    { ...memory('g2', 'Prefers vitest testing setup'), score: 0.7 },
+    { ...memory('p1', 'Uses pnpm testing workspace', { scope: 'project', project_id: ALPHA.projectId }), score: 0.8 },
+    { ...memory('p2', 'Runs vitest testing in watch mode', { scope: 'project', project_id: ALPHA.projectId }), score: 0.9 },
+  ])
+  const llm = summaryLlm((records) => records.map((record) => `- ${record.text}`).join('\n'))
+  const maintenance = maintenanceFor(t, client, llm)
+  await maintenance.run('manual')
+  assert.match(maintenance.profileBlock({ projectId: ALPHA.projectId }), /watch mode/)
+  assert.match(maintenance.profileBlock(), /vitest testing setup/)
+  const tools = createMem0Tools(client, { userId: USER, agentId: 'dsh', backend: 'oss' }, { projects: projectResolver(), maintenance })
+  const tool = (name) => tools.find((item) => item.name === name)
+  const exec = { agent: { session: fakeSession() } }
+
+  for (const id of ['p2', 'g2']) {
+    assert.match(await tool('mem0_delete').execute({ memory_id: id }, exec), /Deleted/)
+  }
+  const gone = /watch mode|vitest testing setup/
+  // At once: the summaries built from them are not injected, search does not find them.
+  assert.doesNotMatch(maintenance.profileBlock({ projectId: ALPHA.projectId }), gone)
+  assert.doesNotMatch(await tool('mem0_search').execute({ query: 'vitest testing' }, exec), gone)
+  // After the rebuild: the summaries are back without them.
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  while (maintenance.running) await maintenance.running.catch(() => {})
+  const after = maintenance.profileBlock({ projectId: ALPHA.projectId })
+  assert.match(after, /pnpm testing workspace/)
+  assert.match(after, /dark mode/)
+  assert.doesNotMatch(after, gone)
+  assert.ok(maintenance.status().projectProfiles.every((item) => item.stale === false))
+  // A later pass (hygiene or recall) does not bring them back either.
+  await maintenance.run('manual')
+  assert.doesNotMatch(maintenance.profileBlock({ projectId: ALPHA.projectId }), gone)
+  const lifecycle = engine(client, { overrides: { recallTopK: 5 } })
+  assert.doesNotMatch(await recallText(lifecycle, fakeSession(), 'vitest testing'), gone)
+  lifecycle.dispose()
+})

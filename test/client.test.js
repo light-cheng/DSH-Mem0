@@ -308,3 +308,39 @@ test('memory page helpers: report rows show current text or "deleted"; the tree 
   assert.equal(scopeLabel(t, { scope: 'project', projectId: 'p0123456789abcdef' }, tree), '项目 alpha')
   assert.equal(scopeLabel(t, { scope: 'global' }, tree), '全局')
 })
+
+test('scope chip view: project, global, switch off, REST backends', () => {
+  const { exports } = loadClient()
+  const { scopeChipView, en, zh } = exports.__test__
+  const t = (key) => en[key]
+  assert.deepEqual({ ...scopeChipView(t, { available: true, partitions: true, project: { name: 'dsh-mem0' } }) }, { on: true, label: 'Memory: project dsh-mem0', hint: en.scopeChipOnHint, kind: 'project' })
+  const none = scopeChipView(t, { available: true, partitions: true, project: null })
+  assert.equal(none.label, 'Memory: global')
+  assert.equal(none.hint, en.scopeChipOnNoProjectHint)
+  // The config form's value wins over the server's last report: a click shows at once.
+  assert.deepEqual({ ...scopeChipView(t, { available: true, partitions: true, project: { name: 'dsh-mem0' } }, false) }, { on: false, label: 'Memory: global', hint: en.scopeChipOffHint, kind: 'global' })
+  assert.equal(scopeChipView(t, { available: true, partitions: false, project: null }).kind, 'global')
+  assert.equal(scopeChipView(t, { available: false, partitions: true, project: null }), null, 'REST backends: no chip')
+  assert.equal(scopeChipView(t, null), null)
+  const zt = (key) => zh[key]
+  assert.equal(scopeChipView(zt, { available: true, partitions: true, project: { name: 'dsh-mem0' } }).label, '记忆：项目 dsh-mem0')
+  assert.equal(scopeChipView(zt, { available: true, partitions: false, project: null }).label, '记忆：全局')
+  for (const key of ['projectPartitions', 'projectPartitionsHint', 'scopeChipProject', 'scopeChipGlobal', 'scopeChipOnHint', 'scopeChipOnNoProjectHint', 'scopeChipOffHint', 'scopeChipSaveFailed']) {
+    assert.ok(en[key] && zh[key], key)
+  }
+})
+
+test('settings save accepts decimal weights and refuses non-numbers (importanceWeight 0.2, projectRecallBoost 1.1)', () => {
+  const { exports } = loadClient()
+  const { numericDraft } = exports.__test__
+  const draft = { captureMaxChars: '450', recallTopK: 5, timeoutMs: 30000, recallTimeoutMs: 5000, addTimeoutMs: 120000, profileBudgetTokens: 1375, memoryBudgetTokens: 2200, storeSafetyLimit: 20000, importanceWeight: 0.2, projectRecallBoost: '1.1', hygieneIntervalDays: 7, projectPartitions: false }
+  const next = numericDraft(draft)
+  assert.ok(next, 'the defaults save')
+  assert.equal(next.importanceWeight, 0.2)
+  assert.equal(next.projectRecallBoost, 1.1)
+  assert.equal(next.captureMaxChars, 450)
+  assert.equal(next.projectPartitions, false)
+  assert.equal(numericDraft({ ...draft, recallTopK: 2.5 }), null, 'whole-number fields stay whole')
+  assert.equal(numericDraft({ ...draft, projectRecallBoost: '' }), null)
+  assert.equal(numericDraft({ ...draft, importanceWeight: 'abc' }), null)
+})
