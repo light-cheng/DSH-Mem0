@@ -207,6 +207,10 @@ window.__ModuleLoader__.load({
       timeoutMsHint: 'Timeout for each backend request on every backend (tools, listing, hygiene), 1–300000. Memory writes and automatic recall have their own limits.',
       recallTimeoutMs: 'Recall timeout (ms)',
       recallTimeoutMsHint: 'Automatic recall gives up after this and the turn continues without memories, 100–60000.',
+      captureDedupThreshold: 'Near-duplicate threshold',
+      captureDedupThresholdHint: 'Local backend: a captured fact at least this similar (cosine, 0.5–1) to a stored memory is not stored again. 0 = off (exact duplicates only, like Mem0). Default 0.95.',
+      embedderKeepAlive: 'Ollama keep_alive',
+      embedderKeepAliveHint: 'Local backend with Ollama: how long Ollama keeps the embedding model loaded, e.g. 30m, 2h, -1 (always). Empty = Ollama default (5m). Default 30m.',
       addTimeoutMs: 'Write timeout (ms)',
       addTimeoutMsHint: 'Timeout for storing memories, which may run LLM fact extraction, 1000–600000.',
       enabled: 'Enable Mem0 memory',
@@ -247,6 +251,17 @@ window.__ModuleLoader__.load({
       circuitTrippedBy: 'Tripped by: {kind} · {component} · {message} ({at})',
       captureFacts: 'Extracted {facts}: added {add}, updated {update}, already known {none}',
       captureFactsDeleted: ', deleted {delete}',
+      captureFactsSimilar: ' ({similar} of them close to a stored memory, not stored again)',
+      captureMetaDropped: '{count} sentences of the reply (memory confirmations, tool or screenshot notes) were not sent to extraction',
+      recallTimings: 'Time per step: {steps}',
+      recallTimingsTotal: '{total} ms in all',
+      timingStep_openMs: 'store open',
+      timingStep_credentialMs: 'key lookup',
+      timingStep_embedMs: 'embedding',
+      timingStep_searchMs: 'SQLite search',
+      timingStep_injectMs: 'build block',
+      timingStep_otherMs: 'other',
+      recallSlowEmbed: 'Most of the time went to the embedding model. A local model may have been unloaded: see "Slow recall" in the README.',
       captureNoFacts: 'No new facts extracted (nothing worth keeping, or already known)',
       captureEvents: 'added {add}, updated {update}, deleted {delete}',
       retryPending: 'Not delivered; retrying once',
@@ -383,6 +398,31 @@ window.__ModuleLoader__.load({
       wzAdviceRaise: "The answer ran into its output budget. Use max_tokens of at least 8000, or lower reasoning_effort.",
       wzAdviceEffort: "This is a reasoning model: its thinking counts against max_tokens. Keep max_tokens at 8000 or more, or set reasoning_effort to \"low\" (\"none\" if supported).",
       wzAdviceJson: "The model did not answer JSON. Pick a model that supports JSON output.",
+      wzLlmPassed: "Test passed",
+      wzLlmFailed: "Test failed",
+      wzLlmUntestedBadge: "Not tested yet",
+      wzLlmFacts: "{facts} facts extracted from the sample conversation",
+      wzLlmFinish: "finish_reason: {reason}",
+      wzLlmOutput: "output {used} / {max} tokens",
+      wzLlmReasoning: " ({tokens} of them reasoning)",
+      wzLlmPrompt: "prompt {tokens} tokens",
+      wzLlmTime: "{ms} ms",
+      wzLlmReason: "Why: {reason}",
+      wzLlmSuggest: "What to do: {advice}",
+      wzLlmKeep: "This result stays until you change a setting of this step.",
+      wzReason_truncated: "the answer was cut off before the JSON ended",
+      wzReason_not_json: "the answer was not JSON",
+      wzReason_empty: "the answer was empty",
+      wzReason_refusal: "the model refused the task",
+      wzAdviceEmpty: "The model returned nothing. Check that the model name is a chat model, and raise max_tokens if it is a reasoning model.",
+      wzAdviceRefusal: "The model refused to extract facts. Pick another model; a general chat model works best.",
+      wzAdviceAuth: "Check the API key (or its credential name) for this server.",
+      wzAdviceNetwork: "Check the address and port, and that the server is running.",
+      wzAdviceTimeout: "The server did not answer in time. Try again, or pick a faster model.",
+      wzAdviceNotFound: "Check the model name and that the address ends with the API path (often /v1).",
+      wzAdviceGeneric: "Check the address, model and key, then test again.",
+      wzLlmUntested: "The LLM test has not passed yet. Without a working LLM, automatic capture stores nothing. Test it first, or press \"Next anyway\".",
+      wzNextAnyway: "Next anyway",
       wzStorePath: "Memory database file",
       wzStoreHint: "Leave blank for ~/.dsh/mem0/memory.sqlite. It must be on a local disk: not a network drive, not a synced folder (iCloud, OneDrive, Dropbox…).",
       wzStoreWhere: "Memories are kept in {path}.",
@@ -751,6 +791,10 @@ window.__ModuleLoader__.load({
       timeoutMsHint: '所有后端每次请求的超时（工具、列表、巡检），1–300000。写入记忆和自动召回另有单独的超时。',
       recallTimeoutMs: '召回超时（毫秒）',
       recallTimeoutMsHint: '自动召回超过这个时间就放弃，本轮不带记忆继续，100–60000。',
+      captureDedupThreshold: '近重复阈值',
+      captureDedupThresholdHint: '本地后端：自动保存抽出的事实和已有记忆的相似度（余弦，0.5–1）达到这个值就不再存。0 表示关闭（只去掉完全相同的，和 Mem0 一样）。默认 0.95。',
+      embedderKeepAlive: 'Ollama keep_alive',
+      embedderKeepAliveHint: '本地后端用 Ollama 时：Ollama 把 embedding 模型留在内存里多久，例如 30m、2h、-1（一直保留）。留空则用 Ollama 默认的 5m。默认 30m。',
       addTimeoutMs: '写入超时（毫秒）',
       addTimeoutMsHint: '保存记忆的超时，写入时可能要调用 LLM 抽取事实，1000–600000。',
       enabled: '启用 Mem0 记忆',
@@ -791,6 +835,17 @@ window.__ModuleLoader__.load({
       circuitTrippedBy: '触发熔断的失败：{kind} · {component} · {message}（{at}）',
       captureFacts: '抽取 {facts} 条：新增 {add}，更新 {update}，已存在 {none}',
       captureFactsDeleted: '，删除 {delete}',
+      captureFactsSimilar: '（其中 {similar} 条与已有记忆过于相近，没有再存）',
+      captureMetaDropped: '回复里有 {count} 句是记忆确认或工具、截图说明，没有送去抽取',
+      recallTimings: '各步耗时：{steps}',
+      recallTimingsTotal: '共 {total} ms',
+      timingStep_openMs: '打开存储',
+      timingStep_credentialMs: '凭据查询',
+      timingStep_embedMs: 'embedding',
+      timingStep_searchMs: 'SQLite 检索和打分',
+      timingStep_injectMs: '生成注入块',
+      timingStep_otherMs: '其他',
+      recallSlowEmbed: '大部分时间花在 embedding 模型上。本地模型可能已被卸载，见 README 的「召回慢」。',
       captureNoFacts: '没有抽取到新内容（不值得记，或已经记过）',
       captureEvents: '新增 {add}，更新 {update}，删除 {delete}',
       retryPending: '未送达，正在重试一次',
@@ -927,6 +982,31 @@ window.__ModuleLoader__.load({
       wzAdviceRaise: "回复用完了输出上限。建议 max_tokens 至少 8000，或调低 reasoning_effort。",
       wzAdviceEffort: "这是推理模型，思考过程也计入 max_tokens。建议 max_tokens 不低于 8000，或把 reasoning_effort 设成 \"low\"（支持的话设 \"none\"）。",
       wzAdviceJson: "模型没有返回 JSON，请换一个支持 JSON 输出的模型。",
+      wzLlmPassed: "测试通过",
+      wzLlmFailed: "测试失败",
+      wzLlmUntestedBadge: "还没测试",
+      wzLlmFacts: "从示例对话里抽出 {facts} 条事实",
+      wzLlmFinish: "finish_reason：{reason}",
+      wzLlmOutput: "输出 {used} / {max} tokens",
+      wzLlmReasoning: "（其中推理 {tokens}）",
+      wzLlmPrompt: "提示 {tokens} tokens",
+      wzLlmTime: "{ms} ms",
+      wzLlmReason: "原因：{reason}",
+      wzLlmSuggest: "建议：{advice}",
+      wzLlmKeep: "这个结果会一直显示，直到你改了这一步的设置。",
+      wzReason_truncated: "回复在 JSON 结束前被截断",
+      wzReason_not_json: "回复不是 JSON",
+      wzReason_empty: "回复是空的",
+      wzReason_refusal: "模型拒绝了这个任务",
+      wzAdviceEmpty: "模型什么也没返回。请确认模型名是对话模型；如果是推理模型，调高 max_tokens。",
+      wzAdviceRefusal: "模型拒绝抽取事实，请换一个模型，通用对话模型最合适。",
+      wzAdviceAuth: "请检查这个服务的 API key（或凭据名）。",
+      wzAdviceNetwork: "请检查地址和端口，并确认服务正在运行。",
+      wzAdviceTimeout: "服务没有及时回复。请再试一次，或者换一个更快的模型。",
+      wzAdviceNotFound: "请检查模型名，并确认地址带上了 API 路径（通常是 /v1）。",
+      wzAdviceGeneric: "请检查地址、模型和 key，然后再测一次。",
+      wzLlmUntested: "LLM 测试还没有通过。没有可用的 LLM，自动保存什么也存不下。请先点「测试」，或者点「仍然下一步」。",
+      wzNextAnyway: "仍然下一步",
       wzStorePath: "记忆数据库文件",
       wzStoreHint: "留空即 ~/.dsh/mem0/memory.sqlite。必须在本机磁盘上，不能放在网络盘或同步目录（iCloud、OneDrive、Dropbox 等）。",
       wzStoreWhere: "记忆保存在 {path}。",
@@ -1251,6 +1331,19 @@ window.__ModuleLoader__.load({
       .mem0-wz-code{display:block;margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;user-select:all}
       .mem0-wz-note,.mem0-wz-prompt,.mem0-wz-notice{grid-column:1/-1;display:flex;flex-direction:column;gap:6px;margin-top:6px}
       .mem0-wz .mem0-error,.mem0-wz .mem0-hint{grid-column:1/-1}
+      .mem0-wz-result{grid-column:1/-1;display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:8px;border:1px solid;font-size:13px}
+      .mem0-wz-result[data-ok=true]{border-color:#1f9d55;background:rgba(31,157,85,.10);color:#13703c}
+      .mem0-wz-result[data-ok=false]{border-color:#d93025;background:rgba(217,48,37,.10);color:#a8221a}
+      .mem0-wz-result p{margin:0;white-space:pre-wrap}
+      .mem0-wz-result-title{font-weight:600;font-size:14px}
+      .mem0-wz-result-meta{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+      .mem0-wz-result-keep{font-size:11px;opacity:.75}
+      .mem0-wz-badge{display:inline-flex;align-items:center;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;border:1px solid}
+      .mem0-wz-badge[data-ok=true]{border-color:#1f9d55;color:#13703c;background:rgba(31,157,85,.10)}
+      .mem0-wz-badge[data-ok=false]{border-color:#d93025;color:#a8221a;background:rgba(217,48,37,.10)}
+      .mem0-wz-badge[data-ok=none]{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}
+      @media (prefers-color-scheme:dark){.mem0-wz-result[data-ok=true],.mem0-wz-badge[data-ok=true]{color:#6fdc9a}.mem0-wz-result[data-ok=false],.mem0-wz-badge[data-ok=false]{color:#ff8a80}}
+      .mem0-wz-untested{grid-column:1/-1;margin:0;padding:8px 12px;border-radius:8px;border:1px solid #d97706;background:rgba(217,119,6,.10);font-size:13px}
       @media (max-width:640px){.mem0-segments{grid-template-columns:1fr 1fr}.mem0-grid{grid-template-columns:1fr}.mem0-status-grid{grid-template-columns:1fr 1fr}}
     `
 
@@ -1266,9 +1359,10 @@ window.__ModuleLoader__.load({
       'importanceWeight',
       'projectRecallBoost',
       'hygieneIntervalDays',
+      'captureDedupThreshold',
     ])
     // Numeric fields that take decimals (the rest must be whole numbers).
-    const DECIMAL_FIELDS = new Set(['importanceWeight', 'projectRecallBoost'])
+    const DECIMAL_FIELDS = new Set(['importanceWeight', 'projectRecallBoost', 'captureDedupThreshold'])
     /** The draft with numeric fields as numbers; null when one is empty or not a number (decimals only where allowed). */
     function numericDraft(draft) {
       const next = { ...draft }
@@ -1298,6 +1392,8 @@ window.__ModuleLoader__.load({
       'timeoutMs',
       'recallTimeoutMs',
       'addTimeoutMs',
+      'captureDedupThreshold',
+      'embedderKeepAlive',
       'captureFilter',
       'profileEnabled',
       'profileBudgetTokens',
@@ -1332,6 +1428,8 @@ window.__ModuleLoader__.load({
         timeoutMs: Number(value?.timeoutMs ?? 30000),
         recallTimeoutMs: Number(value?.recallTimeoutMs ?? 5000),
         addTimeoutMs: Number(value?.addTimeoutMs ?? 120000),
+        captureDedupThreshold: Number(value?.captureDedupThreshold ?? 0.95),
+        embedderKeepAlive: typeof value?.embedderKeepAlive === 'string' ? value.embedderKeepAlive : '30m',
         captureFilter: value?.captureFilter === 'off' ? 'off' : 'heuristic',
         profileEnabled: value?.profileEnabled !== false,
         profileBudgetTokens: Number(value?.profileBudgetTokens ?? 1375),
@@ -1586,11 +1684,19 @@ window.__ModuleLoader__.load({
               none: record.none ?? 0,
             })
             if (record.delete > 0) line += template(t('captureFactsDeleted'), { delete: record.delete })
+            if (record.similar > 0) line += template(t('captureFactsSimilar'), { similar: record.similar })
             lines.push(line)
           }
         } else if (Number.isInteger(record.add)) {
           lines.push(template(t('captureEvents'), { add: record.add, update: record.update ?? 0, delete: record.delete ?? 0 }))
         }
+      }
+      if (record.status === 'saved' && record.metaDropped > 0) lines.push(template(t('captureMetaDropped'), { count: record.metaDropped }))
+      const timingLine = recallTimingLine(t, record.timings)
+      if (timingLine) {
+        lines.push(timingLine)
+        const { embedMs, totalMs } = record.timings
+        if (totalMs >= 1500 && embedMs >= totalMs * 0.6) lines.push(t('recallSlowEmbed'))
       }
       if (record.status === 'error' && record.extractReason) {
         lines.push(failureCauseLabel(t, { cause: 'extraction', reason: record.extractReason, extract: record.extractStats }))
@@ -1605,6 +1711,16 @@ window.__ModuleLoader__.load({
       if (record.retry === 'saved') lines.push(t('retrySaved'))
       if (record.retry === 'failed') lines.push(t('retryFailed'))
       return lines
+    }
+
+    const TIMING_STEPS = ['openMs', 'credentialMs', 'embedMs', 'searchMs', 'injectMs', 'otherMs']
+
+    /** A recall's step times as one line (lib/memory-lifecycle.js recallTimings). */
+    function recallTimingLine(t, timings) {
+      if (!timings || !Number.isFinite(timings.totalMs)) return ''
+      const steps = TIMING_STEPS.filter((key) => Number.isFinite(timings[key])).map((key) => `${t(`timingStep_${key}`)} ${timings[key]} ms`)
+      steps.push(template(t('recallTimingsTotal'), { total: timings.totalMs }))
+      return template(t('recallTimings'), { steps: steps.join(' · ') })
     }
 
     const DELETE_REASONS = ['foreign-source', 'other-user', 'not-found', 'unproven-owner']
@@ -2909,6 +3025,58 @@ window.__ModuleLoader__.load({
       return template(t('wzStoreOk'), { path: result.path })
     }
 
+    /**
+     * What the LLM step shows for a test result, next to the test button:
+     * `{ ok, badge, facts, details[], reason, advice[] }`. Pure, for tests.
+     */
+    function llmTestView(t, result) {
+      if (!result) return null
+      const stats = result.stats ?? {}
+      const details = []
+      if (stats.finishReason) details.push(template(t('wzLlmFinish'), { reason: stats.finishReason }))
+      if (Number.isInteger(stats.completionTokens) || Number.isInteger(stats.maxTokens)) {
+        let line = template(t('wzLlmOutput'), { used: stats.completionTokens ?? '?', max: stats.maxTokens ?? '?' })
+        if (stats.reasoningTokens > 0) line += template(t('wzLlmReasoning'), { tokens: stats.reasoningTokens })
+        details.push(line)
+      }
+      if (Number.isInteger(stats.promptTokens)) details.push(template(t('wzLlmPrompt'), { tokens: stats.promptTokens }))
+      if (Number.isFinite(result.ms)) details.push(template(t('wzLlmTime'), { ms: result.ms }))
+      if (result.ok) {
+        return { ok: true, badge: t('wzLlmPassed'), facts: template(t('wzLlmFacts'), { facts: result.facts ?? 0 }), details, reason: '', advice: llmAdvice(t, result.advice) }
+      }
+      let reason
+      let advice = llmAdvice(t, result.advice)
+      if (result.reason) {
+        reason = t(`wzReason_${result.reason}`) !== `wzReason_${result.reason}` ? t(`wzReason_${result.reason}`) : result.reason
+        if (advice.length === 0) advice = [t(result.reason === 'empty' ? 'wzAdviceEmpty' : result.reason === 'refusal' ? 'wzAdviceRefusal' : 'wzAdviceGeneric')]
+      } else {
+        reason = result.authFailed ? t('wzAuthFailed') : wizardError(t, result)
+        if (advice.length === 0) {
+          advice = [t(
+            result.authFailed ? 'wzAdviceAuth'
+              : result.code === 'ETIMEDOUT' ? 'wzAdviceTimeout'
+                : result.code === 'NETWORK_ERROR' ? 'wzAdviceNetwork'
+                  : result.status === 404 ? 'wzAdviceNotFound'
+                    : 'wzAdviceGeneric',
+          )]
+        }
+      }
+      return { ok: false, badge: t('wzLlmFailed'), facts: '', details, reason: template(t('wzLlmReason'), { reason }), advice }
+    }
+
+    /** The LLM test result: a green or red card right under the test button. */
+    function LlmTestResult({ t, result }) {
+      const view = llmTestView(t, result)
+      if (!view) return null
+      return h('div', { className: 'mem0-wz-result', 'data-ok': view.ok ? 'true' : 'false', role: 'status', 'aria-live': 'polite' },
+        h('p', { className: 'mem0-wz-result-title' }, `${view.ok ? '✓' : '✗'} ${view.badge}${view.facts ? ` · ${view.facts}` : ''}`),
+        view.details.length ? h('p', { className: 'mem0-wz-result-meta' }, view.details.join(' · ')) : null,
+        view.reason ? h('p', { className: 'mem0-wz-result-line' }, view.reason) : null,
+        ...view.advice.map((line, i) => h('p', { key: `advice-${i}`, className: 'mem0-wz-result-line' }, template(t('wzLlmSuggest'), { advice: line }))),
+        h('p', { className: 'mem0-wz-result-keep' }, t('wzLlmKeep')),
+      )
+    }
+
     function llmAdvice(t, advice) {
       const map = { 'raise-max-tokens': 'wzAdviceRaise', 'lower-effort': 'wzAdviceEffort', 'json-mode': 'wzAdviceJson' }
       return (advice ?? []).map((code) => (map[code] ? t(map[code]) : '')).filter(Boolean)
@@ -2950,6 +3118,8 @@ window.__ModuleLoader__.load({
       const [models, setModels] = useState({ embedder: [], llm: [] })
       const [qdrant, setQdrant] = useState({ url: '', collection: '', copyVectors: false })
       const [skipped, setSkipped] = useState(false)
+      // The "LLM not tested" notice was shown once for this step visit.
+      const [untestedWarned, setUntestedWarned] = useState(false)
 
       const load = useCallback(async () => {
         try {
@@ -3242,7 +3412,11 @@ window.__ModuleLoader__.load({
               })
             : null,
           h(TextField, { key: 'model', label: models.llm.length > 0 ? t('wzModelTyped') : t('wzModel'), value: l.model, onChange: (value) => setLlm({ model: value }) }),
-          ...keyField('llm', keys.llm, (value) => setKeys((current) => ({ ...current, llm: value }))),
+          ...keyField('llm', keys.llm, (value) => {
+            setKeys((current) => ({ ...current, llm: value }))
+            record('llm', null)
+            record('selftest', null)
+          }),
           h(TextField, { key: 'max', label: t('wzMaxTokens'), value: String(l.maxTokens ?? ''), onChange: (value) => setLlm({ maxTokens: value.replace(/[^0-9]/g, '') }) }),
           h(TextField, { key: 'effort', label: t('wzEffort'), hint: t('wzEffortHint'), value: l.reasoningEffort, onChange: (value) => setLlm({ reasoningEffort: value.trim().toLowerCase() }) }),
           h('div', { key: 'actions', className: 'mem0-wz-row' },
@@ -3257,13 +3431,14 @@ window.__ModuleLoader__.load({
               },
             }, t('wzListModels')),
             h('button', { type: 'button', className: 'mem0-primary', disabled: busy === 'testLlm' || !l.baseUrl || !l.model, onClick: async () => record('llm', await post('testLlm')) }, busy === 'testLlm' ? t('wzTesting') : t('wzTest')),
+            // Right beside the button: passed, failed or not tested yet.
+            busy === 'testLlm'
+              ? null
+              : h('span', { className: 'mem0-wz-badge', 'data-ok': result ? (result.ok ? 'true' : 'false') : 'none' }, result ? `${result.ok ? '✓' : '✗'} ${t(result.ok ? 'wzLlmPassed' : 'wzLlmFailed')}` : t('wzLlmUntestedBadge')),
           ),
         ]
         if (result) {
-          if (result.ok) body.push(h(ResultLine, { key: 'ok', ok: true, text: template(t('wzLlmOk'), { facts: result.facts ?? 0, stats: result.statsText ?? '' }) }))
-          else if (result.reason) body.push(h(ResultLine, { key: 'bad', ok: false, text: template(t('wzLlmBad'), { reason: result.reason, stats: result.statsText ?? '' }) }))
-          else body.push(h(ResultLine, { key: 'err', ok: false, text: result.authFailed ? t('wzAuthFailed') : wizardError(t, result) }))
-          for (const [i, line] of llmAdvice(t, result.advice).entries()) body.push(h('p', { key: `advice-${i}`, className: 'mem0-hint' }, line))
+          body.push(h(LlmTestResult, { key: 'result', t, result }))
           if (result.hint) body.push(h(ReservedPortHint, { key: 'hint', t, hint: result.hint }))
         }
         return body
@@ -3448,6 +3623,17 @@ window.__ModuleLoader__.load({
         return body
       }
 
+      // Leaving the LLM step forward before its test passed asks once more.
+      const llmUntested = step === 'llm' && results.llm?.ok !== true
+      const goTo = (target) => {
+        const forward = steps.indexOf(target) > steps.indexOf(step)
+        if (forward && llmUntested && !untestedWarned) {
+          setUntestedWarned(true)
+          return
+        }
+        setUntestedWarned(false)
+        setStep(target)
+      }
       const content = { embedder: embedderStep, llm: llmStep, store: storeStep, selftest: selfTestStep, migrate: migrateStep }[step]()
       const labels = { embedder: 'wzStepEmbedder', llm: 'wzStepLlm', store: 'wzStepStore', selftest: 'wzStepSelfTest', migrate: 'wzStepMigrate' }
       return h(
@@ -3459,12 +3645,15 @@ window.__ModuleLoader__.load({
         ),
         h('p', { className: 'mem0-hint' }, t('wzIntro')),
         h('div', { className: 'mem0-wz-steps' }, steps.map((name, i) =>
-          h('button', { key: name, type: 'button', className: 'mem0-wz-step', 'data-active': name === step ? 'true' : 'false', onClick: () => setStep(name) }, `${i + 1}. ${t(labels[name])}`),
+          h('button', { key: name, type: 'button', className: 'mem0-wz-step', 'data-active': name === step ? 'true' : 'false', onClick: () => goTo(name) }, `${i + 1}. ${t(labels[name])}`),
         )),
         h('div', { className: 'mem0-grid' }, content),
+        llmUntested && untestedWarned ? h('p', { className: 'mem0-wz-untested', role: 'alert' }, t('wzLlmUntested')) : null,
         h('div', { className: 'mem0-wz-row mem0-wz-nav' },
-          index > 0 ? h('button', { type: 'button', className: 'mem0-secondary', onClick: () => setStep(steps[index - 1]) }, t('wzBack')) : null,
-          index < steps.length - 1 ? h('button', { type: 'button', className: 'mem0-secondary', onClick: () => setStep(steps[index + 1]) }, t('wzNext')) : h('button', { type: 'button', className: 'mem0-secondary', onClick: onClose }, t('wzDone')),
+          index > 0 ? h('button', { type: 'button', className: 'mem0-secondary', onClick: () => goTo(steps[index - 1]) }, t('wzBack')) : null,
+          index < steps.length - 1
+            ? h('button', { type: 'button', className: 'mem0-secondary', onClick: () => goTo(steps[index + 1]) }, llmUntested && untestedWarned ? t('wzNextAnyway') : t('wzNext'))
+            : h('button', { type: 'button', className: 'mem0-secondary', onClick: onClose }, t('wzDone')),
         ),
       )
     }
@@ -4985,6 +5174,23 @@ window.__ModuleLoader__.load({
               value: draft.addTimeoutMs,
               onChange: (value) => setField('addTimeoutMs', value === '' ? '' : Number(value)),
             }),
+            draft.backend === 'oss'
+              ? h(TextField, {
+                  label: t('captureDedupThreshold'),
+                  hint: t('captureDedupThresholdHint'),
+                  type: 'number',
+                  value: draft.captureDedupThreshold,
+                  onChange: (value) => setField('captureDedupThreshold', value === '' ? '' : Number(value)),
+                })
+              : null,
+            draft.backend === 'oss'
+              ? h(TextField, {
+                  label: t('embedderKeepAlive'),
+                  hint: t('embedderKeepAliveHint'),
+                  value: draft.embedderKeepAlive,
+                  onChange: (value) => setField('embedderKeepAlive', value.trim()),
+                })
+              : null,
           ),
         ),
         h(
@@ -5071,6 +5277,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, sessionLabel, makeGlobalReason, scopeChipView, numericDraft } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, sessionLabel, makeGlobalReason, scopeChipView, numericDraft } }
   },
 })
