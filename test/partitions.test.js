@@ -38,6 +38,17 @@ function tempDir(t, prefix = 'dsh-mem0-p3-') {
   return dir
 }
 
+/** A store in a temporary folder, closed before the folder is removed (Windows cannot remove an open file). */
+function tempStore(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-p3-'))
+  const store = new SqliteStore({ filePath: path.join(dir, 'memory.sqlite') })
+  t.after(() => {
+    store.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+  return store
+}
+
 // ------------------------------------------------------------- remotes and paths
 
 test('git remotes: ssh, scp-like and https forms of one repository normalise alike', () => {
@@ -174,12 +185,20 @@ test('runGit: a missing binary or a failing command answers empty; a real reposi
   await runGit(dir, ['remote', 'add', 'origin', 'git@example.com:team/sample.git'])
   const top = await runGit(dir, ['rev-parse', '--show-toplevel'])
   assert.ok(top, 'git reports the repository root')
-  assert.equal(normalizePath(fs.realpathSync(top)), normalizePath(fs.realpathSync(dir)))
+  // realpath.native expands Windows 8.3 short names (RUNNER~1), as git does.
+  assert.equal(normalizePath(fs.realpathSync.native(top)), normalizePath(fs.realpathSync.native(dir)))
   const resolver = new ProjectResolver()
   const project = await resolver.resolveCwd(dir)
   assert.equal(project.kind, 'git')
   assert.equal(project.name, 'sample')
   assert.equal(project.projectId, projectIdentity({ origin: 'https://example.com/team/sample' }).projectId)
+  // A folder without git is hashed by its real path (8.3 short names and
+  // symlinks expanded), so both spellings of one folder are one project.
+  const plainDir = tempDir(t)
+  const noGit = new ProjectResolver({ git: async () => '' })
+  const folder = await noGit.resolveCwd(plainDir)
+  assert.equal(folder.kind, 'cwd')
+  assert.equal(folder.projectId, projectIdentity({ cwd: fs.realpathSync.native(plainDir) }).projectId)
 })
 
 test('scopes: unknown or missing scope is global; partitions and weights', () => {
@@ -213,8 +232,7 @@ function unit(values) {
 }
 
 test('store: partition columns, partitioned list/search/neighbors, setScope, counts, project names', (t) => {
-  const store = new SqliteStore({ filePath: path.join(tempDir(t), 'memory.sqlite') })
-  t.after(() => store.close())
+  const store = tempStore(t)
   const base = { user_id: USER }
   store.insert([
     { id: 'g1', text: 'Global fact', hash: 'h1', vector: unit([1, 0, 0]), payload: base, scope: 'global' },
@@ -706,8 +724,7 @@ async function call(handler, method, url, body) {
 }
 
 test('memory page: tree with counts, partition filter, make global, report bodies by id', async (t) => {
-  const store = new SqliteStore({ filePath: path.join(tempDir(t), 'memory.sqlite') })
-  t.after(() => store.close())
+  const store = tempStore(t)
   const payload = { user_id: USER, source: 'dsh' }
   store.insert([
     { id: 'g1', text: 'Global fact', hash: 'a', vector: unit([1, 0]), payload },
