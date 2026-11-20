@@ -330,10 +330,41 @@ test('scope chip view: project, global, switch off, REST backends', () => {
   }
 })
 
+test('scope chip: flipped on, it names the project at once; pending until DSH reports the session (Windows retest)', () => {
+  const { exports } = loadClient()
+  const { scopeChipView, projectName, treeEntries, scopeLabel, en, zh } = exports.__test__
+  const t = (key) => en[key]
+  const zt = (key) => zh[key]
+  // The server names the project while the switch is still off; the form flips first.
+  const offWithProject = { available: true, partitions: false, project: { name: 'mem-test-a', kind: 'cwd' } }
+  assert.equal(scopeChipView(t, offWithProject).label, 'Memory: global')
+  assert.equal(scopeChipView(t, offWithProject, true).label, 'Memory: project mem-test-a')
+  assert.equal(scopeChipView(zt, offWithProject, true).label, '记忆：项目 mem-test-a')
+  // Switched off again, then on again: still at once.
+  assert.equal(scopeChipView(zt, { ...offWithProject, partitions: true }, false).label, '记忆：全局')
+  assert.equal(scopeChipView(zt, offWithProject, true).label, '记忆：项目 mem-test-a')
+  // Not known yet: pending, not "global".
+  const pending = { available: true, partitions: false, project: null, pending: true }
+  assert.deepEqual({ ...scopeChipView(t, pending, true) }, { on: true, label: 'Memory: project (found next turn)', hint: en.scopeChipPendingHint, kind: 'pending' })
+  assert.equal(scopeChipView(zt, pending, true).label, '记忆：项目（下一轮识别）')
+  assert.equal(scopeChipView(zt, pending, false).label, '记忆：全局')
+  // Known to be in no project (home folder, DSH default workspace): global.
+  assert.equal(scopeChipView(zt, { available: true, partitions: true, project: null }).label, '记忆：全局')
+  for (const key of ['scopeChipPending', 'scopeChipPendingHint', 'dshDefaultWorkspace']) assert.ok(en[key] && zh[key], key)
+
+  // The memory page names DSH's default workspace by its role.
+  const tree = { partitioned: true, total: 3, global: 1, projects: [{ id: 'pdefault', key: 'project:pdefault', name: 'default-workspace', dshDefault: true, count: 2, sessions: [] }], sessions: [] }
+  assert.equal(projectName(zt, tree.projects[0]), 'DSH 默认工作区')
+  assert.equal(projectName(t, tree.projects[0]), 'DSH default workspace')
+  assert.ok(treeEntries(zt, tree).some((row) => row.label === 'DSH 默认工作区'))
+  assert.equal(treeEntries(zt, tree).some((row) => /default-?workspace|defaultproject/i.test(String(row.label))), false)
+  assert.equal(scopeLabel(zt, { scope: 'project', projectId: 'pdefault' }, tree), '项目 DSH 默认工作区')
+})
+
 test('settings save accepts decimal weights and refuses non-numbers (importanceWeight 0.2, projectRecallBoost 1.1)', () => {
   const { exports } = loadClient()
   const { numericDraft } = exports.__test__
-  const draft = { captureMaxChars: '450', recallTopK: 5, timeoutMs: 30000, recallTimeoutMs: 5000, addTimeoutMs: 120000, profileBudgetTokens: 1375, memoryBudgetTokens: 2200, storeSafetyLimit: 20000, importanceWeight: 0.2, projectRecallBoost: '1.1', hygieneIntervalDays: 7, captureDedupThreshold: 0.95, projectPartitions: false }
+  const draft = { captureMaxChars: '450', recallTopK: 5, timeoutMs: 30000, recallTimeoutMs: 5000, addTimeoutMs: 120000, profileBudgetTokens: 1375, memoryBudgetTokens: 2200, storeSafetyLimit: 20000, importanceWeight: 0.2, projectRecallBoost: '1.1', hygieneIntervalDays: 7, captureTurnDedupThreshold: 0.85, projectPartitions: false }
   const next = numericDraft(draft)
   assert.ok(next, 'the defaults save')
   assert.equal(next.importanceWeight, 0.2)

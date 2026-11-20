@@ -25,7 +25,7 @@ import { FailureHistory } from './lib/failure-history.js'
 import { CONFIG_FINGERPRINT_FILE, ConfigGuard, describeConfigWarning } from './lib/config-guard.js'
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
-import { ProjectResolver } from './lib/project-scope.js'
+import { dshDefaultWorkspaces, ProjectResolver, SESSION_PROJECTS } from './lib/project-scope.js'
 
 export const name = 'dsh-mem0'
 export const inject = ['tools', 'systemPrompt']
@@ -196,6 +196,11 @@ export async function apply(ctx, rawConfig) {
       ? new ProjectResolver({
           logger,
           workingDirectory: () => ctx.get?.('workingDirectory'),
+          // DSH's default workspace is no project (its memories go to global).
+          defaultWorkspaces: () => dshDefaultWorkspaces(ctx.get?.('workspaceRegistry')),
+          // Kept across a plugin restart, so the composer chip names the
+          // project at once after its switch is flipped.
+          sessions: SESSION_PROJECTS,
           known: () => (typeof client.projects === 'function' ? client.projects() : {}),
           record: (identity) => client.setProject?.(identity.projectId, { name: identity.name, kind: identity.kind, aliases: identity.aliases }),
         })

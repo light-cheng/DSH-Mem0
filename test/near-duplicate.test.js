@@ -12,6 +12,7 @@ import { isAssistantMeta, stripAssistantMeta } from '../lib/capture-filter.js'
 import { captureConversation, MemoryLifecycle } from '../lib/memory-lifecycle.js'
 import { DEFAULT_DEDUP_THRESHOLD, dedupThreshold, Mem0NativeClient } from '../lib/native-client.js'
 import { createMem0Tools } from '../lib/tools.js'
+import { COVER_FLOOR, contentTokens, coveredBy, repeatsTurnWrite } from '../lib/turn-dedup.js'
 
 const USER = 'dsh-mem0-neardup-test-user'
 const AGENT = 'dsh-test'
@@ -48,7 +49,7 @@ function extractionLlm(body) {
   return JSON.stringify({ memory: out })
 }
 
-function setup(t, { dedup } = {}) {
+function setup(t, { dedup, embedFn = embed, llmFn = extractionLlm } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-neardup-'))
   const settings = {
     storePath: path.join(dir, 'memory.sqlite'),
@@ -60,10 +61,10 @@ function setup(t, { dedup } = {}) {
   const fetchImpl = async (url, init) => {
     const body = JSON.parse(init.body)
     if (url.endsWith('/embeddings')) {
-      return new Response(JSON.stringify({ data: body.input.map((text, index) => ({ index, embedding: embed(text) })) }), { status: 200 })
+      return new Response(JSON.stringify({ data: body.input.map((text, index) => ({ index, embedding: embedFn(text) })) }), { status: 200 })
     }
     prompts.push(body)
-    return new Response(JSON.stringify({ choices: [{ message: { content: extractionLlm(body) }, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 20 } }), { status: 200 })
+    return new Response(JSON.stringify({ choices: [{ message: { content: llmFn(body) }, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 20 } }), { status: 200 })
   }
   const config = {
     backend: 'oss',
@@ -73,7 +74,7 @@ function setup(t, { dedup } = {}) {
     autoCapture: true,
     captureMaxChars: 450,
     captureFilter: 'heuristic',
-    ...(dedup === undefined ? {} : { captureDedupThreshold: dedup }),
+    ...(dedup === undefined ? {} : { captureTurnDedupThreshold: dedup }),
   }
   const client = new Mem0NativeClient({ config, loadSettings: () => settings, fetchImpl, warmUpOnStart: false })
   const activity = { recall: null, capture: null }
@@ -167,18 +168,99 @@ test('a correction close to an older memory is still stored; older memories get 
   assert.equal(other.add, 1)
 })
 
-test('captureDedupThreshold 0 turns the check off (md5 only, as upstream Mem0)', async (t) => {
+test('captureTurnDedupThreshold 0 turns the check off (md5 only, as upstream Mem0)', async (t) => {
   const ctx = setup(t, { dedup: 0 })
   await turn(ctx, { user: '记住我下周要去上海出差', adds: ['用户下周要去上海出差'], reply: '祝出差顺利！' })
   assert.deepEqual(await stored(ctx.client), ['用户下周将去上海出差', '用户下周要去上海出差'].sort())
 })
 
-test('dedupThreshold: default 0.95, 0 or out of range is off', () => {
-  assert.equal(DEFAULT_DEDUP_THRESHOLD, 0.95)
-  assert.equal(dedupThreshold({}), 0.95)
-  assert.equal(dedupThreshold({ captureDedupThreshold: 0.9 }), 0.9)
-  assert.equal(dedupThreshold({ captureDedupThreshold: 0 }), 0)
-  assert.equal(dedupThreshold({ captureDedupThreshold: 2 }), 0)
+test('dedupThreshold: default 0.85, 0 or out of range is off', () => {
+  assert.equal(DEFAULT_DEDUP_THRESHOLD, 0.85)
+  assert.equal(dedupThreshold({}), 0.85)
+  assert.equal(dedupThreshold({ captureTurnDedupThreshold: 0.9 }), 0.9)
+  assert.equal(dedupThreshold({ captureTurnDedupThreshold: 0 }), 0)
+  assert.equal(dedupThreshold({ captureTurnDedupThreshold: 2 }), 0)
+})
+
+// Windows retest (2026-11-20): "记住：我下周三要去上海出差" in a project. The
+// explicit add went to global; the extraction LLM wrote the date out (and
+// sometimes split the sentence), so the capture's copy scored below 0.95 and
+// a second memory landed in the project. Cosines below are bge-m3's for
+// these very texts (omlx, 2026-11-21).
+const EXPLICIT = '用户下周三要去上海出差'
+const BGE_M3 = new Map([
+  [EXPLICIT, 1],
+  ['用户计划于2026年11月25日（下周三）去上海出差', 0.8925],
+  ['用户将于2026年11月25日（下周三）去上海出差', 0.8424],
+  ['用户下周三出差', 0.9125],
+  ['项目使用 pnpm 作为包管理器', 0.3849],
+  ['用户下周五要去杭州开会', 0.8127],
+])
+const AXES = [...BGE_M3.keys()]
+/** cos(text, EXPLICIT) as measured; any two other texts c1·c2 apart. */
+function measuredEmbed(text) {
+  const vector = new Array(AXES.length + 1).fill(0)
+  const cosine = BGE_M3.get(text)
+  if (cosine === undefined) {
+    vector[AXES.length] = 1
+    return vector
+  }
+  vector[0] = cosine
+  if (cosine < 1) vector[AXES.indexOf(text)] = Math.sqrt(1 - cosine * cosine)
+  return vector
+}
+function factsLlm(facts) {
+  return () => JSON.stringify({ memory: facts.map((text, id) => ({ id: String(id), text, attributed_to: 'user' })) })
+}
+
+test('same turn: the explicit add plus reworded and split copies of it leave one memory', async (t) => {
+  const ctx = setup(t, {
+    embedFn: measuredEmbed,
+    llmFn: factsLlm(['用户计划于2026年11月25日（下周三）去上海出差', '用户将于2026年11月25日（下周三）去上海出差', '用户下周三出差']),
+  })
+  const capture = await turn(ctx, { user: '记住：我下周三要去上海出差', adds: [EXPLICIT], reply: '祝出差顺利！' })
+  assert.equal(capture.status, 'saved')
+  assert.deepEqual(await stored(ctx.client), [EXPLICIT])
+  assert.equal(capture.facts, 3)
+  assert.equal(capture.add, 0)
+  assert.equal(capture.similar, 3)
+})
+
+test('same turn: two really different facts are both stored', async (t) => {
+  const ctx = setup(t, {
+    embedFn: measuredEmbed,
+    llmFn: factsLlm(['用户计划于2026年11月25日（下周三）去上海出差', '项目使用 pnpm 作为包管理器', '用户下周五要去杭州开会']),
+  })
+  const capture = await turn(ctx, { user: '记住：我下周三要去上海出差，下周五去杭州开会；这个项目用 pnpm', adds: [EXPLICIT], reply: '好的。' })
+  assert.equal(capture.status, 'saved')
+  assert.deepEqual(await stored(ctx.client), [EXPLICIT, '用户下周五要去杭州开会', '项目使用 pnpm 作为包管理器'].sort())
+  assert.equal(capture.add, 2)
+  assert.equal(capture.similar, 1)
+})
+
+test('coverage: a fact whose every content token is in a same-turn memory is a repeat', () => {
+  assert.equal(coveredBy('用户将于2026年11月25日（下周三）去上海出差', '下周三要去上海出差'), true)
+  assert.equal(coveredBy('用户下周三（2026-11-25）要去上海出差', EXPLICIT), true)
+  assert.equal(coveredBy('用户下周三出差', EXPLICIT), true)
+  assert.equal(coveredBy('User will travel to Shanghai on Wednesday, November 25, 2026', 'User is traveling to Shanghai next Wednesday'), true)
+  // Anything new keeps a token the other memory lacks.
+  assert.equal(coveredBy('用户下周五要去杭州开会', EXPLICIT), false)
+  assert.equal(coveredBy('用户下周三要去北京出差', EXPLICIT), false)
+  assert.equal(coveredBy('项目使用 npm', '项目使用 pnpm'), false)
+  assert.equal(coveredBy('用户喜欢浅色主题', '用户喜欢深色主题'), false)
+  assert.equal(coveredBy('服务端口是 8010', '服务端口是 8000'), false)
+  assert.equal(coveredBy('用户', EXPLICIT), false, 'nothing but filler is no fact')
+  assert.deepEqual(contentTokens('用户计划于2026年11月25日（下周三）去上海出差'), ['下', '周', '三', '去', '上', '海', '出', '差'])
+})
+
+test('repeatsTurnWrite: threshold, coverage above the floor only, 0 = off', () => {
+  const fact = '用户将于2026年11月25日（下周三）去上海出差'
+  assert.equal(repeatsTurnWrite('用户下周五要去杭州开会', [{ text: EXPLICIT, score: 0.86 }], 0.85), true, 'at or above the threshold')
+  assert.equal(repeatsTurnWrite(fact, [{ text: EXPLICIT, score: 0.8424 }], 0.85), true, 'covered, above the floor')
+  assert.equal(repeatsTurnWrite(fact, [{ text: EXPLICIT, score: COVER_FLOOR - 0.01 }], 0.85), false, 'covered but below the floor')
+  assert.equal(repeatsTurnWrite('用户下周五要去杭州开会', [{ text: EXPLICIT, score: 0.8127 }], 0.85), false)
+  assert.equal(repeatsTurnWrite(fact, [{ text: EXPLICIT, score: 0.99 }], 0), false)
+  assert.equal(repeatsTurnWrite(fact, [], 0.85), false)
 })
 
 test('assistant meta filter: memory confirmations, tool and screenshot notes go; content stays', () => {

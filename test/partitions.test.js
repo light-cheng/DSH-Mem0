@@ -9,8 +9,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
+  DSH_DEFAULT_WORKSPACE_DIRECTORY,
   ProjectResolver,
+  SESSION_PROJECTS,
+  dshDefaultWorkspaces,
   gitQuery,
+  isDshDefaultProject,
   inPartitions,
   normalizeGitRemote,
   normalizePath,
@@ -1180,7 +1184,8 @@ test('switch off: new memories go to global, recall reads only global and the se
   // The injected summary is the global one only.
   assert.equal(off.profileSectionText({ agent: { session } }), off.profileSectionText({ agent: { session } }))
   assert.ok(asked.every((options) => options.projectId === undefined))
-  assert.deepEqual(await off.memoryScope('session-1'), { partitions: false, available: true, project: null })
+  // No session event yet and no session registry: the chip's project is pending.
+  assert.deepEqual(await off.memoryScope('session-1'), { partitions: false, available: true, project: null, pending: true })
 
   // A captured turn goes to global.
   off.onSessionEvent(session, { type: 'turn/start', data: {} })
@@ -1190,6 +1195,9 @@ test('switch off: new memories go to global, recall reads only global and the se
   await new Promise((resolve) => setTimeout(resolve, 30))
   assert.equal(client.adds.at(-1).scope, 'global')
   assert.equal(client.adds.at(-1).projectId, undefined)
+  // The chip still names the session's project while the switch is off, so
+  // turning it on shows "Memory: project alpha" at once (Windows retest).
+  assert.deepEqual(await off.memoryScope('session-1'), { partitions: false, available: true, project: { name: 'alpha', kind: 'git' } })
   assert.equal(client.adds.at(-1).readPartitions, undefined)
 
   // The tools follow the switch: a default add is global, search reads global + session.
@@ -1359,4 +1367,90 @@ test('5.9 (c): after a delete, summary and search agree and the deleted memory n
   const lifecycle = engine(client, { overrides: { recallTopK: 5 } })
   assert.doesNotMatch(await recallText(lifecycle, fakeSession(), 'vitest testing'), gone)
   lifecycle.dispose()
+})
+
+// Windows retest (2026-11-20): DSH's first-use workspace showed up on the
+// memory page as a project of its own. A chat there is in no project.
+test('DSH default workspace: no project on POSIX and Windows paths, from DSH\'s registry, never by name alone', async () => {
+  const registryOf = (workspaces, defaultWorkspaceId) => ({ list: () => workspaces, state: { defaultWorkspaceId } })
+  const cases = [
+    { platform: 'linux', home: '/home/me', ws: '/home/me/Documents/deepseek-harness/default-workspace', other: '/home/me/work/mem-test-a' },
+    { platform: 'darwin', home: '/Users/me', ws: '/Users/me/Documents/deepseek-harness/default-workspace', other: '/Users/me/work/mem-test-a' },
+    { platform: 'win32', home: 'C:\\Users\\Administrator', ws: 'C:\\Users\\Administrator\\Documents\\deepseek-harness\\default-workspace', other: 'C:\\Users\\Administrator\\mem-test-a' },
+  ]
+  for (const { platform, home, ws, other } of cases) {
+    // By the registry's record (the workspace may have been renamed) …
+    const byId = registryOf([{ id: 'w1', title: 'My chats', path: ws }, { id: 'w2', title: 'mem-test-a', path: other }], 'w1')
+    assert.deepEqual(dshDefaultWorkspaces(byId), [ws])
+    // … or by DSH's own rule: the automatic first-use title.
+    const byTitle = registryOf([{ id: 'w1', title: DSH_DEFAULT_WORKSPACE_DIRECTORY, path: ws }])
+    assert.deepEqual(dshDefaultWorkspaces(byTitle), [ws])
+    const resolver = new ProjectResolver({ git: async () => '', platform, homeDir: home, defaultWorkspaces: () => dshDefaultWorkspaces(byId) })
+    assert.equal(await resolver.resolveCwd(ws), null, `${platform}: the default workspace is no project`)
+    // Windows: case and slashes do not matter.
+    if (platform === 'win32') assert.equal(await resolver.resolve({ id: 'w-s1', header: { cwd: ws.toLowerCase().replace(/\\/g, '/') + '/' } }), null)
+    const project = await resolver.resolveCwd(other)
+    assert.equal(project.name, 'mem-test-a')
+    // A sub-folder of it is a folder of its own (DSH starts chats in the workspace itself).
+    assert.equal((await resolver.resolveCwd(platform === 'win32' ? `${ws}\\notes` : `${ws}/notes`)).name, 'notes')
+    for (const name of [project.name]) assert.notEqual(name.toLowerCase(), 'defaultproject')
+    // The ids the folder had as a project before: the memory page names them.
+    const ids = await resolver.defaultWorkspaceIds()
+    assert.deepEqual(ids, [projectIdentity({ cwd: ws }, { platform }).projectId])
+    assert.equal(isDshDefaultProject(ids[0], { name: 'whatever', kind: 'cwd' }, ids), true)
+  }
+  // A folder that is merely named like it, without DSH saying so, is a project.
+  const plain = new ProjectResolver({ git: async () => '', platform: 'linux', homeDir: '/home/me', defaultWorkspaces: () => [] })
+  assert.equal((await plain.resolveCwd('/srv/default-workspace')).name, 'default-workspace')
+  // No registry, or one that throws: nothing is the default workspace.
+  assert.deepEqual(dshDefaultWorkspaces(undefined), [])
+  assert.deepEqual(dshDefaultWorkspaces({ list: () => { throw new Error('gone') } }), [])
+  const throwing = new ProjectResolver({ git: async () => '', platform: 'linux', defaultWorkspaces: () => { throw new Error('gone') } })
+  assert.equal((await throwing.resolveCwd('/work/x')).name, 'x')
+  // Recorded before this rule: a folder project with the first-use name.
+  assert.equal(isDshDefaultProject('p1', { name: 'default-workspace', kind: 'cwd' }), true)
+  assert.equal(isDshDefaultProject('p1', { name: 'default-workspace', kind: 'git' }), false)
+  assert.equal(isDshDefaultProject('p1', { name: 'mem-test-a', kind: 'cwd' }), false)
+})
+
+test('DSH default workspace: a chat there writes to global even with partitions on', async () => {
+  const client = partitionClient([])
+  const ws = '/home/me/Documents/deepseek-harness/default-workspace'
+  const projects = new ProjectResolver({ git: async () => '', platform: 'linux', homeDir: '/home/me', defaultWorkspaces: () => [ws] })
+  const life = engine(client, { projects })
+  const session = fakeSession({ id: 'dw-1', cwd: ws })
+  await recallText(life, session, 'how do I like answers?')
+  assert.deepEqual(client.searches.at(-1).partitions, [{ scope: 'global' }, { scope: 'session', session_id: 'dw-1' }])
+  life.onSessionEvent(session, { type: 'turn/start', data: {} })
+  life.onSessionEvent(session, { type: 'user/message', data: userMessage('Please remember: I prefer short answers in every chat.') })
+  life.onSessionEvent(session, { type: 'assistant/message', data: { message: { role: 'assistant', content: [{ type: 'text', text: 'Short answers it is.' }] } } })
+  life.onSessionEvent(session, { type: 'turn/end', data: { reason: { kind: 'completed' } } })
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(client.adds.at(-1).scope, 'global')
+  assert.equal(client.adds.at(-1).projectId, undefined)
+  assert.deepEqual(await life.memoryScope('dw-1'), { partitions: true, available: true, project: null })
+  life.dispose()
+})
+
+test('scope chip: the session\'s project is kept across a plugin restart, so a flip shows it at once', async () => {
+  const shared = new Map()
+  const client = partitionClient([])
+  const session = fakeSession({ id: 'chip-1' })
+  const resolver = () => new ProjectResolver({
+    platform: 'linux',
+    git: async (cwd, args) => (cwd === '/work/alpha' ? (args[0] === 'rev-parse' ? '/work/alpha' : 'git@github.com:org/alpha.git') : ''),
+    sessions: shared,
+  })
+  // Switch off: the first event already looks the project up.
+  const off = engine(client, { projects: resolver(), overrides: { projectPartitions: false } })
+  off.onSessionEvent(session, { type: 'turn/start', data: {} })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.deepEqual(await off.memoryScope('chip-1'), { partitions: false, available: true, project: { name: 'alpha', kind: 'git' } })
+  off.dispose()
+  // The switch flipped: DSH restarts the plugin; the new lifecycle has no
+  // session registry and no event yet, and still knows the project.
+  const on = engine(client, { projects: resolver() })
+  assert.deepEqual(await on.memoryScope('chip-1'), { partitions: true, available: true, project: { name: 'alpha', kind: 'git' } })
+  on.dispose()
+  assert.ok(SESSION_PROJECTS instanceof Map, 'index.js shares one map per process')
 })
