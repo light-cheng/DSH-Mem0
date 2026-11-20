@@ -105,7 +105,7 @@ function tempState(prefix) {
 }
 
 function maintenanceFor(client, state, overrides = {}) {
-  return new MemoryMaintenance({ client, config: config(overrides), state, activity: {}, logger: quiet })
+  return new MemoryMaintenance({ client, config: config(overrides), state, activity: {}, logger: quiet, rebuildDelayMs: 0 })
 }
 
 /**

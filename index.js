@@ -188,10 +188,17 @@ export async function apply(ctx, rawConfig) {
   })
   // Partitions (global / project / session) are stored by the local
   // backend; REST backends keep every memory global. The project comes from
-  // the session's working directory (DSH's workingDirectory service).
+  // the session's starting directory (its header, else DSH's
+  // workingDirectory service). The store records each project's name and
+  // aliases (lib/project-scope.js).
   const projects =
     config.backend === 'oss'
-      ? new ProjectResolver({ logger, workingDirectory: () => ctx.get?.('workingDirectory') })
+      ? new ProjectResolver({
+          logger,
+          workingDirectory: () => ctx.get?.('workingDirectory'),
+          known: () => (typeof client.projects === 'function' ? client.projects() : {}),
+          record: (identity) => client.setProject?.(identity.projectId, { name: identity.name, kind: identity.kind, aliases: identity.aliases }),
+        })
       : undefined
   const lifecycle = new MemoryLifecycle({
     projects,
@@ -205,6 +212,8 @@ export async function apply(ctx, rawConfig) {
     // dsh-strata's optional `strataBudget` service (interop §2). Looked up on
     // every recall, never injected: Strata may load later or not at all.
     budget: () => ctx.get?.('strataBudget'),
+    // DSH's session registry, for folds that carry only a session id.
+    sessions: () => ctx.get?.('sessions') ?? ctx.sessions,
   })
   runtime.client = client
   runtime.breaker = breaker

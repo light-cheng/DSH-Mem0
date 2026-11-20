@@ -508,6 +508,12 @@ window.__ModuleLoader__.load({
       memoryPinError: 'Could not change the pin',
       memoryMakeGlobal: 'Make global',
       memoryMakeGlobalError: 'Could not move the memory',
+      memoryMakeGlobalNotProject: 'only a project memory can be made global',
+      memoryMakeGlobalNotOwn: 'only memories this plugin wrote can be moved',
+      memoryMakeGlobalNotFound: 'the memory no longer exists',
+      memoryMakeGlobalOtherUser: 'the memory belongs to another Mem0 user',
+      tokUnit: 'tok',
+      sessionAt: 'Session · {time}',
       memorySource: 'source {source}',
       memoryTreeTitle: 'Memory page',
       memoryTreeHint: 'Memories by where they apply: global (everywhere), a project (one repository or folder) or a session. Browse, search, pin and delete; memories cannot be edited here.',
@@ -1038,8 +1044,14 @@ window.__ModuleLoader__.load({
       memoryPinError: '置顶操作失败',
       memoryMakeGlobal: '改为全局',
       memoryMakeGlobalError: '移动记忆失败',
+      memoryMakeGlobalNotProject: '只有项目记忆可以改为全局',
+      memoryMakeGlobalNotOwn: '只能移动本插件写入的记忆',
+      memoryMakeGlobalNotFound: '这条记忆已经不存在',
+      memoryMakeGlobalOtherUser: '这条记忆属于另一个 Mem0 用户',
+      tokUnit: 'token',
+      sessionAt: '会话 · {time}',
       memorySource: '来源 {source}',
-      memoryTreeTitle: '记忆',
+      memoryTreeTitle: '记忆页',
       memoryTreeHint: '按适用范围浏览记忆：全局（处处适用）、项目（一个仓库或文件夹）或会话。可以搜索、置顶和删除，这里不能编辑记忆。',
       treeAll: '全部',
       treeProjects: '项目',
@@ -1712,6 +1724,23 @@ window.__ModuleLoader__.load({
 
     // Rows of the memory page's tree: all, global, projects (with their
     // sessions), sessions without a project. Headers are not selectable.
+    // A session node: the time of its latest memory, else its short id.
+    function sessionLabel(t, session) {
+      const date = session?.newest ? new Date(session.newest) : null
+      if (date && !Number.isNaN(date.getTime())) {
+        const pad = (value) => String(value).padStart(2, '0')
+        return template(t('sessionAt'), { time: `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}` })
+      }
+      return template(t('scopeSession'), { id: shortId(session?.id) })
+    }
+
+    // The localized reason a move to global was refused.
+    function makeGlobalReason(t, error) {
+      const keys = { 'not-project': 'memoryMakeGlobalNotProject', 'not-own': 'memoryMakeGlobalNotOwn', 'not-found': 'memoryMakeGlobalNotFound', 'other-user': 'memoryMakeGlobalOtherUser' }
+      const key = keys[error?.reason]
+      return key ? t(key) : String(error?.message ?? '')
+    }
+
     function treeEntries(t, tree) {
       if (!tree?.partitioned) return []
       const rows = [
@@ -1723,12 +1752,12 @@ window.__ModuleLoader__.load({
       for (const project of projects) {
         rows.push({ key: project.key, label: project.name || shortId(project.id), count: project.count ?? 0, depth: 1 })
         for (const session of Array.isArray(project.sessions) ? project.sessions : []) {
-          rows.push({ key: session.key, label: template(t('scopeSession'), { id: shortId(session.id) }), count: session.count ?? 0, depth: 2 })
+          rows.push({ key: session.key, label: sessionLabel(t, session), count: session.count ?? 0, depth: 2 })
         }
       }
       const loose = Array.isArray(tree.sessions) ? tree.sessions : []
       if (loose.length > 0) rows.push({ key: null, label: t('treeSessions'), header: true, depth: 0 })
-      for (const session of loose) rows.push({ key: session.key, label: template(t('scopeSession'), { id: shortId(session.id) }), count: session.count ?? 0, depth: 1 })
+      for (const session of loose) rows.push({ key: session.key, label: sessionLabel(t, session), count: session.count ?? 0, depth: 1 })
       return rows
     }
 
@@ -2982,13 +3011,18 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
+      // Only the latest request's answer is shown (quick clicks on the tree).
+      const memoryRequest = useRef(0)
       const loadMemories = useCallback(async (query, partition = '') => {
         const q = String(query ?? '').trim()
+        const request = ++memoryRequest.current
         setMemoryState((current) => ({ phase: 'loading', data: current.data, message: '' }))
         try {
           const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(ctx)}&partition=${encodeURIComponent(partition)}`)
+          if (request !== memoryRequest.current) return
           setMemoryState({ phase: 'ready', data, message: '' })
         } catch (error) {
+          if (request !== memoryRequest.current) return
           setMemoryState({ phase: 'error', data: null, message: error.message })
         }
       }, [])
@@ -3034,10 +3068,10 @@ window.__ModuleLoader__.load({
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ id, scope: 'global' }),
           })
-          if (!outcome?.ok) throw new Error(outcome?.error || t('memoryMakeGlobalError'))
+          if (!outcome?.ok) throw Object.assign(new Error(outcome?.error || t('memoryMakeGlobalError')), { reason: outcome?.reason })
           await Promise.all([loadMemories(memoryQuery, memoryPartition), loadTree()])
         } catch (error) {
-          setDeleteState({ id: null, outcome: 'error', message: `${t('memoryMakeGlobalError')}: ${error.message}` })
+          setDeleteState({ id: null, outcome: 'error', message: `${t('memoryMakeGlobalError')}: ${makeGlobalReason(t, error)}` })
         }
       }
 
@@ -3408,7 +3442,7 @@ window.__ModuleLoader__.load({
       const projectSummaryLine = Array.isArray(maintenance?.projectProfiles) && maintenance.projectProfiles.length > 0
         ? template(t('projectSummaries'), {
             list: maintenance.projectProfiles
-              .map((item) => `${item.name || shortId(item.projectId)} (${item.items ?? 0} · ${item.tokens ?? 0} tok${item.stale ? ` · ${t('projectSummaryStale')}` : ''})`)
+              .map((item) => `${item.name || shortId(item.projectId)} (${item.items ?? 0} · ${item.tokens ?? 0} ${t('tokUnit')}${item.stale ? ` · ${t('projectSummaryStale')}` : ''})`)
               .join(', '),
           })
         : ''
@@ -4457,6 +4491,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, sessionLabel, makeGlobalReason } }
   },
 })

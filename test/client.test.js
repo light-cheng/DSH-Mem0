@@ -256,6 +256,22 @@ test('setup wizard: a stored key only for its own server; errors in the page lan
   assert.deepEqual(Object.keys(en).filter((key) => key.startsWith('wz')).sort(), Object.keys(zh).filter((key) => key.startsWith('wz')).sort())
 })
 
+test('memory page helpers: sessions are labelled by time, refused moves by a localized reason', () => {
+  const { sessionLabel, makeGlobalReason, treeEntries, zh, en } = loadClient().exports.__test__
+  const t = (key) => zh[key] ?? key
+  const local = new Date(2026, 10, 20, 9, 5)
+  assert.equal(sessionLabel(t, { id: 'session-1a2b3c4d5e', newest: local.toISOString() }), '会话 · 11-20 09:05')
+  assert.match(sessionLabel(t, { id: 'session-1a2b3c4d5e' }), /^会话 /, 'no time: the short id')
+  assert.equal(makeGlobalReason(t, { reason: 'not-project', message: 'a memory can only be moved to global' }), '只有项目记忆可以改为全局')
+  assert.equal(makeGlobalReason(t, { reason: 'not-own' }), '只能移动本插件写入的记忆')
+  assert.equal(makeGlobalReason(t, { message: 'HTTP 500' }), 'HTTP 500')
+  assert.equal(zh.memoryTreeTitle, '记忆页')
+  assert.equal(zh.tokUnit, 'token')
+  assert.equal(en.tokUnit, 'tok')
+  const rows = treeEntries(t, { partitioned: true, total: 2, global: 0, projects: [{ id: 'p1', key: 'project:p1', name: 'alpha', count: 2, sessions: [{ id: 'S1', key: 'session:S1', count: 1, newest: local.toISOString() }] }], sessions: [] })
+  assert.equal(rows.at(-1).label, '会话 · 11-20 09:05')
+})
+
 test('memory page helpers: report rows show current text or "deleted"; the tree lists partitions', () => {
   const { reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, zh, en } = loadClient().exports.__test__
   const t = (key) => zh[key] ?? key

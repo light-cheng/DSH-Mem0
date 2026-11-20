@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   ProjectResolver,
+  gitQuery,
   inPartitions,
   normalizeGitRemote,
   normalizePath,
@@ -67,6 +68,8 @@ test('git remotes: ssh, scp-like and https forms of one repository normalise ali
   assert.equal(normalizeGitRemote('   '), '')
   // No credential survives normalisation.
   assert.equal(normalizeGitRemote(forms[4]).includes('secret'), false)
+  // A password with an unescaped `@`: the host starts after the last one.
+  assert.equal(normalizeGitRemote('https://user:p@ss@github.com/light-cheng/dsh-mem0.git'), 'github.com/light-cheng/dsh-mem0')
 })
 
 test('git remotes that are local paths normalise as paths, per platform', () => {
@@ -127,11 +130,13 @@ test('project id: origin first, then the repository root, then the working direc
   assert.equal(JSON.stringify(root).includes('/home'), false)
 })
 
-test('the working directory comes from the workingDirectory service, then the session header', () => {
+test('the working directory is the session header\'s (its start), then the workingDirectory service', () => {
   const session = { id: 's1', header: { cwd: '/start' } }
-  assert.equal(sessionWorkingDirectory(session, { get: () => '/moved' }), '/moved')
-  assert.equal(sessionWorkingDirectory(session, { get: () => { throw new Error('gone') } }), '/start')
+  // A `cd` during the session moves the live directory, not the project.
+  assert.equal(sessionWorkingDirectory(session, { get: () => '/moved' }), '/start')
   assert.equal(sessionWorkingDirectory(session, undefined), '/start')
+  assert.equal(sessionWorkingDirectory({ id: 's2' }, { get: () => '/live' }), '/live')
+  assert.equal(sessionWorkingDirectory({ id: 's3' }, { get: () => { throw new Error('gone') } }), '')
   assert.equal(sessionWorkingDirectory({ id: 's2' }, undefined), '')
   assert.equal(sessionWorkingDirectory(null, { get: () => '/x' }), '')
 })
@@ -167,10 +172,107 @@ test('ProjectResolver: origin, no origin, not a repository, cached per directory
   assert.equal(folder.kind, 'cwd')
   assert.equal(folder.projectId, (await noGit.resolveCwd('c:/work/thing')).projectId)
 
-  // Sessions: the resolver reads the working directory service.
-  const sessions = new ProjectResolver({ git, platform: 'linux', workingDirectory: () => ({ get: () => '/repo-a' }) })
-  assert.equal((await sessions.resolve({ id: 's', header: { cwd: '/elsewhere' } })).projectId, a.projectId)
+  // Sessions: the header's directory first, the service without one; a
+  // session keeps its first project when its directory changes.
+  let live = '/repo-b'
+  const sessions = new ProjectResolver({ git, platform: 'linux', workingDirectory: () => ({ get: () => live }) })
+  assert.equal((await sessions.resolve({ id: 's', header: { cwd: '/repo-a' } })).projectId, a.projectId)
+  const roaming = { id: 'r' }
+  const first = await sessions.resolve(roaming)
+  assert.equal(first.kind, 'root')
+  live = '/repo-a'
+  assert.equal((await sessions.resolve(roaming)).projectId, first.projectId, 'a cd does not move the session')
+  assert.equal(sessions.peek(roaming).projectId, first.projectId)
+  assert.equal(sessions.sessionProject('r').projectId, first.projectId)
+  assert.equal(sessions.sessionProject('unknown'), undefined)
   assert.equal(await sessions.resolve(null), null)
+})
+
+test('ProjectResolver: git timeouts are retried, worktrees share a project, aliases, the home folder, aborts', async () => {
+  let now = 1_000
+  let slow = true
+  const timeoutGit = async (cwd, args) => {
+    if (slow) return { stdout: '', error: 'timeout' }
+    return args[0] === 'rev-parse' ? { stdout: `${cwd}\n${cwd}/.git`, error: null } : { stdout: 'git@github.com:org/late.git', error: null }
+  }
+  const resolver = new ProjectResolver({ git: timeoutGit, platform: 'linux', now: () => now, homeDir: '/home/me' })
+  const during = await resolver.resolveCwd('/work/late')
+  assert.equal(during.kind, 'cwd', 'git timed out: the folder for now')
+  slow = false
+  assert.equal((await resolver.resolveCwd('/work/late')).kind, 'cwd', 'cached for a while')
+  now += 61_000
+  const after = await resolver.resolveCwd('/work/late')
+  assert.equal(after.kind, 'git', 'asked again after a minute')
+  assert.ok(after.aliases.includes(during.projectId), 'the folder id is an alias of the git project')
+
+  // Worktrees of one repository without origin: one common git directory.
+  const worktreeGit = async (cwd, args) => {
+    if (args[0] !== 'rev-parse') return { stdout: '', error: 'failed' }
+    return { stdout: `${cwd}\n/src/main-repo/.git`, error: null }
+  }
+  const trees = new ProjectResolver({ git: worktreeGit, platform: 'linux' })
+  const one = await trees.resolveCwd('/src/main-repo')
+  const two = await trees.resolveCwd('/src/worktrees/feature-x')
+  assert.equal(one.kind, 'root')
+  assert.equal(one.projectId, two.projectId)
+  assert.equal(two.name, 'main-repo')
+
+  // A recorded git project claims its repository and folder ids: a lookup
+  // where git fails later answers with the git project.
+  const recorded = {}
+  const known = async () => recorded
+  const record = (identity) => {
+    recorded[identity.projectId] = { name: identity.name, kind: identity.kind, aliases: identity.aliases }
+  }
+  let failing = false
+  const flaky = async (cwd, args) => {
+    if (failing) return { stdout: '', error: 'failed' }
+    return args[0] === 'rev-parse' ? { stdout: `${cwd}\n${cwd}/.git`, error: null } : { stdout: 'https://github.com/org/flaky', error: null }
+  }
+  const withStore = new ProjectResolver({ git: flaky, platform: 'linux', known, record })
+  const gitProject = await withStore.resolveCwd('/src/flaky')
+  assert.equal(gitProject.kind, 'git')
+  assert.ok(recorded[gitProject.projectId].aliases.length >= 1)
+  failing = true
+  const again = new ProjectResolver({ git: flaky, platform: 'linux', known, record })
+  const resolved = await again.resolveCwd('/src/flaky')
+  assert.equal(resolved.projectId, gitProject.projectId, 'the folder id maps to the git project')
+  assert.equal(resolved.kind, 'git')
+
+  // The home folder outside git is no project (its name is the user's).
+  const home = new ProjectResolver({ git: async () => '', platform: 'linux', homeDir: '/home/me' })
+  assert.equal(await home.resolveCwd('/home/me'), null)
+  assert.equal((await home.resolveCwd('/home/me/notes')).kind, 'cwd')
+
+  // A cancelled turn stops waiting; the lookup itself goes on.
+  let release
+  const blocked = new ProjectResolver({ git: () => new Promise((resolve) => { release = resolve }), platform: 'linux' })
+  const controller = new AbortController()
+  const waiting = blocked.resolveCwd('/slow', { signal: controller.signal })
+  controller.abort()
+  assert.equal(await waiting, null)
+  while (!release) await new Promise((resolve) => setImmediate(resolve))
+  release({ stdout: '', error: 'failed' })
+})
+
+test('gitQuery: drops inherited repository variables, tells timeouts from failures', async () => {
+  const saved = process.env.GIT_DIR
+  process.env.GIT_DIR = '/somewhere/.git'
+  try {
+    let seen
+    await gitQuery('/x', ['status'], { execFileImpl: (_file, _args, options, callback) => { seen = options.env; callback(null, 'ok\n') } })
+    assert.equal(seen.GIT_DIR, undefined)
+    assert.equal(seen.GIT_TERMINAL_PROMPT, '0')
+  } finally {
+    if (saved === undefined) delete process.env.GIT_DIR
+    else process.env.GIT_DIR = saved
+  }
+  const killed = await gitQuery('/x', ['status'], { execFileImpl: (_f, _a, _o, callback) => callback(Object.assign(new Error('killed'), { killed: true, signal: 'SIGTERM' })) })
+  assert.equal(killed.error, 'timeout')
+  const missing = await gitQuery('/x', ['status'], { execFileImpl: (_f, _a, _o, callback) => callback(Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' })) })
+  assert.equal(missing.error, 'missing')
+  const failed = await gitQuery('/x', ['status'], { execFileImpl: (_f, _a, _o, callback) => callback(Object.assign(new Error('not a repo'), { code: 128 })) })
+  assert.equal(failed.error, 'failed')
 })
 
 test('runGit: a missing binary or a failing command answers empty; a real repository answers', async (t) => {
@@ -199,6 +301,20 @@ test('runGit: a missing binary or a failing command answers empty; a real reposi
   const folder = await noGit.resolveCwd(plainDir)
   assert.equal(folder.kind, 'cwd')
   assert.equal(folder.projectId, projectIdentity({ cwd: fs.realpathSync.native(plainDir) }).projectId)
+
+  // A real repository without origin and a worktree of it: one project,
+  // from the shared git directory (git gets the folder's real path).
+  const repo = tempDir(t)
+  await runGit(repo, ['init', '-q'])
+  await runGit(repo, ['-c', 'user.email=test@example.invalid', '-c', 'user.name=test', 'commit', '-q', '--allow-empty', '-m', 'init'])
+  const tree = path.join(tempDir(t), 'feature')
+  await runGit(repo, ['worktree', 'add', '-q', tree])
+  const fresh = new ProjectResolver({ homeDir: '' })
+  const main = await fresh.resolveCwd(repo)
+  const side = await fresh.resolveCwd(tree)
+  assert.equal(main.kind, 'root')
+  assert.equal(side.projectId, main.projectId, 'a worktree is the same project')
+  assert.equal(main.name, path.basename(fs.realpathSync.native(repo)))
 })
 
 test('scopes: unknown or missing scope is global; partitions and weights', () => {
@@ -267,7 +383,8 @@ test('store: partition columns, partitioned list/search/neighbors, setScope, cou
   assert.throws(() => store.setScope('g1', { scope: 'project' }), /project id/)
 
   const counts = store.partitionCounts(base).sort((a, b) => a.scope.localeCompare(b.scope))
-  assert.deepEqual(counts, [
+  assert.ok(counts.every((row) => typeof row.newest === 'string'), 'the latest write, for session labels')
+  assert.deepEqual(counts.map(({ newest: _newest, ...row }) => row), [
     { scope: 'global', project_id: null, session_id: null, count: 3 },
     { scope: 'project', project_id: 'pB', session_id: null, count: 1 },
     { scope: 'session', project_id: 'pA', session_id: 'S1', count: 1 },
@@ -287,10 +404,11 @@ function userMessage(text) {
   return { role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } }
 }
 
-function projectResolver() {
+function projectResolver({ record } = {}) {
   return new ProjectResolver({
     platform: 'linux',
     git: async (cwd, args) => (cwd === '/work/alpha' ? (args[0] === 'rev-parse' ? '/work/alpha' : 'git@github.com:org/alpha.git') : ''),
+    record,
   })
 }
 
@@ -321,16 +439,16 @@ test('recall reads global + the current project + this session, and the project 
         ],
       }
     },
-    setProject(id, info) {
-      named.push([id, info])
-    },
   }
-  const lifecycle = engine(client)
+  const lifecycle = engine(client, { projects: projectResolver({ record: (identity) => named.push([identity.projectId, { name: identity.name, kind: identity.kind }]) }) })
   const session = fakeSession({ messages: [userMessage('what do we use for tests?')] })
   const result = await lifecycle.onSystemPromptAssemble({}, { agent: { session } }, async () => ({ contexts: [] }))
   const alpha = projectIdentity({ cwd: '/work/alpha', root: '/work/alpha', origin: 'git@github.com:org/alpha.git' }, { platform: 'linux' })
-  assert.deepEqual(searches[0].partitions, [{ scope: 'global' }, { scope: 'project', project_id: alpha.projectId }, { scope: 'session', session_id: 'session-1' }])
-  assert.equal(searches[0].topK, 4, 'extra hits so the boost can reorder')
+  // The project's repository and folder ids (aliases) are read with it.
+  assert.deepEqual(searches[0].partitions, recallPartitions({ projectId: alpha.projectId, aliases: alpha.aliases, sessionId: 'session-1' }))
+  assert.deepEqual(searches[0].partitions.slice(0, 2), [{ scope: 'global' }, { scope: 'project', project_id: alpha.projectId }])
+  assert.equal(searches[0].partitions.length, 2 + alpha.aliases.length + 1)
+  assert.equal(searches[0].topK, 8, 'a wide pool, so global memories cannot keep the project out')
   const block = result.contexts[0].text
   // 0.80 × 1.1 = 0.88 > 0.85: the project memory leads.
   assert.ok(block.indexOf('Project memory') < block.indexOf('Global memory'))
@@ -390,6 +508,33 @@ test('capture stores a turn in its project; no working directory → global; fol
   assert.equal(adds[2].scope, 'project')
   assert.equal(adds[2].projectId, adds[0].projectId)
   assert.equal(adds.length, 3, 'a fold of a session this plugin never handled is ignored')
+
+  // A fold of a session whose project was not looked up in this process
+  // (after a reload): DSH's session registry gives the session. Without it
+  // the fold is not saved: written globally it would reach every project.
+  const folds = []
+  const foldClient = { ...client, async add(messages, options) { folds.push(options); return { results: [{ id: `f${folds.length}`, memory: 'x', event: 'ADD' }] } } }
+  const registry = new Map([['session-1', fakeSession()]])
+  const reloaded = new MemoryLifecycle({
+    client: foldClient,
+    config: { userId: USER, agentId: 'dsh', recallTopK: 2, captureMaxChars: 450, autoRecall: true, autoCapture: true, captureFilter: 'off', captureStrataFolds: true },
+    logger: quiet,
+    breaker: { isOpen: () => false, recordSuccess() {}, recordFailure() {} },
+    activity: { recall: null, capture: null },
+    projects: projectResolver(),
+    sessions: () => ({ get: (id) => registry.get(id) }),
+  })
+  for (const id of ['session-1', 'session-gone']) reloaded.onSessionEvent({ id, header: {}, deriveMessages: () => [] }, { type: 'turn/start', data: {} })
+  const summary = 'The repository uses pnpm workspaces and vitest for unit tests across all packages, decided after a long discussion.'
+  reloaded.onStrataFold({ sessionId: 'session-1', foldId: 'r1', tier: 1, topic: 'setup', summary })
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(folds.length, 1)
+  assert.equal(folds[0].scope, 'project', 'the project of the session the registry gave')
+  assert.equal(folds[0].projectId, adds[0].projectId)
+  reloaded.onStrataFold({ sessionId: 'session-gone', foldId: 'r2', tier: 1, topic: 'setup', summary })
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(folds.length, 1, 'no session: the fold is not saved, not written globally')
+  reloaded.dispose()
 })
 
 test('the summary section joins the current project summary once the project is known', async () => {
@@ -453,7 +598,9 @@ test('mem0_add stores in the project by default, global or session on request; m
   assert.equal(adds[3].scope, 'global')
 
   await tool('mem0_search').execute({ query: 'tests' }, exec)
-  assert.equal(searches[0].partitions.length, 3)
+  // Global, the project (with its alias ids) and the session.
+  assert.deepEqual(searches[0].partitions.map((partition) => partition.scope), ['global', 'project', ...searches[0].partitions.slice(2, -1).map(() => 'project'), 'session'])
+  assert.equal(searches[0].partitions[1].project_id, adds[0].projectId)
   await tool('mem0_search').execute({ query: 'tests', scope: 'all' }, exec)
   assert.equal(searches[1].partitions, undefined, 'all: cross-project search')
   await tool('mem0_search').execute({ query: 'tests', scope: 'global' }, exec)
@@ -525,6 +672,7 @@ function maintenanceFor(t, client, llm, overrides = {}) {
     state,
     logger: quiet,
     llm: llm?.services,
+    rebuildDelayMs: 0,
   })
   t.after(() => maintenance.dispose())
   return maintenance
@@ -699,6 +847,129 @@ test('review: a merge or a delete-by across partitions is dropped; a merge stays
   assert.equal(report.deletedDetails.some((item) => item.id === 'g1'), false, 'the global memory is not retired by a project one')
 })
 
+test('B1: with project memories only, hourly checks do not call the model again', async (t) => {
+  // Other apps' memories: no review calls, only summary calls reach the model.
+  const foreign = { metadata: { source: 'other-app' } }
+  const client = listStore([
+    memory('p1', 'Uses pnpm in this repository', { scope: 'project', project_id: PROJECT, ...foreign }),
+    memory('p2', 'Tests run with vitest', { scope: 'project', project_id: PROJECT, ...foreign }),
+  ])
+  const llm = summaryLlm((records) => records.map((record) => `- ${record.text}`).join('\n'))
+  let streams = 0
+  const stream = llm.services.llm.stream
+  llm.services.llm.stream = function (...args) {
+    streams += 1
+    return stream.apply(this, args)
+  }
+  const maintenance = maintenanceFor(t, client, llm)
+  for (let index = 0; index < 3; index += 1) await maintenance.maybeRun('schedule')
+  assert.equal(streams, 1, 'one model call: the project summary of the first (due) pass')
+  assert.equal(llm.calls.length, 1)
+  assert.match(maintenance.profileBlock({ projectId: PROJECT }), /vitest/)
+  assert.equal(maintenance.profileBlock(), '', 'the empty global partition injects nothing')
+  assert.equal(maintenance.needsProfileRebuild(), false)
+  // A new memory in the project: the hourly check still does not call the model.
+  client.map.set('p3', memory('p3', 'Lint with biome', { scope: 'project', project_id: PROJECT, ...foreign, updated_at: '2026-11-02T00:00:00.000000+00:00' }))
+  await maintenance.maybeRun('schedule')
+  assert.equal(streams, 1)
+})
+
+test('B1: a partition whose model summary is unusable twice for the same sources gets the script one', async (t) => {
+  const client = listStore([memory('p1', 'Uses pnpm in this repository', { scope: 'project', project_id: PROJECT })])
+  const llm = summaryLlm(() => '{"not":"a summary"}')
+  const maintenance = maintenanceFor(t, client, llm)
+  for (let index = 0; index < 4; index += 1) await maintenance.run('manual')
+  assert.equal(llm.calls.length, 2, 'asked twice, then left to the script')
+  assert.match(maintenance.profileBlock({ projectId: PROJECT }), /pnpm/)
+  // New sources: the model is asked again.
+  client.map.set('p2', memory('p2', 'Tests run with vitest', { scope: 'project', project_id: PROJECT, updated_at: '2026-11-02T00:00:00.000000+00:00' }))
+  await maintenance.run('manual')
+  assert.equal(llm.calls.length, 3)
+})
+
+test('B2: exact copies are removed within one partition; a project copy of a global memory goes, never the global one', async (t) => {
+  const older = { created_at: '2026-10-01T00:00:00.000000+00:00', updated_at: '2026-10-01T00:00:00.000000+00:00' }
+  const client = listStore([
+    memory('a1', 'The user uses pnpm', { scope: 'project', project_id: 'pa00000000000000a', ...older }),
+    memory('b1', 'The user uses pnpm', { scope: 'project', project_id: 'pb00000000000000b' }),
+    memory('g1', 'Prefers dark mode', older),
+    memory('c1', 'Prefers dark mode', { scope: 'project', project_id: 'pc00000000000000c' }),
+    memory('a2', 'Tests run with vitest', { scope: 'project', project_id: 'pa00000000000000a', ...older }),
+    memory('a3', 'Tests run with vitest', { scope: 'project', project_id: 'pa00000000000000a' }),
+  ])
+  const maintenance = maintenanceFor(t, client, summaryLlm(() => '- x'), { modelHygiene: false })
+  const preview = await maintenance.run('manual', { dryRun: true })
+  const planned = preview.plannedDetails.map((item) => item.id).sort()
+  assert.deepEqual(planned, ['a2', 'c1'], 'the same fact in two projects stays; the project copy of a global fact and a copy within one project go')
+  assert.equal(planned.includes('g1'), false, 'a global memory never goes for a project copy')
+})
+
+test('summaries: stale with unchanged sources is reused; a pass marks only the touched partition; rebuilds wait and use the script', async (t) => {
+  const client = listStore([
+    memory('g1', 'Prefers concise answers'),
+    memory('p1', 'Uses pnpm in this repository', { scope: 'project', project_id: PROJECT }),
+    memory('q1', 'Deploys with fly.io', { scope: 'project', project_id: 'pfedcba9876543210' }),
+  ])
+  const llm = summaryLlm((records) => records.map((record) => `- model: ${record.text}`).join('\n'))
+  const maintenance = maintenanceFor(t, client, llm, {})
+  await maintenance.run('manual')
+  assert.equal(llm.calls.length, 3)
+  // Marked stale, but nothing changed: the next pass keeps it without a call.
+  maintenance.invalidateMemories(['p1'])
+  assert.equal(maintenance.profileBlock({ projectId: PROJECT }).includes('pnpm'), false, 'stale: not injected')
+  while (maintenance.running) await maintenance.running.catch(() => {})
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  while (maintenance.running) await maintenance.running.catch(() => {})
+  assert.equal(llm.calls.length, 3, 'the rebuild after a delete never calls the model')
+  assert.match(maintenance.profileBlock({ projectId: PROJECT }), /model: Uses pnpm/, 'same sources: the model summary is reused')
+  assert.equal(maintenance.status().projectProfiles.every((item) => !item.stale), true)
+
+  // A real delete in one project: only that summary is rebuilt (by the
+  // script), the other project and global keep the model's text.
+  client.map.delete('p1')
+  client.map.set('p4', memory('p4', 'Uses bun now', { scope: 'project', project_id: PROJECT }))
+  maintenance.invalidateMemories(['p1'])
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  while (maintenance.running) await maintenance.running.catch(() => {})
+  assert.equal(llm.calls.length, 3)
+  assert.match(maintenance.profileBlock({ projectId: PROJECT }), /bun/)
+  assert.doesNotMatch(maintenance.profileBlock({ projectId: PROJECT }), /model:.*bun/, 'rebuilt by the script')
+  assert.match(maintenance.profileBlock({ projectId: 'pfedcba9876543210' }), /model: Deploys with fly.io/)
+  assert.match(maintenance.profileBlock(), /model: Prefers concise answers/)
+})
+
+test('summaries: a run of deletes gives one delayed rebuild', async (t) => {
+  const rows = Array.from({ length: 5 }, (_, index) => memory(`p${index}`, `Project fact number ${index}`, { scope: 'project', project_id: PROJECT }))
+  const client = listStore(rows)
+  let lists = 0
+  const list = client.list
+  client.list = async (...args) => {
+    lists += 1
+    return list(...args)
+  }
+  const dir = tempDir(t)
+  const maintenance = new MemoryMaintenance({
+    client,
+    config: { backend: 'oss', storePath: '/test/p3/memory.sqlite', userId: USER, agentId: 'dsh', profileEnabled: true, profileBudgetTokens: 500, hygieneEnabled: true, hygieneIntervalDays: 7, modelHygiene: false },
+    state: new MaintenanceState(path.join(dir, 'maintenance.json')),
+    logger: quiet,
+    rebuildDelayMs: 40,
+  })
+  t.after(() => maintenance.dispose())
+  await maintenance.run('manual')
+  const before = lists
+  for (let index = 0; index < 4; index += 1) {
+    client.map.delete(`p${index}`)
+    maintenance.invalidateMemories([`p${index}`])
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  assert.equal(lists, before, 'nothing yet: the rebuild waits for more deletes')
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  while (maintenance.running) await maintenance.running.catch(() => {})
+  assert.equal(lists, before + 1, 'one rebuild for four deletes')
+  assert.match(maintenance.profileBlock({ projectId: PROJECT }), /number 4/)
+})
+
 // ------------------------------------------------------------- memory page routes
 
 function routes(runtime) {
@@ -770,6 +1041,27 @@ test('memory page: tree with counts, partition filter, make global, report bodie
   assert.deepEqual(invalidated, ['p1'])
   assert.equal((await call(handler, 'POST', GUI_MEMORIES_PATH, { id: 'p2', scope: 'session' })).status, 400, 'only to global')
   assert.equal((await call(handler, 'POST', GUI_MEMORIES_PATH, { id: 'x1', scope: 'global' })).status, 403)
+  // The backend enforces "project → global only, this plugin's own": a
+  // forged request for a session, global or foreign memory is refused.
+  store.insert([{ id: 'o1', text: 'Other app fact', hash: 'g', vector: unit([1, 0]), payload: { user_id: USER, source: 'other-app' }, scope: 'project', projectId: 'pA' }])
+  const refused = async (id) => {
+    const answer = await call(handler, 'POST', GUI_MEMORIES_PATH, { id, scope: 'global' })
+    return [answer.status, answer.body.reason]
+  }
+  assert.deepEqual(await refused('s1'), [409, 'not-project'])
+  assert.deepEqual(await refused('p1'), [409, 'not-project'], 'already global')
+  assert.deepEqual(await refused('o1'), [403, 'not-own'])
+  assert.deepEqual(await refused('missing'), [404, 'not-found'])
+  assert.equal(store.get('s1').scope, 'session')
+  assert.equal(store.get('o1').scope, 'project')
+  assert.deepEqual(invalidated, ['p1'], 'nothing else moved')
+
+  // An expired memory is neither listed nor counted in the tree.
+  store.insert([{ id: 'e1', text: 'Expired alpha fact', hash: 'h', vector: unit([1, 0]), payload: { user_id: USER, source: 'dsh', expiration_date: '2000-01-01' }, scope: 'project', projectId: 'pA' }])
+  const recount = (await call(handler, 'GET', `${GUI_MEMORIES_PATH}?tree=1`)).body
+  const listedAlpha = (await call(handler, 'GET', `${GUI_MEMORIES_PATH}?partition=project:pA`)).body.memories
+  assert.equal(recount.projects.find((item) => item.id === 'pA').count, listedAlpha.length)
+  assert.ok(recount.projects.find((item) => item.id === 'pA').sessions.every((session) => typeof session.newest === 'string'))
 
   // Report rows keep ids: the page reads the current text, null when gone.
   const lookup = (await call(handler, 'GET', `${GUI_MEMORIES_PATH}?ids=g1,missing,x1,${encodeURIComponent('bad id!')}`)).body
@@ -788,4 +1080,23 @@ test('memory page on a REST backend: no partitions, one flat list', async () => 
   const listed = (await call(handler, 'GET', `${GUI_MEMORIES_PATH}?partition=global`)).body
   assert.equal(listed.memories[0].scope, 'global')
   assert.equal(listed.memories[0].globalizable, false)
+})
+
+test('memory page: report texts are read a few at a time (REST backends answer one id per request)', async () => {
+  let inFlight = 0
+  let peak = 0
+  const client = {
+    async get(id) {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight -= 1
+      return { id, memory: `Text ${id}`, user_id: USER }
+    },
+  }
+  const handler = routes({ client, config: { userId: USER, backend: 'platform' } })
+  const ids = Array.from({ length: 20 }, (_, index) => `m${index}`)
+  const lookup = (await call(handler, 'GET', `${GUI_MEMORIES_PATH}?ids=${ids.join(',')}`)).body
+  assert.equal(Object.keys(lookup.texts).length, 20)
+  assert.ok(peak <= 6, `at most 6 at once (saw ${peak})`)
 })
