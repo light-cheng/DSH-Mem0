@@ -383,6 +383,6 @@ test('recall activity shows the time of each step', () => {
   assert.match(lines[0], /^Time per step: key lookup 0 ms · embedding 6990 ms/)
   assert.match(lines[1], /embedding model/)
   const capture = activityDetails(tz, { status: 'saved', facts: 5, add: 2, none: 3, similar: 2, metaDropped: 2 })
-  assert.match(capture[0], /其中 2 条与已有记忆过于相近/)
+  assert.match(capture[0], /其中 2 条与本轮刚写入的记忆过于相近/)
   assert.match(capture[1], /2 句是记忆确认/)
 })

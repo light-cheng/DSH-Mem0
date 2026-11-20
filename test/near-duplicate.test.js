@@ -147,15 +147,24 @@ test('the assistant restating a fact gives no extra memory', async (t) => {
   assert.doesNotMatch(newMessages(ctx.prompts[0]), /assistant:/, 'a reply that was only a confirmation is not sent')
 })
 
-test('a near-duplicate of a memory stored earlier is not stored again; a different fact is', async (t) => {
+test('a correction close to an older memory is still stored; older memories get md5 only', async (t) => {
   const ctx = setup(t)
+  // An older fact from an earlier turn. The capture's reworded fact scores
+  // cosine 1 against it (≥ 0.95), as a correction such as "moved to the
+  // week after" would: V3 additive only adds, so dropping it would lose the
+  // new information. Only this turn's writes are compared by meaning.
   await ctx.client.add([{ role: 'user', content: '用户下周要去上海出差' }], { infer: false })
-  const again = await turn(ctx, { user: '记住，我下周要去上海出差', reply: '祝出差顺利！' })
-  assert.equal(again.add, 0)
-  assert.equal(again.similar, 1)
+  const correction = await turn(ctx, { user: '记住，我下周要去上海出差的安排改了', reply: '好的。' })
+  assert.equal(correction.add, 1)
+  assert.equal(correction.similar, undefined)
+  assert.deepEqual(await stored(ctx.client), ['用户下周将去上海出差', '用户下周要去上海出差'].sort())
+  // An exact copy of an older memory is still dropped by md5, as upstream.
+  const exact = await ctx.client.add([{ role: 'user', content: '记住，我下周要去上海出差' }])
+  assert.equal(exact.summary.add, 0)
+  assert.equal(exact.summary.skippedDuplicate, 1)
+  // A different fact is stored as before.
   const other = await turn(ctx, { user: '记住，我下周要去北京出差', reply: '祝一路顺风！' })
   assert.equal(other.add, 1)
-  assert.deepEqual(await stored(ctx.client), ['用户下周要去上海出差', '用户下周要去北京出差'].sort())
 })
 
 test('captureDedupThreshold 0 turns the check off (md5 only, as upstream Mem0)', async (t) => {
