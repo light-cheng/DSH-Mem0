@@ -12,6 +12,7 @@ import { MemoryMaintenance, recallWeight, rankMemories, stripReportText } from '
 import { MaintenanceState } from '../lib/maintenance-state.js'
 import {
   REVIEW_SYSTEM_PROMPT,
+  RETRY_NOTE,
   buildReviewPrompt,
   groupRecords,
   parseReviewAnswer,
@@ -270,6 +271,7 @@ test('an authorised pass merges, deletes the outdated and stores importance; tok
   authorised = true
   // A new day: the confirmed run moved the watermark, so make everything new again.
   for (const row of store.rows.values()) row.updated_at = '2026-11-18T00:00:00.000000+00:00'
+  store.rows.get('d').updated_at = '2026-11-18T08:00:00.000000+00:00'
   const report = await maintenance.run('schedule')
   assert.equal(report.dryRun, false)
   assert.deepEqual(store.log.removed.sort(), ['a', 'b', 'c'])
@@ -410,6 +412,80 @@ test('a cut-off answer is retried once with twice the room', async (t) => {
   assert.equal(report.model.status, 'ok')
   assert.deepEqual(llm.prepared.map((item) => item.maxTokens), [1536, 3072])
   assert.deepEqual(store.log.attributes, [{ id: 'a', importance: 2 }])
+})
+
+test('a malformed answer is asked again once, told it was not JSON; both calls and their tokens count', async (t) => {
+  const store = memoryStore([memory('a', 'Likes tea'), memory('b', 'Likes green tea')], { neighbors: { a: ['b'] } })
+  // Seen live (deepseek-v4.1-flash): a missing bracket in one action.
+  const answers = ['{"actions":[{"type":"importance","ids":["m1","level":4,"reason":"x"}]}', { actions: [{ type: 'importance', ids: ['m1'], level: 4, reason: 'standing preference' }] }]
+  const llm = fakeLlm((records, call) => answers[call - 1])
+  const { maintenance } = maintenanceWith(t, store, llm)
+  const report = await maintenance.run('manual')
+  assert.equal(report.model.status, 'ok')
+  assert.equal(report.model.calls, 2)
+  assert.equal(report.model.retries, 1)
+  assert.equal(report.model.badAnswers, 0)
+  assert.equal(report.model.usage.totalTokens, 720)
+  assert.equal(llm.calls[0].options.messages[0].content[0].text.includes(RETRY_NOTE), false)
+  assert.equal(llm.calls[1].options.messages[0].content[0].text.includes(RETRY_NOTE), true)
+  assert.deepEqual(store.log.attributes, [{ id: 'a', importance: 4 }])
+})
+
+test('a merged memory takes the highest importance the model gave its sources', async (t) => {
+  const store = memoryStore([memory('a', 'Prefers 2-space indentation'), memory('b', 'Prefers two spaces, never tabs')], { neighbors: { a: ['b'] } })
+  const llm = fakeLlm(() => ({
+    actions: [
+      { type: 'merge', ids: ['m1', 'm2'], text: 'Prefers 2-space indentation, never tabs', reason: 'same preference' },
+      { type: 'importance', ids: ['m1'], level: 4, reason: 'coding style rule' },
+    ],
+  }))
+  const { maintenance } = maintenanceWith(t, store, llm)
+  const report = await maintenance.run('manual')
+  assert.equal(report.merged, 1)
+  assert.deepEqual(store.log.removed.sort(), ['a', 'b'])
+  assert.deepEqual(store.log.attributes, [{ id: 'new1', importance: 4 }])
+})
+
+test('the watermark moves past answered groups when a later group had a bad answer', async (t) => {
+  const at = (day) => `2026-11-${String(day).padStart(2, '0')}T00:00:00.000000+00:00`
+  const store = memoryStore([
+    memory('a', 'Likes tea', { updated_at: at(1) }), memory('b', 'Likes green tea', { updated_at: at(1) }),
+    memory('c', 'Uses npm', { updated_at: at(2) }), memory('d', 'Uses pnpm', { updated_at: at(2) }),
+    memory('e', 'Lives in Lisbon', { updated_at: at(3) }), memory('f', 'Lives in Porto', { updated_at: at(3) }),
+  ], { neighbors: { a: ['b'], c: ['d'], e: ['f'] } })
+  let broken = true
+  const llm = fakeLlm((records) => (broken && refOf(records, 'Uses npm') ? 'not json' : { actions: [] }))
+  const { maintenance } = maintenanceWith(t, store, llm)
+  await authorise(maintenance)
+  const first = maintenance.activity.maintenance.model
+  assert.equal(first.badAnswers, 1)
+  assert.equal(first.complete, false)
+  broken = false
+  const before = llm.calls.length
+  await maintenance.run('schedule')
+  const asked = llm.calls.slice(before).flatMap((call) => call.records.map((record) => record.text))
+  assert.deepEqual(asked.sort(), ['Lives in Lisbon', 'Lives in Porto', 'Uses npm', 'Uses pnpm'], 'the tea group was done; the bad group and the ones after it are asked again')
+})
+
+test('a delete "by" an older record is dropped: the replacing record must be newer', () => {
+  const records = groupRecords([
+    memory('old', "User's main editor is VS Code", { updated_at: '2026-09-21T00:00:00.000000+00:00' }),
+    memory('new', 'User switched from VS Code to Zed', { updated_at: '2026-11-19T00:00:00.000000+00:00' }),
+  ])
+  // Seen live at the lowest effort: the newer fact deleted by the older one.
+  const wrong = validateActions([{ type: 'delete', ids: ['m2'], by: 'm1', reason: 'contradicts m1' }], records)
+  assert.deepEqual(wrong.accepted, [])
+  assert.deepEqual(wrong.rejected, [{ type: 'delete', reason: 'older-by' }])
+  const right = validateActions([{ type: 'delete', ids: ['m1'], by: 'm2', reason: 'switched editors' }], records)
+  assert.deepEqual(right.accepted, [{ type: 'delete', ids: ['old'], by: 'new', reason: 'switched editors' }])
+  // The same time is no order either.
+  const same = groupRecords([memory('a', 'x'), memory('b', 'y')])
+  assert.deepEqual(validateActions([{ type: 'delete', ids: ['m1'], by: 'm2', reason: 'r' }], same).rejected, [{ type: 'delete', reason: 'older-by' }])
+})
+
+test('records carry their time to the minute, so same-day facts still have an order', () => {
+  const [record] = groupRecords([memory('a', 'Likes tea', { updated_at: '2026-11-19T09:30:12.000000+00:00' })])
+  assert.equal(record.date, '2026-11-19 09:30')
 })
 
 test('dispose during the model call stops the pass: nothing deleted, nothing written', async (t) => {
