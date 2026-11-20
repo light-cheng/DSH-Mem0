@@ -51,8 +51,6 @@ function fakeClient(overrides = {}) {
         collection: 'dsh_mem0',
         userId: 'dsh-user',
         agentId: 'dsh',
-        pythonVersion: '3.11.16',
-        mem0Version: '2.0.10',
         qdrant: { ok: true },
         embedder: { ok: true, dimensions: 1024 },
       }
@@ -147,14 +145,49 @@ test('mem0_status says when an environment API key chose the Platform', async ()
   assert.match(result, /api\.mem0\.ai/)
 })
 
-test('mem0_status reports the sidecar health without secrets', async () => {
+test('mem0_status reports the backend health without secrets', async () => {
   const client = fakeClient()
   const result = await toolMap(client).get('mem0_status').execute({}, {})
   assert.match(result, /backend: platform/)
   assert.match(result, /status: ready/)
-  assert.match(result, /mem0: 2\.0\.10/)
+  assert.match(result, /collection: dsh_mem0/)
   assert.match(result, /embedder: ok \(1024 dims\)/)
+  assert.doesNotMatch(result, /python/i)
   assert.doesNotMatch(result, /api.?key/i)
+})
+
+test('mem0_status on the local backend: store ok (sqlite), embedder, LLM, no Python or Qdrant lines', async () => {
+  const client = fakeClient({
+    async health() {
+      return {
+        ok: true,
+        backend: 'oss',
+        engine: 'native',
+        mem0Reference: '2.2.1',
+        userId: 'dsh-user',
+        agentId: 'dsh',
+        memoryCount: 3,
+        store: { ok: true, kind: 'sqlite', path: '~/.dsh/mem0/memory.sqlite' },
+        qdrant: { ok: true },
+        embedder: { ok: true, dimensions: 1024, model: 'bge-m3' },
+        llm: { configured: true, model: 'deepseek-chat' },
+      }
+    },
+    status: () => ({ running: true, lastStartFailure: null }),
+  })
+  const native = {
+    storePath: '~/.dsh/mem0/memory.sqlite',
+    embedder: { provider: 'openai', baseUrl: 'http://127.0.0.1:8000/v1', model: 'bge-m3', apiKeyRef: 'EMBED_KEY_REF' },
+    llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKeyRef: 'LLM_KEY_REF' },
+    problems: [],
+  }
+  const result = await toolMap(client, undefined, { config: { backend: 'oss', baseUrl: '', native } }).get('mem0_status').execute({}, {})
+  assert.match(result, /^store: ok \(sqlite\)$/m)
+  assert.match(result, /^memories: 3$/m)
+  assert.match(result, /mem0 reference: 2\.2\.1/)
+  assert.match(result, /extraction LLM: configured \(deepseek-chat\)/)
+  assert.match(result, /key from credential EMBED_KEY_REF/)
+  assert.doesNotMatch(result, /qdrant|python|endpoint:|collection:/i)
 })
 
 test('mem0_status shows the strata recall budget only when Strata took part', async () => {

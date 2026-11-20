@@ -2,6 +2,7 @@
 // route against the mock Mem0 server (real REST client), driven through the
 // page's own delete flow from client.js.
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import vm from 'node:vm'
@@ -62,7 +63,7 @@ function pageRequest(handler, calls) {
 
 async function startMock() {
   const script = new URL('../scripts/mock-mem0-server.mjs', import.meta.url)
-  const child = spawn(process.execPath, [script.pathname], {
+  const child = spawn(process.execPath, [fileURLToPath(script)], {
     env: { ...process.env, MOCK_MEM0_PORT: '0', MOCK_MEM0_KEY: '', MOCK_MEM0_USER: USER },
     stdio: ['ignore', 'pipe', 'inherit'],
   })

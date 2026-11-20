@@ -1,4 +1,5 @@
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -18,7 +19,8 @@ import { CircuitBreaker } from '../lib/http.js'
 import { MemoryLifecycle } from '../lib/memory-lifecycle.js'
 import { MemoryMaintenance } from '../lib/memory-maintenance.js'
 import { Mem0RestClient, Mem0RestError } from '../lib/rest-client.js'
-import { Mem0SidecarClient, Mem0SidecarError, attributeRunningStep } from '../lib/sidecar-client.js'
+import { ProviderError, postJson } from '../lib/providers.js'
+import { storeError } from '../lib/store-sqlite.js'
 import { failureAttribution } from '../lib/http.js'
 
 function tempFile() {
@@ -74,7 +76,7 @@ test('classifyFailure: timeout, connection, auth/quota, circuit, other', () => {
 
 async function startMock() {
   const script = new URL('../scripts/mock-mem0-server.mjs', import.meta.url)
-  const child = spawn(process.execPath, [script.pathname], {
+  const child = spawn(process.execPath, [fileURLToPath(script)], {
     env: { ...process.env, MOCK_MEM0_PORT: '0', MOCK_MEM0_KEY: '', MOCK_MEM0_USER: 'dsh-mem0-failure-test-user' },
     stdio: ['ignore', 'pipe', 'inherit'],
   })
@@ -377,9 +379,9 @@ test('maintenance failures record summary vs maintenance kind', async () => {
 
 // --- component attribution ---------------------------------------------------
 
-/** A sidecar 500 as lib/http.js builds it from the body. */
+/** A component-tagged 500 (an older sidecar's body, a server's body). */
 function sidecarFailure(body, path = '/search') {
-  const error = new Mem0SidecarError(`dsh-mem0: POST ${path} failed: ${body.error}`, {
+  const error = Object.assign(new Error(`dsh-mem0: POST ${path} failed: ${body.error}`), {
     code: 'BACKEND_ERROR',
     status: 500,
     path,
@@ -387,34 +389,41 @@ function sidecarFailure(body, path = '/search') {
   return Object.assign(error, failureAttribution(body))
 }
 
-test('OSS hybrid: Ollama cold start is an embedder timeout (step still running)', () => {
-  const error = new Mem0SidecarError('dsh-mem0: POST /search aborted', {
-    code: 'ABORTED',
-    cause: new Error('request timed out after 3000ms'),
+test('local backend: an Ollama cold start is an embedder timeout with its endpoint', async () => {
+  const fetchImpl = (_url, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true })
   })
-  Object.assign(
-    error,
-    attributeRunningStep({
-      steps: [
-        { component: 'vector_store', step: 'search', elapsedMs: 10 },
-        { component: 'embedder', step: 'embed', elapsedMs: 2990 },
-      ],
-      components: { embedder: { provider: 'ollama', endpoint: '127.0.0.1:11434' } },
-    }),
-  )
+  const error = await postJson('http://127.0.0.1:11434/api/embed', { model: 'bge-m3', input: ['x'] }, {
+    timeoutMs: 30, component: 'embedder', step: 'embed', provider: 'ollama', fetchImpl,
+  }).catch((value) => value)
+  assert.ok(error instanceof ProviderError)
+  assert.equal(error.code, 'ETIMEDOUT')
   assert.equal(classifyFailure(error), 'timeout')
   assert.deepEqual(attributeFailure(error, { backend: 'oss' }), {
     component: 'embedder',
     step: 'embed',
     provider: 'ollama',
     endpoint: '127.0.0.1:11434',
-    stepElapsedMs: 2990,
   })
-  const history = new FailureHistory({ backend: 'oss' })
-  const entry = history.record({ kind: 'recall', error, durationMs: 3001 })
+  const entry = new FailureHistory({ backend: 'oss' }).record({ kind: 'recall', error, durationMs: 31 })
   assert.equal(entry.component, 'embedder')
   assert.equal(entry.cause, 'timeout')
-  assert.equal(entry.stepElapsedMs, 2990)
+  assert.equal(entry.endpoint, '127.0.0.1:11434')
+})
+
+test('local backend: SQLite errors are vector_store failures with a short code', () => {
+  for (const [errcode, code] of [[5, 'busy'], [11, 'corrupt'], [8, 'readonly'], [13, 'disk_full']]) {
+    const raw = Object.assign(new Error('database error'), { code: 'ERR_SQLITE_ERROR', errcode })
+    const error = storeError(raw, { step: 'search', file: path.join(os.tmpdir(), 'memory.sqlite') })
+    assert.equal(error.code, code)
+    const attribution = attributeFailure(error, { backend: 'oss' })
+    assert.equal(attribution.component, 'vector_store')
+    assert.equal(attribution.step, 'search')
+    assert.equal(attribution.provider, 'sqlite')
+    const entry = new FailureHistory({ backend: 'oss' }).record({ kind: 'capture', error })
+    assert.equal(entry.component, 'vector_store')
+    assert.equal(entry.code, code)
+  }
 })
 
 test('OSS hybrid: cloud LLM latency, 429 and 5xx are llm failures', () => {
@@ -432,11 +441,10 @@ test('OSS hybrid: cloud LLM latency, 429 and 5xx are llm failures', () => {
   const slow = sidecarFailure({ error: 'Request timed out.', component: 'llm', step: 'llm_extract' }, '/add')
   assert.equal(classifyFailure(slow), 'timeout')
 
-  // Our own timeout during extraction (the sidecar still working).
-  const aborted = Object.assign(
-    new Mem0SidecarError('dsh-mem0: POST /add aborted', { code: 'ABORTED', cause: new Error('request timed out after 120000ms') }),
-    attributeRunningStep({ steps: [{ component: 'llm', step: 'llm_extract', elapsedMs: 119_000 }], components: {} }),
-  )
+  // Our own timeout during extraction.
+  const aborted = new ProviderError('LLM at 127.0.0.1:3425: request timed out after 120000 ms', {
+    component: 'llm', step: 'llm_extract', provider: 'openai', endpoint: '127.0.0.1:3425', code: 'ETIMEDOUT',
+  })
   assert.equal(classifyFailure(aborted), 'timeout')
   assert.equal(attributeFailure(aborted, { backend: 'oss' }).component, 'llm')
 })
@@ -495,40 +503,6 @@ test('stored entries keep the component across a reload; old entries read as unk
   assert.equal(entry.endpoint, '127.0.0.1:11434')
   fs.writeFileSync(file, JSON.stringify({ entries: [{ at: '2026-11-06T00:00:00Z', kind: 'capture', cause: 'timeout', message: 'old' }] }))
   assert.equal(new FailureHistory({ filePath: file }).list()[0].component, 'unknown')
-})
-
-localServerTest('sidecar client asks GET /steps which step was running when its timeout fired', async () => {
-  const seen = []
-  const server = http.createServer((req, res) => {
-    seen.push(req.url)
-    if (req.url === '/steps') {
-      res.setHeader('content-type', 'application/json')
-      res.end(JSON.stringify({
-        steps: [{ component: 'embedder', step: 'embed', elapsedMs: 410 }],
-        components: { embedder: { provider: 'ollama', endpoint: '127.0.0.1:11434' } },
-      }))
-      return
-    }
-    // /search: never answer in time (a cold Ollama model load).
-    setTimeout(() => res.end('{}'), 2_000)
-  })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  try {
-    const client = new Mem0SidecarClient({ pythonPath: 'python3', userId: 'u', agentId: 'dsh', collectionName: 'c', historyDbPath: '/tmp/x.db' })
-    client.ready = true
-    client.child = {}
-    client.port = server.address().port
-    const error = await client.search('tea', { user_id: 'u' }, { timeoutMs: 150 }).catch((value) => value)
-    assert.equal(error.code, 'ABORTED')
-    assert.equal(error.component, 'embedder')
-    assert.equal(error.provider, 'ollama')
-    assert.equal(error.stepElapsedMs, 410)
-    assert.deepEqual(seen, ['/search', '/steps'])
-    assert.equal(classifyFailure(error), 'timeout')
-  } finally {
-    server.closeAllConnections?.()
-    await new Promise((resolve) => server.close(resolve))
-  }
 })
 
 // --- status bar --------------------------------------------------------------
@@ -642,40 +616,6 @@ test('an unusable extraction answer is cause "extraction" with a readable reason
   assert.equal(first.reason, 'empty')
   assert.equal('reason' in second, false)
   assert.equal('reason' in third, false)
-})
-
-localServerTest('the sidecar client turns a 502 LLM_EXTRACT_FAILED body into code, reason and attribution', async () => {
-  const server = http.createServer((req, res) => {
-    res.statusCode = 502
-    res.setHeader('content-type', 'application/json')
-    res.end(JSON.stringify({
-      error: 'the LLM\'s fact-extraction answer was empty; nothing was stored',
-      code: 'LLM_EXTRACT_FAILED',
-      reason: 'empty',
-      retryable: true,
-      component: 'llm',
-      step: 'llm_extract',
-      provider: 'openai',
-      endpoint: '127.0.0.1:64451',
-    }))
-  })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  try {
-    const client = new Mem0SidecarClient({ pythonPath: 'python3', userId: 'u', agentId: 'dsh', collectionName: 'c', historyDbPath: '/tmp/x.db' })
-    client.ready = true
-    client.child = {}
-    client.port = server.address().port
-    const error = await client.add([{ role: 'user', content: 'hi' }], { infer: true }).catch((value) => value)
-    assert.equal(error.code, 'LLM_EXTRACT_FAILED')
-    assert.equal(error.status, 502)
-    assert.equal(error.extractReason, 'empty')
-    assert.equal(error.component, 'llm')
-    assert.equal('delivered' in error, false)
-    assert.match(error.message, /answer was empty; nothing was stored/)
-  } finally {
-    server.closeAllConnections?.()
-    await new Promise((resolve) => server.close(resolve))
-  }
 })
 
 test('extraction stats (finish_reason, token counts) reach the error and the stored failure, numbers only', () => {

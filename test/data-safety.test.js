@@ -26,7 +26,7 @@ const quiet = { warn() {}, debug() {}, info() {} }
 function config(overrides = {}) {
   return {
     backend: 'oss',
-    mem0ConfigPath: '/test/mem0.json',
+    storePath: '/test/memory.sqlite',
     collectionName: 'dsh_mem0_test',
     baseUrl: '',
     userId: 'dsh-mem0-test-user-a',
@@ -293,7 +293,7 @@ test('P1-3: switching user in one profile does not carry the deletion authorisat
   }
 })
 
-test('P1-3: same user on another backend or collection gets neither the old generated nor manual summary', async () => {
+test('P1-3: same user on another backend or store file gets neither the old generated nor manual summary', async () => {
   const { dir, file } = tempState('dsh-mem0-p1-3b-')
   try {
     const store = memoryStore([memory('a', 'Works on the secret project Falcon')])
@@ -301,14 +301,14 @@ test('P1-3: same user on another backend or collection gets neither the old gene
     await original.resetProfile()
     assert.match(original.profileBlock(), /Falcon/)
 
-    const otherCollection = maintenanceFor(memoryStore([]), new MaintenanceState(file), { collectionName: 'other' })
+    const otherCollection = maintenanceFor(memoryStore([]), new MaintenanceState(file), { storePath: '/other/memory.sqlite' })
     assert.equal(otherCollection.profileBlock(), '')
     const otherBackend = maintenanceFor(memoryStore([]), new MaintenanceState(file), {
       backend: 'server',
       baseUrl: 'http://127.0.0.1:8888',
     })
     assert.equal(otherBackend.profileBlock(), '')
-    assert.notEqual(scopeKey(config()), scopeKey(config({ collectionName: 'other' })))
+    assert.notEqual(scopeKey(config()), scopeKey(config({ storePath: '/other/memory.sqlite' })))
 
     // Manual summaries are scoped the same way.
     original.setProfileText('- Manual note about Falcon')

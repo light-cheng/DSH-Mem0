@@ -1,0 +1,186 @@
+{
+ "source": "mem0ai 2.2.1 wheel (pure helpers only, run with the standard library)",
+ "pastMessageTruncationLimit": 300,
+ "cases": [
+  {
+   "name": "english, no history",
+   "messages": [
+    {
+     "role": "user",
+     "content": "I always drink green tea in the morning."
+    },
+    {
+     "role": "assistant",
+     "content": "Noted!"
+    }
+   ],
+   "lastMessages": [],
+   "existingMemories": [],
+   "filters": {
+    "user_id": "u1",
+    "agent_id": "dsh"
+   },
+   "date": "2026-11-20",
+   "parsed": "user: I always drink green tea in the morning.\nassistant: Noted!\n",
+   "sessionScope": "agent_id=dsh&user_id=u1",
+   "agentScoped": false,
+   "systemSha256": "ad19187a37813ef77ee156e714c0650e6ec749e0264bdc07d499bc9b24115155",
+   "user": "## Summary\n\n\n## Last k Messages\n\n\n## Recently Extracted Memories\n[]\n\n## Existing Memories\n[]\n\n## New Messages\nuser: I always drink green tea in the morning.\nassistant: Noted!\n\n\n## Observation Date\n2026-11-20\n\n## Current Date\n2026-11-20\n\n## Language Requirement\nCRITICAL: Respond in the SAME LANGUAGE and SCRIPT as the input messages.\n1. Match the language of the user's messages exactly — if they write in Korean, extract in Korean; Japanese in Japanese; etc.\n2. Preserve the exact script/alphabet of the input.\n3. Do NOT translate or transliterate into English unless the input is already in English.\n4. Maintain all quality standards (contextual richness, temporal grounding, etc.) regardless of language.\n5. Technical terms, proper nouns, and brand names should be preserved in their original form as used in the input.\n6. If the input mixes languages (e.g., Hinglish), preserve both the mixed language style AND the script.\n7. For Japanese: explicitly resolve omitted subjects using conversation context.\n8. For CJK languages: maintain appropriate formality level from the source text.\n\n# Output:"
+  },
+  {
+   "name": "chinese with history and existing memories",
+   "messages": [
+    {
+     "role": "system",
+     "content": "context"
+    },
+    {
+     "role": "user",
+     "content": "我喜欢用 \"中文 + English\" 写发布说明\n每次都这样。"
+    },
+    {
+     "role": "assistant",
+     "content": null
+    },
+    {
+     "role": "tool",
+     "content": "ignored"
+    },
+    {
+     "role": "assistant",
+     "content": "好的，记住了 ✅"
+    }
+   ],
+   "lastMessages": [
+    {
+     "role": "user",
+     "content": "我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，",
+     "name": null,
+     "created_at": "x"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "name": null,
+     "created_at": "x"
+    },
+    {
+     "role": "assistant",
+     "content": "emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀",
+     "name": "bot",
+     "created_at": "x"
+    }
+   ],
+   "existingMemories": [
+    {
+     "id": "0",
+     "text": "Writes release notes in \"both\" languages"
+    },
+    {
+     "id": "1",
+     "text": "用户住在\t上海\n浦东"
+    },
+    {
+     "id": "2",
+     "text": "ctrl \u0001   char"
+    }
+   ],
+   "filters": {
+    "user_id": "a&b=c%d"
+   },
+   "date": "2026-11-20",
+   "parsed": "system: context\nuser: 我喜欢用 \"中文 + English\" 写发布说明\n每次都这样。\nassistant: 好的，记住了 ✅\n",
+   "sessionScope": "user_id=a%26b%3Dc%25d",
+   "agentScoped": false,
+   "systemSha256": "ad19187a37813ef77ee156e714c0650e6ec749e0264bdc07d499bc9b24115155",
+   "user": "## Summary\n\n\n## Last k Messages\nuser: 我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falcon 的项目，我在做一个叫 Falco...\nassistant: emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji 🚀emoji ...\n\n\n## Recently Extracted Memories\n[]\n\n## Existing Memories\n[{\"id\": \"0\", \"text\": \"Writes release notes in \\\"both\\\" languages\"}, {\"id\": \"1\", \"text\": \"用户住在\\t上海\\n浦东\"}, {\"id\": \"2\", \"text\": \"ctrl \\u0001   char\"}]\n\n## New Messages\nsystem: context\nuser: 我喜欢用 \"中文 + English\" 写发布说明\n每次都这样。\nassistant: 好的，记住了 ✅\n\n\n## Observation Date\n2026-11-20\n\n## Current Date\n2026-11-20\n\n## Language Requirement\nCRITICAL: Respond in the SAME LANGUAGE and SCRIPT as the input messages.\n1. Match the language of the user's messages exactly — if they write in Korean, extract in Korean; Japanese in Japanese; etc.\n2. Preserve the exact script/alphabet of the input.\n3. Do NOT translate or transliterate into English unless the input is already in English.\n4. Maintain all quality standards (contextual richness, temporal grounding, etc.) regardless of language.\n5. Technical terms, proper nouns, and brand names should be preserved in their original form as used in the input.\n6. If the input mixes languages (e.g., Hinglish), preserve both the mixed language style AND the script.\n7. For Japanese: explicitly resolve omitted subjects using conversation context.\n8. For CJK languages: maintain appropriate formality level from the source text.\n\n# Output:"
+  },
+  {
+   "name": "agent scoped",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Use pnpm for this repo."
+    }
+   ],
+   "lastMessages": [],
+   "existingMemories": [],
+   "filters": {
+    "agent_id": "dsh",
+    "run_id": "r1"
+   },
+   "date": "2026-11-20",
+   "parsed": "user: Use pnpm for this repo.\n",
+   "sessionScope": "agent_id=dsh&run_id=r1",
+   "agentScoped": true,
+   "systemSha256": "7dd7aabf574626a73053eaf5453a1a5b609f10590f352ad98eeacc62b3288ff6",
+   "user": "## Summary\n\n\n## Last k Messages\n\n\n## Recently Extracted Memories\n[]\n\n## Existing Memories\n[]\n\n## New Messages\nuser: Use pnpm for this repo.\n\n\n## Observation Date\n2026-11-20\n\n## Current Date\n2026-11-20\n\n## Language Requirement\nCRITICAL: Respond in the SAME LANGUAGE and SCRIPT as the input messages.\n1. Match the language of the user's messages exactly — if they write in Korean, extract in Korean; Japanese in Japanese; etc.\n2. Preserve the exact script/alphabet of the input.\n3. Do NOT translate or transliterate into English unless the input is already in English.\n4. Maintain all quality standards (contextual richness, temporal grounding, etc.) regardless of language.\n5. Technical terms, proper nouns, and brand names should be preserved in their original form as used in the input.\n6. If the input mixes languages (e.g., Hinglish), preserve both the mixed language style AND the script.\n7. For Japanese: explicitly resolve omitted subjects using conversation context.\n8. For CJK languages: maintain appropriate formality level from the source text.\n\n# Output:"
+  }
+ ],
+ "parse": [
+  {
+   "answer": "{\"memory\": [{\"text\": \"Likes tea\"}]}",
+   "cleaned": "{\"memory\": [{\"text\": \"Likes tea\"}]}",
+   "extracted": "{\"memory\": [{\"text\": \"Likes tea\"}]}",
+   "memories": [
+    {
+     "text": "Likes tea"
+    }
+   ]
+  },
+  {
+   "answer": "```json\n{\"memory\": [{\"text\": \"A\"}]}\n```",
+   "cleaned": "{\"memory\": [{\"text\": \"A\"}]}",
+   "extracted": "{\"memory\": [{\"text\": \"A\"}]}",
+   "memories": [
+    {
+     "text": "A"
+    }
+   ]
+  },
+  {
+   "answer": "<think>hmm</think>{\"memory\": []}",
+   "cleaned": "{\"memory\": []}",
+   "extracted": "{\"memory\": []}",
+   "memories": []
+  },
+  {
+   "answer": "Sure! Here it is: {\"memory\": [{\"text\": \"B\"}]} hope it helps",
+   "cleaned": "Sure! Here it is: {\"memory\": [{\"text\": \"B\"}]} hope it helps",
+   "extracted": "{\"memory\": [{\"text\": \"B\"}]}",
+   "memories": [
+    {
+     "text": "B"
+    }
+   ]
+  },
+  {
+   "answer": "{\"memory\": [{\"text\": \"line\nbreak\"}]}",
+   "cleaned": "{\"memory\": [{\"text\": \"line\nbreak\"}]}",
+   "extracted": "{\"memory\": [{\"text\": \"line\nbreak\"}]}",
+   "memories": [
+    {
+     "text": "line\nbreak"
+    }
+   ]
+  },
+  {
+   "answer": "",
+   "cleaned": "",
+   "extracted": "",
+   "memories": []
+  },
+  {
+   "answer": "   ",
+   "cleaned": "",
+   "extracted": "",
+   "memories": []
+  },
+  {
+   "answer": "not json at all",
+   "cleaned": "not json at all",
+   "extracted": "not json at all",
+   "memories": null
+  }
+ ]
+}

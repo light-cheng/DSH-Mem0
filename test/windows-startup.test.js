@@ -1,31 +1,23 @@
-// Startup diagnostics from the 2026-11 Windows incidents: platform-aware
-// interpreter discovery, the real reason behind "sidecar failed to start
-// recently", embedded Qdrant rejected before Python starts (issue #23),
-// SIGKILL after an ignored SIGTERM, and settings dropped by DSH's settings
-// sync. Mocks and temp folders only.
+// Startup diagnostics of the local backend, from the 2026-11 Windows
+// incidents: the real reason behind a store that cannot open, the Windows
+// port hint on a refused embedder, embedded-Qdrant detection kept for the
+// migration, settings dropped by DSH's settings sync, and settings of the
+// Python sidecar era that must not raise a warning after the upgrade.
+// Mocks and temp folders only.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import {
-  defaultPythonCandidates,
-  findDefaultPythonDetailed,
-  isFieldSet,
-  pathPythonName,
-  resolveConfig,
-} from '../lib/config.js'
-import { Mem0SidecarClient, lastExceptionLine } from '../lib/sidecar-client.js'
+import { isFieldSet, resolveConfig, RETIRED_KEY_FIELDS } from '../lib/config.js'
+import { Mem0NativeClient } from '../lib/native-client.js'
 import { FailureHistory, attributeFailure, classifyFailure } from '../lib/failure-history.js'
-import { EMBEDDED_QDRANT_CODE, hostPort, ossFallbacks, qdrantMode } from '../lib/oss-config.js'
+import { CONFIG_ERROR_CODES, hostPort, isConfigError, ossFallbacks, qdrantMode } from '../lib/oss-config.js'
+import { postJson } from '../lib/providers.js'
 import { ConfigGuard, describeConfigWarning } from '../lib/config-guard.js'
 import { diagnosticLines } from '../lib/diagnostics.js'
-import { MemoryLifecycle, countsTowardBreaker } from '../lib/memory-lifecycle.js'
+import { MemoryLifecycle } from '../lib/memory-lifecycle.js'
 import { CircuitBreaker } from '../lib/http.js'
-
-const FAKE_SIDECAR = fileURLToPath(new URL('./fixtures/fake-sidecar.mjs', import.meta.url))
-const SERVER_OSS = { oss: { vector_store: { provider: 'qdrant', config: { url: 'http://127.0.0.1:15333' } } } }
 
 function tempDir(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-winstart-'))
@@ -33,129 +25,49 @@ function tempDir(t) {
   return dir
 }
 
-function fakeSidecar(t, { mode = 'ready', oss = {}, ...options } = {}) {
-  const dir = tempDir(t)
-  const record = path.join(dir, 'spawns.jsonl')
-  const configPath = path.join(dir, 'oss.json')
-  fs.writeFileSync(configPath, JSON.stringify(oss))
-  const client = new Mem0SidecarClient({
-    pythonPath: process.execPath,
-    sidecarPath: FAKE_SIDECAR,
-    mem0ConfigPath: configPath,
-    historyDbPath: path.join(dir, 'history.db'),
-    collectionName: 'dsh_mem0_winstart_test',
-    userId: 'dsh-winstart-test-user',
-    agentId: 'dsh-test',
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, FAKE_SIDECAR_MODE: mode, FAKE_SIDECAR_RECORD: record },
-    extraEnv: ['FAKE_SIDECAR_MODE', 'FAKE_SIDECAR_RECORD'],
-    stopGraceMs: 300,
-    exitWaitMs: 1_000,
-    ...options,
-  })
-  t.after(() => client.dispose())
-  const lines = () =>
-    fs.existsSync(record) ? fs.readFileSync(record, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)) : []
-  const spawns = () => lines().filter((line) => line.argv)
-  return { client, spawns, lines, configPath }
-}
-
-async function waitFor(predicate, timeoutMs = 5_000) {
-  const started = Date.now()
-  while (!predicate()) {
-    if (Date.now() - started > timeoutMs) throw new Error('timed out waiting')
-    await new Promise((resolve) => setTimeout(resolve, 20))
+function nativeSettings(storePath) {
+  return {
+    storePath,
+    embedder: { provider: 'openai', baseUrl: 'http://127.0.0.1:15434/v1', model: 'test-embed', apiKey: '', apiKeyRef: '' },
+    llm: { baseUrl: 'http://127.0.0.1:15435/v1', model: 'test-llm', apiKey: '', apiKeyRef: '', maxTokens: 8000, temperature: 0, topP: 0.1 },
+    problems: [],
   }
 }
 
-// ---- 1. Interpreter discovery ----
+// ---- 1. A store that cannot open ----
 
-test('Windows looks for venv\\Scripts\\python.exe first, then the bin copies', () => {
-  const candidates = defaultPythonCandidates({ platform: 'win32', home: 'C:\\Users\\tester' })
-  assert.deepEqual(candidates.map((item) => item.path), [
-    'C:\\Users\\tester\\.dsh\\mem0\\venv\\Scripts\\python.exe',
-    'C:\\Users\\tester\\.dsh\\mem0\\venv\\bin\\python.exe',
-    'C:\\Users\\tester\\.dsh\\mem0\\venv\\bin\\python',
-  ])
-  assert.equal(pathPythonName('win32'), 'python')
-})
-
-test('POSIX looks for venv/bin/python3, then venv/bin/python, then legacy', () => {
-  const candidates = defaultPythonCandidates({ platform: 'darwin', home: '/home/tester' })
-  assert.deepEqual(candidates.slice(0, 2).map((item) => item.path), [
-    '/home/tester/.dsh/mem0/venv/bin/python3',
-    '/home/tester/.dsh/mem0/venv/bin/python',
-  ])
-  assert.ok(candidates.slice(2).every((item) => item.source === 'legacy'))
-  assert.equal(pathPythonName('linux'), 'python3')
-})
-
-test('the first existing candidate wins; none found falls back to PATH', () => {
-  const home = 'C:\\Users\\tester'
-  const onlyBinCopy = new Set(['C:\\Users\\tester\\.dsh\\mem0\\venv\\bin\\python.exe'])
-  assert.deepEqual(findDefaultPythonDetailed({ platform: 'win32', home, exists: (file) => onlyBinCopy.has(file) }), {
-    path: 'C:\\Users\\tester\\.dsh\\mem0\\venv\\bin\\python.exe',
-    source: 'default',
+test('a store path that is a folder: the failure is kept, named in status and mem0_status', async (t) => {
+  const dir = tempDir(t)
+  const storePath = path.join(dir, 'memory.sqlite')
+  fs.mkdirSync(storePath)
+  const client = new Mem0NativeClient({
+    config: { backend: 'oss', userId: 'dsh-winstart-test-user', agentId: 'dsh-test' },
+    loadSettings: () => nativeSettings(storePath),
+    fetchImpl: async () => { throw new Error('no network in this test') },
   })
-  const both = new Set([...onlyBinCopy, 'C:\\Users\\tester\\.dsh\\mem0\\venv\\Scripts\\python.exe'])
-  assert.equal(findDefaultPythonDetailed({ platform: 'win32', home, exists: (file) => both.has(file) }).path, 'C:\\Users\\tester\\.dsh\\mem0\\venv\\Scripts\\python.exe')
-  assert.deepEqual(findDefaultPythonDetailed({ platform: 'win32', home, exists: () => false }), { path: 'python', source: 'path' })
-  assert.deepEqual(findDefaultPythonDetailed({ platform: 'linux', home: '/h', exists: () => false }), { path: 'python3', source: 'path' })
+  t.after(() => client.dispose())
+  const error = await client.list().catch((value) => value)
+  assert.equal(error.component, 'vector_store')
+  assert.equal(error.provider, 'sqlite')
+  const status = client.status()
+  assert.equal(status.running, false)
+  assert.equal(status.lastStartFailure.component, 'vector_store')
+  assert.match(status.lastStartFailure.reason, /memory\.sqlite/)
+  const health = await client.health()
+  assert.equal(health.ok, false)
+  assert.equal(health.store.ok, false)
+  assert.equal(health.qdrant.ok, false, 'the old qdrant field mirrors the store')
+  const lines = diagnosticLines({ client, config: { backend: 'oss', native: nativeSettings(storePath) } })
+  assert.ok(lines.some((line) => /^last store failure .*vector_store/.test(line)), lines.join('\n'))
+  assert.ok(lines.some((line) => /^store: .*memory\.sqlite \(SQLite\)$/.test(line)), lines.join('\n'))
 })
 
-test('an explicit pythonPath always wins', () => {
-  const config = resolveConfig({ backend: 'oss', pythonPath: '/opt/venv/bin/python', mem0ConfigPath: '/nonexistent/oss.json' })
-  assert.equal(config.pythonPath, '/opt/venv/bin/python')
-  assert.equal(config.pythonSource, 'configured')
-})
-
-// ---- 2. The real start failure behind the breaker ----
-
-test('a sidecar that dies with ModuleNotFoundError: the skip, the failure card and status name it', async (t) => {
-  const { client, spawns } = fakeSidecar(t, { mode: 'nomem0', oss: SERVER_OSS, pythonSource: 'path' })
-  await assert.rejects(() => client.ensureStarted(), (error) => {
-    assert.equal(error.code, 'START_FAILED')
-    assert.equal(error.component, 'sidecar')
-    assert.match(error.message, /has no mem0 \(no ~\/\.dsh\/mem0\/venv was found, so the python on PATH was used\)/)
-    assert.match(error.message, /ModuleNotFoundError: No module named 'mem0'/)
-    return true
-  })
-  assert.equal(spawns().length, 1)
-  const failure = client.status().lastStartFailure
-  assert.equal(failure.exitCode, 1)
-  assert.equal(failure.component, 'sidecar')
-  assert.match(failure.reason, /ModuleNotFoundError: No module named 'mem0'/)
-  assert.ok(Date.parse(failure.at))
-
-  // Within the restart backoff, fail-open callers skip with that reason.
-  let skip
-  await assert.rejects(() => client.search('tea', {}, { waitForStart: false }), (error) => {
-    skip = error
-    return error.code === 'START_FAILED'
-  })
-  assert.match(skip.message, /failed to start recently: .*ModuleNotFoundError: No module named 'mem0'/)
-  assert.equal(spawns().length, 1, 'no respawn during the backoff')
-
-  const history = new FailureHistory({ backend: 'oss' })
-  const entry = history.record({ kind: 'recall', error: skip })
-  assert.equal(entry.cause, 'startup', 'not "other"')
-  assert.equal(entry.component, 'sidecar')
-  assert.match(entry.message, /ModuleNotFoundError: No module named 'mem0'/)
-  // Repeated skips fold into one entry.
-  history.record({ kind: 'recall', error: skip })
-  assert.equal(history.list().length, 1)
-  assert.equal(history.list()[0].count, 2)
-
-  const lines = diagnosticLines({ client, config: { backend: 'oss', pythonPath: process.execPath, pythonSource: 'path' } })
-  assert.ok(lines.some((line) => /PATH fallback/.test(line)))
-  assert.ok(lines.some((line) => /last sidecar start failure .*exit code 1.*ModuleNotFoundError/.test(line)), lines.join('\n'))
-})
-
-test('the breaker skip names the last sidecar start failure', async () => {
+test('the breaker skip names the last store failure', async () => {
   const breaker = new CircuitBreaker({ threshold: 1 })
   breaker.recordFailure()
   const recorded = []
   const lifecycle = new MemoryLifecycle({
-    client: { lastStartFailure: { reason: "ModuleNotFoundError: No module named 'mem0'" } },
+    client: { lastStartFailure: { reason: 'dsh-mem0: memory store is read-only' } },
     config: { userId: 'u', agentId: 'dsh', recallTopK: 5, autoRecall: true, autoCapture: true, includeSubagents: false },
     breaker,
     activity: {},
@@ -166,48 +78,44 @@ test('the breaker skip names the last sidecar start failure', async () => {
   await lifecycle.onSystemPromptAssemble(assembly(), { agent: { session } }, async () => assembly())
   const skip = recorded.find((entry) => entry.circuit)
   assert.ok(skip, 'a circuit skip was recorded')
-  assert.match(skip.message, /circuit breaker open.*last sidecar start failure: ModuleNotFoundError/)
+  assert.match(skip.message, /circuit breaker open.*last store failure: dsh-mem0: memory store is read-only/)
 })
 
-test('the last exception line is found in a Python traceback', () => {
-  assert.equal(lastExceptionLine(['Traceback (most recent call last):', '  File "x.py"', "ModuleNotFoundError: No module named 'mem0'"]), "ModuleNotFoundError: No module named 'mem0'")
-  assert.equal(lastExceptionLine(['qdrant_client.http.exceptions.ResponseHandlingException: [Errno 61] Connection refused']), 'ResponseHandlingException: [Errno 61] Connection refused')
-  assert.equal(lastExceptionLine(['just a warning line']), '')
-})
+// ---- 2. host:port and the Windows hint ----
 
-// ---- 4. host:port and the Windows hint ----
-
-test('a refused Qdrant start names host:port and counts as a connection failure', () => {
-  const error = Object.assign(new Error('dsh-mem0 sidecar failed: Qdrant unreachable at 127.0.0.1:15333 (connection refused). Check …'), {
-    code: 'START_FAILED',
-    component: 'vector_store',
-    provider: 'qdrant',
-    endpoint: '127.0.0.1:15333',
-  })
+test('a refused embedder names host:port, the Windows reserved-port hint, and is a connection failure', async () => {
+  const refused = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:15434'), { code: 'ECONNREFUSED' }) })
+  const error = await postJson('http://127.0.0.1:15434/v1/embeddings', {}, {
+    component: 'embedder', step: 'embed', provider: 'openai', fetchImpl: async () => { throw refused },
+  }).catch((value) => value)
+  assert.equal(error.code, 'NETWORK_ERROR')
+  assert.match(error.message, /unreachable at 127\.0\.0\.1:15434 \(connection refused\)/)
+  assert.match(error.message, /10013/)
   assert.equal(classifyFailure(error), 'connection')
-  assert.deepEqual(attributeFailure(error, { backend: 'oss' }), { component: 'vector_store', provider: 'qdrant', endpoint: '127.0.0.1:15333' })
+  assert.deepEqual(attributeFailure(error, { backend: 'oss' }), { component: 'embedder', step: 'embed', provider: 'openai', endpoint: '127.0.0.1:15434' })
+  const entry = new FailureHistory({ backend: 'oss' }).record({ kind: 'capture', error })
+  assert.equal(entry.cause, 'connection')
 })
 
-test('host:port is taken from oss.json without scheme, path or credentials', () => {
+test('host:port is taken without scheme, path or credentials', () => {
   assert.equal(hostPort('http://user:secret@127.0.0.1:15333/collections?api_key=x'), '127.0.0.1:15333')
   assert.equal(hostPort('127.0.0.1:15434'), '127.0.0.1:15434')
   assert.equal(hostPort('http://localhost'), 'localhost')
   assert.equal(hostPort(''), undefined)
 })
 
-// ---- 6. SIGTERM, then SIGKILL ----
+// ---- 3. Config errors are not retried until something changes ----
 
-test('dispose escalates to SIGKILL when the sidecar ignores SIGTERM, and waits for the exit', async (t) => {
-  const { client, lines } = fakeSidecar(t, { mode: 'stubborn', oss: SERVER_OSS })
-  await client.ensureStarted()
-  const child = client.child
-  await client.dispose()
-  assert.ok(lines().some((line) => line.ignoredTerm), 'SIGTERM was sent and ignored')
-  assert.ok(child.exitCode !== null || child.signalCode !== null, 'the process has exited')
-  assert.equal(child.signalCode, 'SIGKILL')
+test('config errors (missing embedder, embedder mismatch, newer schema) are config failures', () => {
+  for (const code of ['CONFIG_MISSING', 'CONFIG_INVALID', 'EMBEDDER_MISMATCH', 'schema_newer']) {
+    assert.ok(CONFIG_ERROR_CODES.includes(code), code)
+    const error = Object.assign(new Error(code), { code })
+    assert.equal(isConfigError(error), true)
+    assert.equal(classifyFailure(error), 'config')
+  }
 })
 
-// ---- 7. Embedded Qdrant (issue #23) ----
+// ---- 4. Embedded Qdrant detection (kept for the migration, issue #23) ----
 
 test('qdrantMode: path only or nothing is embedded; url or host+port is a server', () => {
   const mode = (config, provider = 'qdrant') => qdrantMode({ oss: { vector_store: { provider, config } } }).mode
@@ -221,62 +129,15 @@ test('qdrantMode: path only or nothing is embedded; url or host+port is a server
   assert.equal(qdrantMode({}).mode, 'unknown')
 })
 
-test('path only: a clear config error at once, Python never starts, no retry until oss.json changes', async (t) => {
-  const { client, spawns, configPath } = fakeSidecar(t, {
-    oss: { oss: { vector_store: { provider: 'qdrant', config: { path: '/data/qdrant' } } } },
-  })
-  const check = (error) => {
-    assert.equal(error.code, EMBEDDED_QDRANT_CODE)
-    assert.equal(error.component, 'vector_store')
-    assert.match(error.message, /Embedded Qdrant .* is not supported/)
-    assert.match(error.message, /不支持嵌入式 Qdrant，请启动 Qdrant 服务端并在 oss\.json 里用 url/)
-    assert.match(error.message, /#qdrant-server-only/)
-    return true
-  }
-  await assert.rejects(() => client.ensureStarted(), check)
-  await assert.rejects(() => client.ensureStarted(), check)
-  await assert.rejects(() => client.search('tea', {}, { waitForStart: false }), check)
-  assert.equal(spawns().length, 0, 'Python was never started')
-  assert.equal(client.status().lastStartFailure.configError, true)
-
-  const history = new FailureHistory({ backend: 'oss' })
-  for (const kind of ['recall', 'maintenance', 'recall', 'capture']) {
-    await client.ensureStarted().catch((error) => {
-      assert.equal(countsTowardBreaker(error), false, 'config errors do not open the breaker')
-      history.record({ kind, error })
-    })
-  }
-  assert.equal(history.list().length, 1, 'one entry, whatever kind of call hit it')
-  assert.equal(history.list()[0].cause, 'config')
-  assert.equal(history.list()[0].component, 'vector_store')
-  assert.equal(history.list()[0].count, 4)
-
-  // Fixing the file is noticed without a plugin restart.
-  fs.writeFileSync(configPath, JSON.stringify(SERVER_OSS))
-  await client.ensureStarted()
-  assert.equal(spawns().length, 1)
+test('an oss.json with embedded Qdrant no longer stops the local backend', (t) => {
+  const dir = tempDir(t)
+  const ossPath = path.join(dir, 'oss.json')
+  fs.writeFileSync(ossPath, JSON.stringify({ oss: { vector_store: { provider: 'qdrant', config: { path: path.join(dir, 'qdrant') } } }, dsh_mem0: { embedderBaseUrl: 'http://127.0.0.1:15434/v1', embedderModel: 'm' } }))
+  const config = resolveConfig({ backend: 'oss' }, { ossConfigPath: ossPath })
+  assert.equal(config.native.problems.some((problem) => problem.component === 'embedder'), false)
 })
 
-test('path and url: runs on url, with a warning that path is ignored', async (t) => {
-  const warnings = []
-  const { client, spawns } = fakeSidecar(t, {
-    oss: { oss: { vector_store: { provider: 'qdrant', config: { path: '/data/q', url: 'http://127.0.0.1:15333' } } } },
-    logger: { warn: (message) => warnings.push(message), info() {}, debug() {} },
-  })
-  await client.ensureStarted()
-  assert.equal(spawns().length, 1)
-  assert.ok(warnings.some((message) => /path is ignored/.test(message)))
-})
-
-test('url only: unaffected', async (t) => {
-  const warnings = []
-  const { client } = fakeSidecar(t, { oss: SERVER_OSS, logger: { warn: (message) => warnings.push(message), info() {}, debug() {} } })
-  await client.ensureStarted()
-  assert.equal(client.running, true)
-  assert.deepEqual(warnings, [])
-})
-
-// ---- 3. Settings dropped by DSH's settings sync ----
+// ---- 5. Settings dropped by DSH's settings sync ----
 
 test('settings the profile sets are told apart from schema defaults', () => {
   assert.equal(isFieldSet({ collectionName: 'dsh_mem0' }, 'collectionName'), false)
@@ -284,13 +145,16 @@ test('settings the profile sets are told apart from schema defaults', () => {
   assert.equal(isFieldSet({ translateMemories: false }, 'translateMemories'), false)
   assert.equal(isFieldSet({ translateMemories: true }, 'translateMemories'), true)
   assert.equal(isFieldSet({ backend: 'auto' }, 'backend'), false)
-  assert.equal(isFieldSet({ pythonPath: '  ' }, 'pythonPath'), false)
+  assert.equal(isFieldSet({ embedderModel: '  ' }, 'embedderModel'), false)
+  assert.equal(isFieldSet({ embedderDims: 0 }, 'embedderDims'), false)
+  assert.equal(isFieldSet({ embedderDims: 1024 }, 'embedderDims'), true)
+  assert.equal(isFieldSet({ llmMaxTokens: 8000 }, 'llmMaxTokens'), false)
 })
 
 test('the config guard reports settings that went missing since the last good run', (t) => {
   const file = path.join(tempDir(t), 'config-fingerprint.json')
-  const full = ['backend', 'pythonPath', 'mem0ConfigPath', 'collectionName', 'userId', 'translateMemories']
-  const first = new ConfigGuard({ filePath: file, profileFields: full })
+  const full = ['backend', 'embedderModel', 'embedderBaseUrl', 'collectionName', 'userId', 'translateMemories']
+  const first = new ConfigGuard({ filePath: file, profileFields: full, retiredFields: RETIRED_KEY_FIELDS })
   assert.equal(first.status(), null)
   first.markWorking()
   const stored = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -298,31 +162,52 @@ test('the config guard reports settings that went missing since the last good ru
   assert.ok(!JSON.stringify(stored).includes('/'), 'field names only, no values')
 
   // DSH cut the block down to backend.
-  const rewritten = new ConfigGuard({ filePath: file, profileFields: ['backend'] })
-  assert.deepEqual(rewritten.status().missing, ['collectionName', 'mem0ConfigPath', 'pythonPath', 'translateMemories', 'userId'])
+  const rewritten = new ConfigGuard({ filePath: file, profileFields: ['backend'], retiredFields: RETIRED_KEY_FIELDS })
+  assert.deepEqual(rewritten.status().missing, ['collectionName', 'embedderBaseUrl', 'embedderModel', 'translateMemories', 'userId'])
   rewritten.markWorking()
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).fields, [...full].sort(), 'a rewrite never becomes the baseline')
-  assert.match(describeConfigWarning(rewritten.status()), /missing: collectionName, mem0ConfigPath, pythonPath/)
+  assert.match(describeConfigWarning(rewritten.status()), /missing: collectionName, embedderBaseUrl, embedderModel/)
 
   // Kept in oss.json's dsh_mem0 block: not missing.
-  const covered = new ConfigGuard({ filePath: file, profileFields: ['backend', 'mem0ConfigPath'], fallbackFields: ['pythonPath', 'collectionName', 'userId', 'translateMemories'] })
+  const covered = new ConfigGuard({ filePath: file, profileFields: ['backend', 'userId'], fallbackFields: ['embedderModel', 'embedderBaseUrl', 'collectionName', 'translateMemories'], retiredFields: RETIRED_KEY_FIELDS })
   assert.equal(covered.status(), null)
   assert.ok(diagnosticLines({ config: { backend: 'platform' }, configGuard: rewritten }).some((line) => line.startsWith('warning: dsh-mem0 settings look rewritten')))
+})
+
+test('upgrade: an old fingerprint with pythonPath, mem0ConfigPath and historyDbPath raises no warning', (t) => {
+  const file = path.join(tempDir(t), 'config-fingerprint.json')
+  // Written by 0.3.x, when the profile set the Python sidecar's settings.
+  fs.writeFileSync(file, JSON.stringify({
+    version: 1,
+    savedAt: '2026-11-01T00:00:00.000Z',
+    fields: ['backend', 'collectionName', 'historyDbPath', 'mem0ConfigPath', 'pythonPath', 'userId'],
+  }))
+  // The upgraded profile still has the old fields; DSH keeps unknown keys.
+  const profile = { backend: 'oss', collectionName: 'mine', userId: 'u', pythonPath: '/venv/bin/python', mem0ConfigPath: '~/.dsh/mem0/oss.json', historyDbPath: '/x/history.db' }
+  const config = resolveConfig(profile, { ossConfigPath: path.join(path.dirname(file), 'missing-oss.json') })
+  assert.deepEqual(config.profileFields.sort(), ['backend', 'collectionName', 'userId'])
+  const guard = new ConfigGuard({ filePath: file, profileFields: config.profileFields, retiredFields: RETIRED_KEY_FIELDS })
+  assert.equal(guard.status(), null)
+  guard.markWorking()
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).fields, ['backend', 'collectionName', 'userId'], 'retired names are dropped on the next good run')
+  // A profile where DSH also dropped the old fields: still no warning.
+  const trimmed = new ConfigGuard({ filePath: file, profileFields: ['backend', 'collectionName', 'userId'], retiredFields: RETIRED_KEY_FIELDS })
+  assert.equal(trimmed.status(), null)
+  assert.ok(!diagnosticLines({ config, configGuard: guard }).some((line) => line.startsWith('warning:')))
 })
 
 test('settings in the dsh_mem0 block of oss.json fill in what the profile does not set', (t) => {
   const dir = tempDir(t)
   const configPath = path.join(dir, 'oss.json')
   fs.writeFileSync(configPath, JSON.stringify({
-    ...SERVER_OSS,
-    dsh_mem0: { pythonPath: path.join(dir, 'venv', 'python'), collectionName: 'from_oss', userId: 'oss-user', translateMemories: true, apiKey: 'ignored' },
+    dsh_mem0: { pythonPath: path.join(dir, 'venv', 'python'), embedderModel: 'bge-m3', collectionName: 'from_oss', userId: 'oss-user', translateMemories: true, apiKey: 'ignored' },
   }))
-  const config = resolveConfig({ backend: 'oss', mem0ConfigPath: configPath, collectionName: 'dsh_mem0', userId: 'profile-user' })
-  assert.equal(config.pythonPath, path.join(dir, 'venv', 'python'))
-  assert.equal(config.pythonSource, 'oss-config')
+  const config = resolveConfig({ backend: 'oss', collectionName: 'dsh_mem0', userId: 'profile-user' }, { ossConfigPath: configPath })
   assert.equal(config.collectionName, 'from_oss', 'the schema default counts as not set')
   assert.equal(config.userId, 'profile-user', 'the profile wins when it sets one')
   assert.equal(config.translateMemories, true)
-  assert.deepEqual(config.settingsFromOss.sort(), ['collectionName', 'pythonPath', 'translateMemories'])
+  assert.equal(config.native.embedder.model, 'bge-m3')
+  assert.deepEqual(config.settingsFromOss.sort(), ['collectionName', 'embedderModel', 'translateMemories'])
+  assert.deepEqual(config.ignoredSettings, ['dsh_mem0.pythonPath'])
   assert.deepEqual(ossFallbacks({ dsh_mem0: { apiKey: 'x', userId: 5 } }), {})
 })

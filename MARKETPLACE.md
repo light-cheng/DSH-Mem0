@@ -23,8 +23,8 @@ This file is the remaining checklist for publishing the universal build.
 4. Run:
    ```bash
    pnpm install --ignore-scripts --frozen-lockfile
-   node --test
-   python3 -m unittest discover -s python/tests -v
+   npm test
+   npm run check
    pnpm pack
    ```
 5. Publish to npm (optional, but recommended for market install/update):
@@ -83,16 +83,23 @@ marketplace screenshots; the market reads that file from this repository.
 - GUI: Plugins → Mem0 Memory → backend tabs, connection fields, Test connection.
 - Platform: `backend: platform` + `apiKey` or `MEM0_API_KEY`.
 - Self-hosted server: `backend: server` + `baseUrl` + `authType` + `apiKey`.
-- Local OSS: `backend: oss` + `mem0ConfigPath` + `pythonPath` + optional
-  `collectionName`; see `examples/oss-config.example.json`.
+- Local OSS: `backend: oss`; embedder and extraction LLM in the `dsh_mem0`
+  block of `~/.dsh/mem0/oss.json` (keys by credential name); memories in
+  `~/.dsh/mem0/memory.sqlite`. See `examples/oss-config.example.json`.
 
 ## Current verification
 
-- Node unit tests: 59 passing.
-- Python unit tests: 4 passing.
-- Real local OSS smoke test: passed (add/search/get/update/delete).
-- DSH `mem0_status` on the installed universal plugin: `backend: oss`,
-  `status: ready`, Qdrant and 1024-dimensional embedder OK.
+- Node unit tests: all passing on Windows, macOS and Linux (CI, Node 24),
+  with the SQLite tests never skipped; no Python tests any more.
+- Extraction prompts and answer parsing: byte for byte equal to mem0 2.2.1's
+  own helpers (fixtures generated from the 2.2.1 wheel).
+- Real endpoint smoke test of the native backend (`scripts/smoke-native.mjs`,
+  temporary HOME and test user): a 1024-dimensional OpenAI-compatible
+  embedder and an OpenAI-compatible extraction LLM; health, add with
+  inference, search, cleanup passed.
+- Not yet verified with the native backend: an install into a DSH profile,
+  Windows on real hardware (CI only), Ollama. The DSH results below are from
+  the earlier Python sidecar versions.
 - DSH tool round-trip `mem0_add` → `mem0_search` → `mem0_delete`: passed.
 - DSH settings page smoke test: rendered in the Plugins page; auto mode showed
   `已连接`/local OSS; saving a Platform override persisted to `cordis.patch.yml`

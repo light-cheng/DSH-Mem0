@@ -3,12 +3,13 @@
 # The plugin supports three backends through its Config:
 #   platform — Mem0 Platform API key (managed cloud / on-prem)
 #   server   — a self-hosted Mem0 REST server
-#   oss      — a local Mem0 OSS Python sidecar
+#   oss      — the local backend: memories in a SQLite file
+#              (~/.dsh/mem0/memory.sqlite) with your own embedder and LLM
 #
 # Defaults use `backend: auto`: platform if an API key is configured (config,
 # DSH credentials or environment), server when a custom baseUrl is set,
-# otherwise OSS when a local `~/.dsh/mem0/oss.json` (or a legacy location, see
-# lib/legacy-paths.js) exists, otherwise platform. Configure the row in the
+# otherwise OSS when `~/.dsh/mem0/oss.json` or the SQLite store exists,
+# otherwise platform. Configure the row in the
 # profile patch layer.
 - insert:
     - id: dsh-mem0
