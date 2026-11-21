@@ -126,13 +126,13 @@ test('Ollama embeddings carry keep_alive (default 30m, configurable, empty = Oll
   assert.equal(ollamaKeepAlive(''), undefined)
 })
 
-test('config: captureDedupThreshold and embedderKeepAlive are validated', () => {
+test('config: captureTurnDedupThreshold and embedderKeepAlive are validated', () => {
   const file = path.join(os.tmpdir(), 'dsh-mem0-timing-missing-oss.json')
   const base = { backend: 'oss' }
-  assert.equal(resolveConfig(base, { ossConfigPath: file }).captureDedupThreshold, 0.95)
+  assert.equal(resolveConfig(base, { ossConfigPath: file }).captureTurnDedupThreshold, 0.93)
   assert.equal(resolveConfig(base, { ossConfigPath: file }).embedderKeepAlive, '30m')
-  assert.equal(resolveConfig({ ...base, captureDedupThreshold: 0 }, { ossConfigPath: file }).captureDedupThreshold, 0)
-  assert.throws(() => resolveConfig({ ...base, captureDedupThreshold: 0.3 }, { ossConfigPath: file }), /captureDedupThreshold/)
+  assert.equal(resolveConfig({ ...base, captureTurnDedupThreshold: 0 }, { ossConfigPath: file }).captureTurnDedupThreshold, 0)
+  assert.throws(() => resolveConfig({ ...base, captureTurnDedupThreshold: 0.3 }, { ossConfigPath: file }), /captureTurnDedupThreshold/)
   assert.equal(resolveConfig({ ...base, embedderKeepAlive: '2h' }, { ossConfigPath: file }).embedderKeepAlive, '2h')
   assert.equal(resolveConfig({ ...base, embedderKeepAlive: '' }, { ossConfigPath: file }).embedderKeepAlive, '')
   assert.throws(() => resolveConfig({ ...base, embedderKeepAlive: 'forever' }, { ossConfigPath: file }), /embedderKeepAlive/)

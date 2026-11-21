@@ -207,8 +207,8 @@ window.__ModuleLoader__.load({
       timeoutMsHint: 'Timeout for each backend request on every backend (tools, listing, hygiene), 1–300000. Memory writes and automatic recall have their own limits.',
       recallTimeoutMs: 'Recall timeout (ms)',
       recallTimeoutMsHint: 'Automatic recall gives up after this and the turn continues without memories, 100–60000.',
-      captureDedupThreshold: 'Near-duplicate threshold',
-      captureDedupThresholdHint: 'Local backend: a captured fact at least this similar (cosine, 0.5–1) to a memory mem0_add stored in the same turn, or to another fact of the same capture, is not stored. Older memories are checked for exact copies only, so corrections are kept. 0 = off (exact duplicates only, like Mem0). Default 0.95.',
+      captureTurnDedupThreshold: 'Same-turn duplicate threshold',
+      captureTurnDedupThresholdHint: 'Local backend: a captured fact at least this similar (cosine, 0.5–1) to a memory mem0_add stored in the same turn, or to another fact of the same capture, is not stored; nor is one that only restates such a memory (every word already in it, cosine at least 0.75). Older memories are checked for exact copies only, so corrections are kept. 0 = off (exact duplicates only, like Mem0). Default 0.93.',
       embedderKeepAlive: 'Ollama keep_alive',
       embedderKeepAliveHint: 'Local backend with Ollama: how long Ollama keeps the embedding model loaded, e.g. 30m, 2h, -1 (always). Empty = Ollama default (5m). Default 30m.',
       addTimeoutMs: 'Write timeout (ms)',
@@ -528,6 +528,9 @@ window.__ModuleLoader__.load({
       dockOpen: 'Open Mem0 settings',
       scopeChipProject: 'Memory: project {name}',
       scopeChipGlobal: 'Memory: global',
+      scopeChipPending: 'Memory: project (found next turn)',
+      scopeChipPendingHint: 'Partition by project is on. This conversation\'s project is identified at its next turn; until then new memories go to global. Click to turn the switch off. Applies from the next turn; the same switch is in Mem0 settings.',
+      dshDefaultWorkspace: 'DSH default workspace',
       scopeChipOnHint: 'Partition by project is on: new memories from this conversation stay in its project, and recall reads this project, this session and global. Click to turn it off (new memories then go to global). Applies from the next turn; the same switch is in Mem0 settings.',
       scopeChipOnNoProjectHint: 'Partition by project is on, but this conversation is not in a project folder, so its new memories go to global. Click to turn the switch off. Applies from the next turn; the same switch is in Mem0 settings.',
       scopeChipOffHint: 'Partition by project is off: new memories go to global, and recall reads only global and this session. Project memories are kept and come back when you turn it on. Click to turn it on. Applies from the next turn; the same switch is in Mem0 settings.',
@@ -791,8 +794,8 @@ window.__ModuleLoader__.load({
       timeoutMsHint: '所有后端每次请求的超时（工具、列表、巡检），1–300000。写入记忆和自动召回另有单独的超时。',
       recallTimeoutMs: '召回超时（毫秒）',
       recallTimeoutMsHint: '自动召回超过这个时间就放弃，本轮不带记忆继续，100–60000。',
-      captureDedupThreshold: '近重复阈值',
-      captureDedupThresholdHint: '本地后端：自动保存抽出的事实和同一轮 mem0_add 存下的记忆、或同一次保存里的其他事实，相似度（余弦，0.5–1）达到这个值就不存。更早的记忆只查完全相同的，所以更正不会丢。0 表示关闭（只去掉完全相同的，和 Mem0 一样）。默认 0.95。',
+      captureTurnDedupThreshold: '本轮近重复阈值',
+      captureTurnDedupThresholdHint: '本地后端：自动保存抽出的事实和同一轮 mem0_add 存下的记忆、或同一次保存里的其他事实，相似度（余弦，0.5–1）达到这个值就不存；只是把这类记忆换个说法、内容都已包含在内的（相似度不低于 0.75）也不存。更早的记忆只查完全相同的，所以更正不会丢。0 表示关闭（只去掉完全相同的，和 Mem0 一样）。默认 0.93。',
       embedderKeepAlive: 'Ollama keep_alive',
       embedderKeepAliveHint: '本地后端用 Ollama 时：Ollama 把 embedding 模型留在内存里多久，例如 30m、2h、-1（一直保留）。留空则用 Ollama 默认的 5m。默认 30m。',
       addTimeoutMs: '写入超时（毫秒）',
@@ -1112,6 +1115,9 @@ window.__ModuleLoader__.load({
       dockOpen: '打开 Mem0 设置',
       scopeChipProject: '记忆：项目 {name}',
       scopeChipGlobal: '记忆：全局',
+      scopeChipPending: '记忆：项目（下一轮识别）',
+      scopeChipPendingHint: '「按项目分区」已开启。这个对话的项目会在下一轮识别出来，在那之前新记忆写进全局。点击关闭这个开关。从下一轮开始生效；Mem0 设置里是同一个开关。',
+      dshDefaultWorkspace: 'DSH 默认工作区',
       scopeChipOnHint: '「按项目分区」已开启：这个对话产生的新记忆只存在它所在的项目，召回时读取这个项目、本会话和全局的记忆。点击关闭（关闭后新记忆写进全局）。从下一轮开始生效；Mem0 设置里是同一个开关。',
       scopeChipOnNoProjectHint: '「按项目分区」已开启，但这个对话不在项目文件夹里，新记忆写进全局。点击关闭这个开关。从下一轮开始生效；Mem0 设置里是同一个开关。',
       scopeChipOffHint: '「按项目分区」已关闭：新记忆一律写进全局，召回只读全局和本会话。已有的项目记忆保留，重新开启后照常能用。点击开启。从下一轮开始生效；Mem0 设置里是同一个开关。',
@@ -1359,10 +1365,10 @@ window.__ModuleLoader__.load({
       'importanceWeight',
       'projectRecallBoost',
       'hygieneIntervalDays',
-      'captureDedupThreshold',
+      'captureTurnDedupThreshold',
     ])
     // Numeric fields that take decimals (the rest must be whole numbers).
-    const DECIMAL_FIELDS = new Set(['importanceWeight', 'projectRecallBoost', 'captureDedupThreshold'])
+    const DECIMAL_FIELDS = new Set(['importanceWeight', 'projectRecallBoost', 'captureTurnDedupThreshold'])
     /** The draft with numeric fields as numbers; null when one is empty or not a number (decimals only where allowed). */
     function numericDraft(draft) {
       const next = { ...draft }
@@ -1392,7 +1398,7 @@ window.__ModuleLoader__.load({
       'timeoutMs',
       'recallTimeoutMs',
       'addTimeoutMs',
-      'captureDedupThreshold',
+      'captureTurnDedupThreshold',
       'embedderKeepAlive',
       'captureFilter',
       'profileEnabled',
@@ -1428,7 +1434,7 @@ window.__ModuleLoader__.load({
         timeoutMs: Number(value?.timeoutMs ?? 30000),
         recallTimeoutMs: Number(value?.recallTimeoutMs ?? 5000),
         addTimeoutMs: Number(value?.addTimeoutMs ?? 120000),
-        captureDedupThreshold: Number(value?.captureDedupThreshold ?? 0.95),
+        captureTurnDedupThreshold: Number(value?.captureTurnDedupThreshold ?? 0.93),
         embedderKeepAlive: typeof value?.embedderKeepAlive === 'string' ? value.embedderKeepAlive : '30m',
         captureFilter: value?.captureFilter === 'off' ? 'off' : 'heuristic',
         profileEnabled: value?.profileEnabled !== false,
@@ -1892,7 +1898,7 @@ window.__ModuleLoader__.load({
       const projects = Array.isArray(tree.projects) ? tree.projects : []
       if (projects.length > 0) rows.push({ key: null, label: t('treeProjects'), header: true, depth: 0 })
       for (const project of projects) {
-        rows.push({ key: project.key, label: project.name || shortId(project.id), count: project.count ?? 0, depth: 1 })
+        rows.push({ key: project.key, label: projectName(t, project), count: project.count ?? 0, depth: 1 })
         for (const session of Array.isArray(project.sessions) ? project.sessions : []) {
           rows.push({ key: session.key, label: sessionLabel(t, session), count: session.count ?? 0, depth: 2 })
         }
@@ -1903,11 +1909,17 @@ window.__ModuleLoader__.load({
       return rows
     }
 
+    /** A project partition's name on the memory page (DSH's default workspace by its role, not its folder). */
+    function projectName(t, project) {
+      if (project?.dshDefault) return t('dshDefaultWorkspace')
+      return project?.name || shortId(project?.id)
+    }
+
     // The partition chip of one memory on the memory page.
     function scopeLabel(t, memory, tree) {
       if (memory?.scope === 'project') {
         const project = (tree?.projects ?? []).find((item) => item.id === memory.projectId)
-        return template(t('scopeProject'), { name: project?.name || shortId(memory.projectId) })
+        return template(t('scopeProject'), { name: project ? projectName(t, project) : shortId(memory.projectId) })
       }
       if (memory?.scope === 'session') return template(t('scopeSession'), { id: shortId(memory.sessionId) })
       return t('scopeGlobal')
@@ -2663,13 +2675,17 @@ window.__ModuleLoader__.load({
      * The composer chip: where this conversation's new memories go. Null when
      * the backend has no partitions (REST backends keep everything global).
      * `partitions` is the switch as the config form holds it (it changes at
-     * once on a click), else as the server last reported it.
+     * once on a click), else as the server last reported it. The server
+     * names the session's project whatever the switch says, so a click
+     * shows the project at once.
      */
     function scopeChipView(t, scope, partitions) {
       if (!scope || scope.available === false) return null
       const on = typeof partitions === 'boolean' ? partitions : scope.partitions !== false
       const name = on && scope.project?.name ? String(scope.project.name).replace(/\s+/g, ' ').trim().slice(0, 40) : ''
       if (!on) return { on, label: t('scopeChipGlobal'), hint: t('scopeChipOffHint'), kind: 'global' }
+      // Switched on before DSH reported the session: named at its next turn.
+      if (!name && scope.pending) return { on, label: t('scopeChipPending'), hint: t('scopeChipPendingHint'), kind: 'pending' }
       if (!name) return { on, label: t('scopeChipGlobal'), hint: t('scopeChipOnNoProjectHint'), kind: 'global' }
       return { on, label: template(t('scopeChipProject'), { name }), hint: t('scopeChipOnHint'), kind: 'project' }
     }
@@ -5176,11 +5192,11 @@ window.__ModuleLoader__.load({
             }),
             draft.backend === 'oss'
               ? h(TextField, {
-                  label: t('captureDedupThreshold'),
-                  hint: t('captureDedupThresholdHint'),
+                  label: t('captureTurnDedupThreshold'),
+                  hint: t('captureTurnDedupThresholdHint'),
                   type: 'number',
-                  value: draft.captureDedupThreshold,
-                  onChange: (value) => setField('captureDedupThreshold', value === '' ? '' : Number(value)),
+                  value: draft.captureTurnDedupThreshold,
+                  onChange: (value) => setField('captureTurnDedupThreshold', value === '' ? '' : Number(value)),
                 })
               : null,
             draft.backend === 'oss'
@@ -5277,6 +5293,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, sessionLabel, makeGlobalReason, scopeChipView, numericDraft } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft } }
   },
 })
