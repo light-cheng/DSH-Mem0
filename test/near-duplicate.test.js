@@ -293,6 +293,52 @@ test('coverage: a fact whose every content token is in a same-turn memory is a r
   assert.deepEqual(contentTokens('用户计划于2026年11月25日（下周三）去上海出差'), ['下', '周', '三', '去', '上', '海', '出', '差'])
 })
 
+// Review 3 of #34: the fixed word list of the coverage rule (前往 → 去,
+// 目的地 / 出发 as filler, a bracket that explains a date goes whole).
+// Real extraction texts and their bge-m3 cosines with the explicit memory
+// written in the same turn (omlx, 2026-11-21), all below 0.93.
+const EXPLICIT_EN = 'User is traveling to Shanghai next Wednesday'
+const WORD_LIST_CASES = [
+  // [explicit, extracted fact, cosine, stored as a second memory?]
+  [EXPLICIT, '出差目的地是上海', 0.8541, false],
+  [EXPLICIT, '用户计划于2026年11月25日（下周三）前往上海出差', 0.8887, false],
+  [EXPLICIT, '用户计划于2026年11月25日（下周三，即2026年11月20日当周的下一个周三）前往上海出差', 0.8513, false],
+  ['项目使用 pnpm', '项目使用 npm', 0.8927, true],
+  ['用户喜欢深色主题', '用户喜欢浅色主题', 0.9194, true],
+  // Corrections said in the same turn keep a word of their own (改, 到, 下下).
+  ['用户下周三要去上海出差', '用户的上海出差改到了下下周三', 0.8669, true],
+  ['项目以前用 npm', '项目现在改用 pnpm', 0.8378, true],
+  [EXPLICIT, '用户下周五要去杭州开会', 0.8127, true],
+  // No English synonyms: "business trip" is not "traveling to Shanghai", so
+  // this split copy is stored and memory hygiene merges it later.
+  [EXPLICIT_EN, 'User has a business trip next Wednesday', 0.8497, true],
+]
+for (const [explicit, fact, cosine, kept] of WORD_LIST_CASES) {
+  test(`same turn, word list: "${fact}" (${cosine}) is ${kept ? 'stored' : 'a repeat'}`, async (t) => {
+    assert.ok(cosine < DEFAULT_DEDUP_THRESHOLD)
+    const ctx = setup(t, { embedFn: measuredEmbedFor(new Map([[explicit, 1], [fact, cosine]])), llmFn: factsLlm([fact]) })
+    const capture = await turn(ctx, { user: `记住：${explicit}`, adds: [explicit], reply: '好的。' })
+    assert.equal(capture.status, 'saved')
+    assert.deepEqual(await stored(ctx.client), (kept ? [explicit, fact] : [explicit]).sort())
+    assert.equal(capture.similar, kept ? undefined : 1)
+    assert.equal(repeatsTurnWrite(fact, [{ text: explicit, score: cosine }], DEFAULT_DEDUP_THRESHOLD), !kept)
+  })
+}
+
+test('coverage word list: go-to synonyms, filler, date-explaining brackets', () => {
+  for (const go of ['前往', '去往', '赶往', '动身去']) assert.equal(coveredBy(`用户下周三${go}上海出差`, EXPLICIT), true, go)
+  assert.deepEqual(contentTokens('出差目的地是上海'), ['出', '差', '上', '海'])
+  assert.deepEqual(contentTokens('下周三出发去上海'), ['下', '周', '三', '去', '上', '海'])
+  // A bracket with 即 and a date or a week phrase goes whole …
+  assert.deepEqual(contentTokens('用户（下周三，即2026年11月20日当周的下一个周三）前往上海出差'), ['去', '上', '海', '出', '差'])
+  assert.deepEqual(contentTokens('用户(下周三，即11月25日)去上海'), ['去', '上', '海'])
+  // … any other bracket loses its brackets only.
+  assert.deepEqual(contentTokens('用户（下周三）去上海'), ['下', '周', '三', '去', '上', '海'])
+  assert.deepEqual(contentTokens('用户（即项目负责人）去上海'), ['项', '目', '负', '责', '人', '去', '上', '海'])
+  // No English synonyms.
+  assert.equal(coveredBy('User has a business trip next Wednesday', EXPLICIT_EN), false)
+})
+
 test('repeatsTurnWrite: threshold, coverage above the floor only, 0 = off', () => {
   const fact = '用户将于2026年11月25日（下周三）去上海出差'
   const at = DEFAULT_DEDUP_THRESHOLD
