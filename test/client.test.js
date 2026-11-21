@@ -364,7 +364,7 @@ test('scope chip: flipped on, it names the project at once; pending until DSH re
 test('settings save accepts decimal weights and refuses non-numbers (importanceWeight 0.2, projectRecallBoost 1.1)', () => {
   const { exports } = loadClient()
   const { numericDraft } = exports.__test__
-  const draft = { captureMaxChars: '450', recallTopK: 5, timeoutMs: 30000, recallTimeoutMs: 5000, addTimeoutMs: 120000, profileBudgetTokens: 1375, memoryBudgetTokens: 2200, storeSafetyLimit: 20000, importanceWeight: 0.2, projectRecallBoost: '1.1', hygieneIntervalDays: 7, captureTurnDedupThreshold: 0.85, projectPartitions: false }
+  const draft = { captureMaxChars: '450', recallTopK: 5, timeoutMs: 30000, recallTimeoutMs: 5000, addTimeoutMs: 120000, profileBudgetTokens: 1375, memoryBudgetTokens: 2200, storeSafetyLimit: 20000, importanceWeight: 0.2, projectRecallBoost: '1.1', hygieneIntervalDays: 7, captureTurnDedupThreshold: 0.93, projectPartitions: false }
   const next = numericDraft(draft)
   assert.ok(next, 'the defaults save')
   assert.equal(next.importanceWeight, 0.2)

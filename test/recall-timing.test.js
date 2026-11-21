@@ -129,7 +129,7 @@ test('Ollama embeddings carry keep_alive (default 30m, configurable, empty = Oll
 test('config: captureTurnDedupThreshold and embedderKeepAlive are validated', () => {
   const file = path.join(os.tmpdir(), 'dsh-mem0-timing-missing-oss.json')
   const base = { backend: 'oss' }
-  assert.equal(resolveConfig(base, { ossConfigPath: file }).captureTurnDedupThreshold, 0.85)
+  assert.equal(resolveConfig(base, { ossConfigPath: file }).captureTurnDedupThreshold, 0.93)
   assert.equal(resolveConfig(base, { ossConfigPath: file }).embedderKeepAlive, '30m')
   assert.equal(resolveConfig({ ...base, captureTurnDedupThreshold: 0 }, { ossConfigPath: file }).captureTurnDedupThreshold, 0)
   assert.throws(() => resolveConfig({ ...base, captureTurnDedupThreshold: 0.3 }, { ossConfigPath: file }), /captureTurnDedupThreshold/)
