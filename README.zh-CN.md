@@ -542,6 +542,8 @@ npm run upstream
 
 发布说明为双语，英文在前：[RELEASE.md](RELEASE.md)。
 
+在 GitHub 上新建 release 就会自动发到 npm：tag 写成 `vX.Y.Z`，和 `package.json` 的 `version` 一致。勾选 **pre-release** 时发布到 `next` 标签。详见 [RELEASE.md](RELEASE.md) 的「如何发布」。
+
 ## License
 
 MIT。
