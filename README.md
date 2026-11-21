@@ -543,6 +543,8 @@ The working directory is not sent. With `backend: auto`, an inherited `MEM0_API_
 
 Release notes are bilingual with English first: [RELEASE.md](RELEASE.md).
 
+Creating a GitHub release publishes the package to npm automatically: tag it `vX.Y.Z`, matching the `version` in `package.json`. A release marked **pre-release** is published to the `next` dist-tag. See "Publishing" in [RELEASE.md](RELEASE.md).
+
 ## License
 
 MIT.
