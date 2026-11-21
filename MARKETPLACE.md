@@ -5,7 +5,7 @@ This file is the remaining checklist for publishing the universal build.
 ## Package
 
 - npm name: `dsh-mem0`
-- version: `0.3.1`
+- version: `0.4.0`
 - `private: false`
 - `dsh.bundle.patch` is present in `package.json`.
 - `dsh-plugin` keyword is present.
