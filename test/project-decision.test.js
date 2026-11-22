@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { chipDetail, displayPath, normalizePath, ProjectResolver, projectIdentity } from '../lib/project-scope.js'
 
-const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-project-')))
+const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-project-')))
 const home = path.join(base, 'home')
 fs.mkdirSync(home)
 test.after(() => fs.rmSync(base, { recursive: true, force: true }))
@@ -141,7 +141,7 @@ test('git worktrees (also .claude/worktrees/*) share the main checkout\'s partit
     assert.equal(tree.project.name, 'ledger', 'named after the main checkout')
     assert.equal(tree.detail.worktree, true)
     assert.equal(normalizePath(tree.detail.path), normalizePath(main))
-    assert.equal(normalizePath(tree.detail.checkout), normalizePath(fs.realpathSync(dir)))
+    assert.equal(normalizePath(tree.detail.checkout), normalizePath(fs.realpathSync.native(dir)))
   }
   assert.equal(top.detail.worktree, undefined)
   // With a remote: one git id for all of them.
