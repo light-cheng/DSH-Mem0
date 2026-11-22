@@ -284,7 +284,7 @@ test('each DSH failure code has its own text in both languages, naming the model
 })
 
 test('DSH texts exist in both languages with the same placeholders', () => {
-  const keys = Object.keys(page.en).filter((key) => key.startsWith('wzFailDsh_') || key.startsWith('wzLlmDsh') || key.startsWith('wzLlmVia') || key.startsWith('statusLlmDsh') || key === 'wzAdviceOtherModel' || key === 'wzStepName_model')
+  const keys = Object.keys(page.en).filter((key) => key.startsWith('wzFailDsh_') || key.startsWith('wzLlmDsh') || key.startsWith('wzLlmVia') || key.startsWith('statusLlmDsh') || key === 'wzAdviceOtherModel' || key === 'wzCheckModel')
   assert.ok(keys.length >= 20)
   const holes = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort().join(',')
   for (const key of keys) {

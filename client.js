@@ -441,7 +441,7 @@ window.__ModuleLoader__.load({
       wzLlmDshUsed: "model {model}",
       wzLlmDshModelAny: "DSH's model",
       wzAdviceOtherModel: "The model did not answer JSON. Select another model in DSH, or set a model yourself.",
-      wzStepName_model: "model test",
+      wzCheckModel: "Extraction model {model} answers",
       wzFailDsh_NO_SERVICE: "DSH's model service is not available yet. Wait a few seconds and test again; if this stays, restart DSH.",
       wzFailDsh_NO_MODEL: "No model is selected in DSH. Pick a model in DSH, then test again.",
       wzFailDsh_NO_ADAPTER: "The provider of {model} is not loaded in DSH. Check DSH's model settings, or select another model.",
@@ -454,8 +454,9 @@ window.__ModuleLoader__.load({
       wzFailDsh_CONTEXT_WINDOW_EXCEEDED: "The extraction prompt is longer than the context window of {model}. Select a model with a larger context window in DSH.",
       wzFailDsh_TIMEOUT: "{model} did not answer in time. Test again, or select a faster model in DSH.",
       wzFailDsh_other: "{model} failed ({code}). Check the model in DSH, then test again.",
-      statusLlmDsh: "follows DSH · {model}",
-      statusLlmDshNone: "follows DSH · no model selected",
+      statusLlmDsh: "Extraction follows DSH's current model: {model}",
+      statusLlmDshLabel: "Extraction LLM · follows DSH",
+      statusLlmDshNone: "no model selected in DSH",
       wzHygieneBilling: 'Memory hygiene is separate: by default it uses the model currently set in DSH (not this one), billed to your provider in DSH and not counted in DSH usage statistics. Each hygiene report shows the tokens used; switch "Model-led hygiene" off in the settings to run script checks only.',
       wzMaxTokens: "Output budget (max_tokens)",
       wzEffort: "reasoning_effort (optional)",
@@ -1095,7 +1096,7 @@ window.__ModuleLoader__.load({
       wzLlmDshUsed: "模型 {model}",
       wzLlmDshModelAny: "DSH 的模型",
       wzAdviceOtherModel: "模型没有返回 JSON。请在 DSH 里换一个模型，或者改成自己填写模型。",
-      wzStepName_model: "模型测试",
+      wzCheckModel: "抽取模型 {model} 能正常回答",
       wzFailDsh_NO_SERVICE: "DSH 的模型服务还没就绪。请等几秒再测；如果一直这样，重启 DSH。",
       wzFailDsh_NO_MODEL: "DSH 里还没有选中模型。请在 DSH 里选一个模型，再测试。",
       wzFailDsh_NO_ADAPTER: "DSH 没有加载 {model} 的 provider。请检查 DSH 的模型设置，或者换一个模型。",
@@ -1108,8 +1109,9 @@ window.__ModuleLoader__.load({
       wzFailDsh_CONTEXT_WINDOW_EXCEEDED: "抽取用的提示词超出了 {model} 的上下文长度。请在 DSH 里换一个上下文更长的模型。",
       wzFailDsh_TIMEOUT: "{model} 没有及时回答。请再测一次，或者在 DSH 里换一个更快的模型。",
       wzFailDsh_other: "{model} 调用失败（{code}）。请检查 DSH 里的这个模型，再测试。",
-      statusLlmDsh: "跟随 DSH · {model}",
-      statusLlmDshNone: "跟随 DSH · 没有选中模型",
+      statusLlmDsh: "抽取跟随 DSH 当前模型：{model}",
+      statusLlmDshLabel: "抽取 LLM · 跟随 DSH",
+      statusLlmDshNone: "DSH 里没有选中模型",
       wzHygieneBilling: '记忆巡检是另一回事：默认调用你当前在 DSH 配置的模型（不是这里填的模型），费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计。每次巡检报告都会显示用了多少 token；在设置里关掉「模型巡检」后只做脚本巡检。',
       wzMaxTokens: "输出上限（max_tokens）",
       wzEffort: "reasoning_effort（可选）",
@@ -3393,6 +3395,7 @@ window.__ModuleLoader__.load({
       const [untestedWarned, setUntestedWarned] = useState(false)
       // DSH's current model (names only), refreshed while the LLM step shows it.
       const [dshModel, setDshModel] = useState(null)
+      const lastDshName = useRef(null)
       const followsDshNow = step === 'llm' && draft?.llm?.provider === 'dsh'
       useEffect(() => {
         if (!followsDshNow) return undefined
@@ -3400,7 +3403,12 @@ window.__ModuleLoader__.load({
         const refresh = async () => {
           try {
             const data = await fetchJson(SETUP_PATH, { method: 'POST', retry: false, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'dshModel' }) })
-            if (!stopped && data?.dshModel) setDshModel(data.dshModel)
+            if (stopped || !data?.dshModel) return
+            // Another model now: earlier test results were for the old one.
+            const name = data.dshModel.name ?? ''
+            if (lastDshName.current !== null && lastDshName.current !== name) setResults((current) => ({ ...current, llm: null, selftest: null }))
+            lastDshName.current = name
+            setDshModel(data.dshModel)
           } catch {
             // the last known model stays shown
           }
@@ -3850,7 +3858,7 @@ window.__ModuleLoader__.load({
         ]
       }
 
-      const stepLabel = (name) => t({ write: 'wzCheckWrite', search: 'wzCheckSearch', delete: 'wzCheckDelete', leftover: 'wzCheckLeftover', store: 'wzStepStore', credentials: 'wzCheckCredentials' }[name] ?? 'wzCheckWrite')
+      const stepLabel = (name, item) => name === 'model' ? template(t('wzCheckModel'), { model: item?.model || t('wzLlmDshModelAny') }) : t({ write: 'wzCheckWrite', search: 'wzCheckSearch', delete: 'wzCheckDelete', leftover: 'wzCheckLeftover', store: 'wzStepStore', credentials: 'wzCheckCredentials' }[name] ?? 'wzCheckWrite')
 
       const saveNow = async (extra = {}) => {
         let outcome = await post('save', extra)
@@ -3889,7 +3897,7 @@ window.__ModuleLoader__.load({
         ]
         if (result?.steps?.length) {
           body.push(h('div', { key: 'steps', className: 'mem0-wz-list' }, result.steps.map((item) =>
-            h('div', { key: item.step, className: item.ok ? 'mem0-wz-ok' : 'mem0-error' }, `${item.ok ? '✓' : '✗'} ${stepLabel(item.step)}${item.error ? `: ${item.error}` : ''}`),
+            h('div', { key: item.step, className: item.ok ? 'mem0-wz-ok' : 'mem0-error' }, `${item.ok ? '✓' : '✗'} ${stepLabel(item.step, item)}${item.error ? `: ${item.error}` : ''}`),
           )))
         }
         if (result) {
@@ -4538,12 +4546,16 @@ window.__ModuleLoader__.load({
           })
         }
         if (data.llm) {
+          // Following DSH: the label says so; the value is the model id now
+          // (provider in the tooltip), so it fits the cell.
+          const dshName = data.llm.followsDsh ? String(data.llm.model ?? '') : ''
           statusItems.push({
             key: 'llm',
-            label: t('statusLlm'),
+            label: data.llm.followsDsh ? t('statusLlmDshLabel') : t('statusLlm'),
             value: data.llm.followsDsh
-              ? (data.llm.model ? template(t('statusLlmDsh'), { model: data.llm.model }) : t('statusLlmDshNone'))
+              ? (dshName ? dshName.slice(dshName.indexOf('/') + 1) : t('statusLlmDshNone'))
               : data.llm.configured ? data.llm.model ?? 'OK' : data.llm.error ?? t('statusLlmMissing'),
+            ...(dshName ? { title: template(t('statusLlmDsh'), { model: dshName }) } : {}),
           })
         }
         statusItems.push({
@@ -4791,7 +4803,7 @@ window.__ModuleLoader__.load({
                   'div',
                   { className: 'mem0-stat', key: item.key },
                   h('span', { className: 'mem0-stat-label' }, item.label),
-                  h('span', { className: 'mem0-stat-value', title: String(item.value) }, item.value),
+                  h('span', { className: 'mem0-stat-value', title: String(item.title ?? item.value) }, item.value),
                 ),
               ),
             ),
