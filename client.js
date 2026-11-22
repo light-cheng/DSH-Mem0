@@ -388,6 +388,33 @@ window.__ModuleLoader__.load({
       wzErr_CANCELLED: 'Cancelled; nothing was changed',
       wzFailed: "Failed: {error}",
       wzAuthFailed: "The server refused the key (HTTP 401/403).",
+      wzFail_auth: "{service} is running but has API key verification on. Enter the key below, or turn off API key verification in {service}'s settings (while the service listens on this computer only, that costs little).",
+      wzFail_authAny: "The service is running but has API key verification on. Enter the key below, or turn off API key verification in the service's settings (while the service listens on this computer only, that costs little).",
+      wzFail_authKey: "{service} refused this API key (HTTP {status}). Check the key, or turn off API key verification in {service}'s settings (while the service listens on this computer only, that costs little).",
+      wzFail_authKeyAny: "The server refused this API key (HTTP {status}). Check the key and its credential name.",
+      wzFail_authCloud: "The server needs an API key (HTTP {status}). Enter the key below.",
+      wzFail_notFoundSuggest: "Wrong address path (HTTP 404). An OpenAI-compatible address usually ends with /v1, for example {example}.",
+      wzFail_notFound: "{service} answered HTTP 404{detail}. Check the address path and the model name: an OpenAI-compatible address usually ends with /v1, for example {example}.",
+      wzFail_notFoundAny: "The server answered HTTP 404{detail}. Check the address path and the model name: an OpenAI-compatible address usually ends with /v1, for example {example}.",
+      wzFail_notFoundOllama: "Ollama answered HTTP 404{detail}. Check the model name (download it with ollama pull first); an Ollama address has no path, for example http://127.0.0.1:11434.",
+      wzFail_refused: "Nothing is running on {endpoint} (connection refused). Start {service} first, then try again.",
+      wzFail_refusedAny: "Nothing is running on {endpoint} (connection refused). Start {starters} first, then try again.",
+      wzFail_refusedRemote: "Cannot reach {endpoint} (connection refused). Check the address and port.",
+      wzFail_timeout: "{service} ({endpoint}) did not answer within {seconds} s: nothing may be running on the port, or it is still loading a model. Make sure {service} is started, then try again.",
+      wzFail_timeoutAny: "{endpoint} did not answer within {seconds} s: nothing may be running on the port, or it is still loading a model. Start {starters} first, then try again.",
+      wzFail_timeoutRemote: "{endpoint} did not answer within {seconds} s. Check the network and the address, then try again.",
+      wzFail_http: "{service} answered HTTP {status}{detail}.",
+      wzFail_httpAny: "The server answered HTTP {status}{detail}.",
+      wzFail_network: "Cannot reach {endpoint}{detail}. Check the address and the network.",
+      wzFail_badResponse: "{endpoint} answered in an unexpected shape{detail}. Check that the address is an OpenAI-compatible (or Ollama) API and the model name is right.",
+      wzFail_badUrl: "The address must start with http:// or https://.",
+      wzFailDetail: ": {detail}",
+      wzStarters: "Ollama or LM Studio",
+      wzStartersMac: "oMLX, Ollama or LM Studio",
+      wzUseSuggested: "Change to {url}",
+      wzProbeRefused: "not running. To use it, start {label} first.",
+      wzProbeTimeout: "no answer: nothing may be running on the port, or {label} is stuck. Restart {label}, then detect again.",
+      wzLocalKeyHint: "Optional: only needed when the local service has API key verification on. Stored in DSH credentials, never in oss.json.",
       wzLlmHint: "An OpenAI-compatible chat API that turns conversations into facts. The test sends a fixed sample conversation, not your data.",
       wzHygieneBilling: 'Memory hygiene is separate: by default it uses the model currently set in DSH (not this one), billed to your provider in DSH and not counted in DSH usage statistics. Each hygiene report shows the tokens used; switch "Model-led hygiene" off in the settings to run script checks only.',
       wzMaxTokens: "Output budget (max_tokens)",
@@ -975,6 +1002,33 @@ window.__ModuleLoader__.load({
       wzErr_CANCELLED: '已取消，没有做任何改动',
       wzFailed: "失败：{error}",
       wzAuthFailed: "服务拒绝了这个 key（HTTP 401/403）。",
+      wzFail_auth: "{service} 在运行，但开启了 API key 验证。可以在下面填入 key，或者在 {service} 设置里关掉 API key 验证（服务只监听本机时，关掉影响不大）。",
+      wzFail_authAny: "服务在运行，但开启了 API key 验证。可以在下面填入 key，或者在服务的设置里关掉 API key 验证（服务只监听本机时，关掉影响不大）。",
+      wzFail_authKey: "{service} 拒绝了这个 API key（HTTP {status}）。请核对 key，或者在 {service} 设置里关掉 API key 验证（服务只监听本机时，关掉影响不大）。",
+      wzFail_authKeyAny: "服务拒绝了这个 API key（HTTP {status}）。请核对 key 和凭据名。",
+      wzFail_authCloud: "服务要求 API key（HTTP {status}）。请在下面填入 key。",
+      wzFail_notFoundSuggest: "地址路径不对（HTTP 404）。OpenAI 兼容的地址通常以 /v1 结尾，比如 {example}。",
+      wzFail_notFound: "{service} 返回 HTTP 404{detail}。请核对地址路径和模型名：OpenAI 兼容的地址通常以 /v1 结尾，比如 {example}。",
+      wzFail_notFoundAny: "服务返回 HTTP 404{detail}。请核对地址路径和模型名：OpenAI 兼容的地址通常以 /v1 结尾，比如 {example}。",
+      wzFail_notFoundOllama: "Ollama 返回 HTTP 404{detail}。请核对模型名（先用 ollama pull 下载）；Ollama 的地址不带路径，比如 http://127.0.0.1:11434。",
+      wzFail_refused: "{endpoint} 端口上没有服务在跑（连接被拒）。先启动 {service}，再试一次。",
+      wzFail_refusedAny: "{endpoint} 端口上没有服务在跑（连接被拒）。先启动 {starters}，再试一次。",
+      wzFail_refusedRemote: "连不上 {endpoint}（连接被拒）。请检查地址和端口。",
+      wzFail_timeout: "{service}（{endpoint}）没有在 {seconds} 秒内回应：端口上可能没有服务在跑，或者还在加载模型。确认 {service} 已启动，再试一次。",
+      wzFail_timeoutAny: "{endpoint} 没有在 {seconds} 秒内回应：端口上可能没有服务在跑，或者还在加载模型。先启动 {starters}，再试一次。",
+      wzFail_timeoutRemote: "{endpoint} 没有在 {seconds} 秒内回应。请检查网络和地址，稍后再试。",
+      wzFail_http: "{service} 返回 HTTP {status}{detail}。",
+      wzFail_httpAny: "服务返回 HTTP {status}{detail}。",
+      wzFail_network: "连不上 {endpoint}{detail}。请检查地址和网络。",
+      wzFail_badResponse: "{endpoint} 的回答格式不对{detail}。请确认地址是 OpenAI 兼容（或 Ollama）接口，模型名也正确。",
+      wzFail_badUrl: "地址要以 http:// 或 https:// 开头。",
+      wzFailDetail: "：{detail}",
+      wzStarters: "Ollama 或 LM Studio",
+      wzStartersMac: "oMLX、Ollama 或 LM Studio",
+      wzUseSuggested: "改成 {url}",
+      wzProbeRefused: "没有运行。要用它，先启动 {label}。",
+      wzProbeTimeout: "没有回应：端口上可能没有服务，或者 {label} 卡住了。重启 {label} 后再探测一次。",
+      wzLocalKeyHint: "可选：本地服务开启了 API key 验证时才需要填。key 存进 DSH 凭据库，不写进 oss.json。",
       wzLlmHint: "用来从对话里抽取事实的 OpenAI 兼容聊天接口。测试时发送一段固定的示例对话，不发送你的数据。",
       wzHygieneBilling: '记忆巡检是另一回事：默认调用你当前在 DSH 配置的模型（不是这里填的模型），费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计。每次巡检报告都会显示用了多少 token；在设置里关掉「模型巡检」后只做脚本巡检。',
       wzMaxTokens: "输出上限（max_tokens）",
@@ -2965,6 +3019,8 @@ window.__ModuleLoader__.load({
             model: current.embedder.model || '',
             dims: current.embedder.dims || '',
             apiKeyRef: current.embedder.apiKeyRef || state?.refs?.embedder || '',
+            // A local server with a stored key (API key verification on).
+            keyTyped: Boolean(current.embedder.apiKeyRef),
           }
         : { mode: 'cloud', provider: 'openai', baseUrl: cloud?.baseUrl ?? '', model: cloud?.model ?? '', dims: cloud?.dims ?? '', apiKeyRef: state?.refs?.embedder ?? '' }
       const llm = {
@@ -2987,7 +3043,9 @@ window.__ModuleLoader__.load({
       const embedder = { ...draft.embedder }
       delete embedder.mode
       // A local server needs no key: drop a leftover credential name.
-      if (draft.embedder.mode === 'local' && !draft.embedder.keyTyped) embedder.apiKeyRef = ''
+      // A local OpenAI-compatible server may want one (API key verification
+      // on): kept when typed now or stored for it before.
+      if (draft.embedder.mode === 'local' && (draft.embedder.provider === 'ollama' || !draft.embedder.keyTyped)) embedder.apiKeyRef = ''
       delete embedder.keyTyped
       return { embedder, llm: { ...draft.llm, maxTokens: Number(draft.llm.maxTokens) || undefined }, storePath: draft.storePath, storeConfirmed: draft.storeConfirmed === true, useLiteralKey: draft.useLiteralKey }
     }
@@ -3009,8 +3067,84 @@ window.__ModuleLoader__.load({
       return info.ref === block.apiKeyRef && (saved.apiKeyRef || '') === block.apiKeyRef && wizardServer(component, saved) === wizardServer(component, block)
     }
 
+    /**
+     * Why a model server call failed, in the page language, with what to do
+     * next: from the route's structured `failure` (lib/setup-wizard.js
+     * failureOf), never from its English text. Pure, for tests.
+     */
+    function failureText(t, failure) {
+      if (!failure?.reason) return ''
+      const service = failure.service || ''
+      const values = {
+        service,
+        endpoint: failure.endpoint || '',
+        status: failure.status ?? '',
+        detail: failure.detail ? template(t('wzFailDetail'), { detail: failure.detail }) : '',
+        example: failure.suggestedBaseUrl || `${failure.origin || 'http://127.0.0.1:8000'}/v1`,
+        seconds: Number.isFinite(failure.timeoutMs) ? Math.max(0.1, Math.round(failure.timeoutMs / 100) / 10) : '?',
+        starters: t(failure.platform === 'darwin' ? 'wzStartersMac' : 'wzStarters'),
+      }
+      const named = (key) => (service ? key : `${key}Any`)
+      let key
+      switch (failure.reason) {
+        case 'auth':
+          key = failure.keySent ? named('wzFail_authKey') : failure.local ? named('wzFail_auth') : 'wzFail_authCloud'
+          break
+        case 'not_found':
+          key = failure.suggestedBaseUrl ? 'wzFail_notFoundSuggest' : failure.provider === 'ollama' ? 'wzFail_notFoundOllama' : named('wzFail_notFound')
+          break
+        case 'refused':
+          key = failure.local ? named('wzFail_refused') : 'wzFail_refusedRemote'
+          break
+        case 'timeout':
+          key = failure.local ? named('wzFail_timeout') : 'wzFail_timeoutRemote'
+          break
+        case 'http':
+          key = named('wzFail_http')
+          break
+        case 'bad_response':
+          key = 'wzFail_badResponse'
+          break
+        case 'bad_url':
+          key = 'wzFail_badUrl'
+          break
+        default:
+          key = 'wzFail_network'
+      }
+      return template(t(key), values)
+    }
+
+    /** One probe line's state: what the page shows after the label and port. */
+    function probeLineText(t, service) {
+      if (service.ok) return template(t('wzServiceUp'), { label: service.label, port: service.port, count: service.models?.length ?? 0 })
+      const reason = service.failure?.reason
+      const text = reason === 'refused'
+        ? template(t('wzProbeRefused'), { label: service.label })
+        : reason === 'timeout'
+          ? template(t('wzProbeTimeout'), { label: service.label })
+          : service.failure ? failureText(t, service.failure) : String(service.error ?? '')
+      return template(t('wzServiceDown'), { label: service.label, port: service.port, error: text })
+    }
+
+    /**
+     * The service the wizard fills in after a probe: the first one listing
+     * embedding models, else the first listing any, else the first that
+     * runs but needs a key. Only when the address is empty or one of the
+     * probed ones (a typed address is kept). Pure, for tests.
+     */
+    function probeAutofill(services, embedder) {
+      const list = Array.isArray(services) ? services : []
+      const current = String(embedder?.baseUrl ?? '').trim()
+      if (current && !list.some((service) => service.baseUrl === current)) return null
+      return list.find((service) => service.ok && service.embeddingModels?.length)
+        ?? list.find((service) => service.ok && service.models?.length)
+        ?? list.find((service) => service.needsKey)
+        ?? null
+    }
+
     /** A route's failure in the page language; the server's English text after it. */
     function wizardError(t, result) {
+      if (result?.failure?.reason) return failureText(t, result.failure)
       const code = result?.code
       const key = code ? `wzErr_${code}` : ''
       const local = key && t(key) !== key ? t(key) : ''
@@ -3066,8 +3200,9 @@ window.__ModuleLoader__.load({
         reason = t(`wzReason_${result.reason}`) !== `wzReason_${result.reason}` ? t(`wzReason_${result.reason}`) : result.reason
         if (advice.length === 0) advice = [t(result.reason === 'empty' ? 'wzAdviceEmpty' : result.reason === 'refusal' ? 'wzAdviceRefusal' : 'wzAdviceGeneric')]
       } else {
-        reason = result.authFailed ? t('wzAuthFailed') : wizardError(t, result)
-        if (advice.length === 0) {
+        reason = result.authFailed && !result.failure ? t('wzAuthFailed') : wizardError(t, result)
+        // A failure's text says what to do next already.
+        if (advice.length === 0 && !result.failure?.reason) {
           advice = [t(
             result.authFailed ? 'wzAdviceAuth'
               : result.code === 'ETIMEDOUT' ? 'wzAdviceTimeout'
@@ -3120,6 +3255,13 @@ window.__ModuleLoader__.load({
     function ResultLine({ ok, text }) {
       if (!text) return null
       return h('p', { className: ok ? 'mem0-wz-ok' : 'mem0-error' }, text)
+    }
+
+    /** "Change to …/v1" after a 404 from an address without a path. */
+    function SuggestedUrl({ t, failure, onUse }) {
+      const url = failure?.suggestedBaseUrl
+      if (!url) return null
+      return h('div', { className: 'mem0-wz-row' }, h('button', { type: 'button', className: 'mem0-secondary', onClick: () => onUse(url) }, template(t('wzUseSuggested'), { url })))
     }
 
     function SetupWizard({ t, backend, onClose, onEnable }) {
@@ -3232,7 +3374,7 @@ window.__ModuleLoader__.load({
       const steps = WIZARD_STEPS
       const index = steps.indexOf(step)
 
-      const keyField = (component, value, setValue) => {
+      const keyField = (component, value, setValue, { optional = false } = {}) => {
         const info = state.credentials?.[component]
         const ref = draft[component].apiKeyRef
         const stored = storedKeyApplies(state, component, draft[component])
@@ -3241,13 +3383,13 @@ window.__ModuleLoader__.load({
           h(TextField, {
             key: `${component}-key`,
             label: t('wzKey'),
-            hint: stored ? template(t('wzKeyStored'), { ref }) : moved ? t('wzKeyNewServer') : t('wzKeyHint'),
+            hint: stored ? template(t('wzKeyStored'), { ref }) : moved ? t('wzKeyNewServer') : optional ? t('wzLocalKeyHint') : t('wzKeyHint'),
             type: 'password',
             autoComplete: 'off',
             value,
             onChange: (next) => {
               setValue(next)
-              if (component === 'embedder') setDraft((current) => ({ ...current, embedder: { ...current.embedder, keyTyped: Boolean(next.trim()) } }))
+              if (component === 'embedder') setDraft((current) => ({ ...current, embedder: { ...current.embedder, keyTyped: Boolean(next.trim()) || Boolean(state.current?.embedder?.apiKeyRef) } }))
               record(component, null)
               record('selftest', null)
             },
@@ -3275,6 +3417,12 @@ window.__ModuleLoader__.load({
         record('embedder', result)
         if (result?.ok && result.dims) setEmbedder({ dims: result.dims })
         if (result?.ok) record('embedder', result)
+      }
+
+      const useService = (service) => {
+        const first = service.embeddingModels?.[0] ?? ''
+        setEmbedder({ provider: service.provider, baseUrl: service.baseUrl, model: first, dims: '' })
+        setModels((current) => ({ ...current, embedder: service.embeddingModels?.length ? service.embeddingModels : service.models ?? [] }))
       }
 
       const embedderStep = () => {
@@ -3322,7 +3470,11 @@ window.__ModuleLoader__.load({
                 disabled: busy === 'probe',
                 onClick: async () => {
                   const result = await post('probe')
-                  setServices(result?.services ?? [])
+                  const found = result?.services ?? []
+                  setServices(found)
+                  // Fill in a running service (one that needs a key too).
+                  const pick = probeAutofill(found, e)
+                  if (pick) useService(pick)
                 },
               }, busy === 'probe' ? t('wzDetecting') : t('wzDetect')),
             ),
@@ -3330,18 +3482,12 @@ window.__ModuleLoader__.load({
           if (services) {
             body.push(h('div', { key: 'services', className: 'mem0-wz-list' }, services.map((service) =>
               h('div', { key: service.id, className: 'mem0-wz-item' },
-                h('span', null, service.ok
-                  ? template(t('wzServiceUp'), { label: service.label, port: service.port, count: service.models.length })
-                  : template(t('wzServiceDown'), { label: service.label, port: service.port, error: service.error ?? '' })),
-                service.ok
+                h('span', null, probeLineText(t, service)),
+                service.ok || service.running
                   ? h('button', {
                       type: 'button',
                       className: 'mem0-secondary',
-                      onClick: () => {
-                        const first = service.embeddingModels[0] ?? ''
-                        setEmbedder({ provider: service.provider, baseUrl: service.baseUrl, model: first, dims: '' })
-                        setModels((current) => ({ ...current, embedder: service.embeddingModels.length ? service.embeddingModels : service.models }))
-                      },
+                      onClick: () => useService(service),
                     }, t('wzUse'))
                   : null,
                 service.hint ? h(ReservedPortHint, { t, hint: service.hint }) : null,
@@ -3378,6 +3524,9 @@ window.__ModuleLoader__.load({
           h(TextField, { key: 'model', label: models.embedder.length > 0 ? t('wzModelTyped') : t('wzModel'), value: e.model, onChange: (value) => setEmbedder({ model: value, dims: '' }) }),
         )
         if (e.mode === 'cloud') body.push(...keyField('embedder', keys.embedder, (value) => setKeys((current) => ({ ...current, embedder: value }))))
+        // A local OpenAI-compatible server (oMLX, LM Studio…) may have API
+        // key verification on: an optional key, stored like a cloud one.
+        else if (e.provider === 'openai') body.push(...keyField('embedder', keys.embedder, (value) => setKeys((current) => ({ ...current, embedder: value })), { optional: true }))
         body.push(
           h('div', { key: 'actions', className: 'mem0-wz-row' },
             h('button', {
@@ -3398,7 +3547,8 @@ window.__ModuleLoader__.load({
             body.push(h(ResultLine, { key: 'ok', ok: true, text: template(t('wzEmbedOk'), { dims: result.dims }) }))
             if (result.dimsDiffer) body.push(h(ResultLine, { key: 'dims', ok: false, text: template(t('wzDimsDiffer'), result.dimsDiffer) }))
           } else {
-            body.push(h(ResultLine, { key: 'err', ok: false, text: result.authFailed ? t('wzAuthFailed') : wizardError(t, result) }))
+            body.push(h(ResultLine, { key: 'err', ok: false, text: result.authFailed && !result.failure ? t('wzAuthFailed') : wizardError(t, result) }))
+            body.push(h(SuggestedUrl, { key: 'suggest', t, failure: result.failure, onUse: (url) => setEmbedder({ baseUrl: url }) }))
             if (result.hint) body.push(h(ReservedPortHint, { key: 'hint', t, hint: result.hint }))
           }
           if (result.storeMismatch) {
@@ -3455,6 +3605,7 @@ window.__ModuleLoader__.load({
         ]
         if (result) {
           body.push(h(LlmTestResult, { key: 'result', t, result }))
+          body.push(h(SuggestedUrl, { key: 'suggest', t, failure: result.failure, onUse: (url) => setLlm({ baseUrl: url }) }))
           if (result.hint) body.push(h(ReservedPortHint, { key: 'hint', t, hint: result.hint }))
         }
         return body
@@ -3543,7 +3694,10 @@ window.__ModuleLoader__.load({
         }
         if (result) {
           if (result.ok) body.push(h(ResultLine, { key: 'ok', ok: true, text: t('wzSelfTestOk') }))
-          else if (!result.steps?.length || result.step === 'store') body.push(h(ResultLine, { key: 'err', ok: false, text: result.location ? storeCheckText(t, result.location) : result.authFailed || result.probe?.authFailed ? t('wzAuthFailed') : wizardError(t, result) }))
+          else if (result.failure?.reason) {
+            // A model server failed: why, and what to do (the step to go back to).
+            body.push(h(ResultLine, { key: 'err', ok: false, text: `${result.component === 'llm' ? t('wzStepLlm') : t('wzStepEmbedder')}: ${failureText(t, result.failure)}` }))
+          } else if (!result.steps?.length || result.step === 'store') body.push(h(ResultLine, { key: 'err', ok: false, text: result.location ? storeCheckText(t, result.location) : result.authFailed || result.probe?.authFailed ? t('wzAuthFailed') : wizardError(t, result) }))
           if (result.ok && result.reembed > 0) body.push(h('p', { key: 'reembed', className: 'mem0-hint' }, template(t('wzReembedOnSave'), { memories: result.reembed })))
           if (result.code === 'EMBEDDER_MISMATCH') body.push(h('p', { key: 'mismatch', className: 'mem0-hint' }, t('wzMismatchGoBack')))
         }
@@ -5293,6 +5447,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft } }
   },
 })
