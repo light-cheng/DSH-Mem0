@@ -192,8 +192,8 @@ export async function apply(ctx, rawConfig) {
   })
   // Partitions (global / project / session) are stored by the local
   // backend; REST backends keep every memory global. The project comes from
-  // the session's starting directory (its header, else DSH's
-  // workingDirectory service). The store records each project's name and
+  // the session's current directory (DSH's workingDirectory service, else
+  // the session header), so a cd moves it. The store records each project's name and
   // aliases (lib/project-scope.js).
   const projects =
     config.backend === 'oss'

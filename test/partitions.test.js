@@ -134,11 +134,15 @@ test('project id: origin first, then the repository root, then the working direc
   assert.equal(JSON.stringify(root).includes('/home'), false)
 })
 
-test('the working directory is the session header\'s (its start), then the workingDirectory service', () => {
+test('the working directory is the workingDirectory service\'s (a cd moves it), then the session header\'s', () => {
   const session = { id: 's1', header: { cwd: '/start' } }
-  // A `cd` during the session moves the live directory, not the project.
-  assert.equal(sessionWorkingDirectory(session, { get: () => '/moved' }), '/start')
+  // A `cd` during the session moves the live directory, and the project with it.
+  assert.equal(sessionWorkingDirectory(session, { get: () => '/moved' }), '/moved')
   assert.equal(sessionWorkingDirectory(session, undefined), '/start')
+  // The service's launch-folder fallback for a session object it does not know: the header wins.
+  assert.equal(sessionWorkingDirectory(session, { get: () => '/launch', defaultDirectory: '/launch' }), '/start')
+  assert.equal(sessionWorkingDirectory({ id: 's4', header: { cwd: '/launch' } }, { get: () => '/launch', defaultDirectory: '/launch' }), '/launch')
+  assert.equal(sessionWorkingDirectory({ id: 's5' }, { get: () => '/launch', defaultDirectory: '/launch' }), '/launch')
   assert.equal(sessionWorkingDirectory({ id: 's2' }, { get: () => '/live' }), '/live')
   assert.equal(sessionWorkingDirectory({ id: 's3' }, { get: () => { throw new Error('gone') } }), '')
   assert.equal(sessionWorkingDirectory({ id: 's2' }, undefined), '')
@@ -176,18 +180,21 @@ test('ProjectResolver: origin, no origin, not a repository, cached per directory
   assert.equal(folder.kind, 'cwd')
   assert.equal(folder.projectId, (await noGit.resolveCwd('c:/work/thing')).projectId)
 
-  // Sessions: the header's directory first, the service without one; a
-  // session keeps its first project when its directory changes.
+  // Sessions: the service's live directory first, the header without one;
+  // a cd during the session moves its project.
   let live = '/repo-b'
   const sessions = new ProjectResolver({ git, platform: 'linux', workingDirectory: () => ({ get: () => live }) })
-  assert.equal((await sessions.resolve({ id: 's', header: { cwd: '/repo-a' } })).projectId, a.projectId)
-  const roaming = { id: 'r' }
+  assert.equal((await sessions.resolve({ id: 's', header: { cwd: '/repo-a' } })).projectId, (await sessions.resolveCwd('/repo-b')).projectId)
+  const roaming = { id: 'r', header: { cwd: '/repo-b' } }
   const first = await sessions.resolve(roaming)
   assert.equal(first.kind, 'root')
   live = '/repo-a'
-  assert.equal((await sessions.resolve(roaming)).projectId, first.projectId, 'a cd does not move the session')
-  assert.equal(sessions.peek(roaming).projectId, first.projectId)
-  assert.equal(sessions.sessionProject('r').projectId, first.projectId)
+  assert.equal(sessions.peek(roaming), undefined, 'peek: the new directory is not looked up yet (not the old project)')
+  assert.equal((await sessions.resolve(roaming)).projectId, a.projectId, 'a cd moves the session')
+  assert.equal(sessions.sessionProject('r').projectId, a.projectId)
+  assert.equal(sessions.peek(roaming).projectId, a.projectId)
+  live = '/repo-b'
+  assert.equal((await sessions.resolve(roaming)).projectId, first.projectId, 'and back')
   assert.equal(sessions.sessionProject('unknown'), undefined)
   assert.equal(await sessions.resolve(null), null)
 })
@@ -1197,7 +1204,10 @@ test('switch off: new memories go to global, recall reads only global and the se
   assert.equal(client.adds.at(-1).projectId, undefined)
   // The chip still names the session's project while the switch is off, so
   // turning it on shows "Memory: project alpha" at once (Windows retest).
-  assert.deepEqual(await off.memoryScope('session-1'), { partitions: false, available: true, project: { name: 'alpha', kind: 'git' } })
+  const offScope = await off.memoryScope('session-1')
+  assert.deepEqual({ ...offScope, detail: undefined }, { partitions: false, available: true, project: { name: 'alpha', kind: 'git', id: ALPHA.projectId }, detail: undefined })
+  assert.equal(offScope.detail.basis, 'git-origin')
+  assert.equal(offScope.detail.partition, `project:${ALPHA.projectId}`)
   assert.equal(client.adds.at(-1).readPartitions, undefined)
 
   // The tools follow the switch: a default add is global, search reads global + session.
@@ -1215,7 +1225,7 @@ test('switch off: new memories go to global, recall reads only global and the se
   const on = engine(client)
   const onBlock = await recallText(on, fakeSession(), 'how do we deploy here?')
   assert.match(onBlock, /make ship/)
-  assert.deepEqual((await on.memoryScope('session-1')).project, { name: 'alpha', kind: 'git' })
+  assert.deepEqual((await on.memoryScope('session-1')).project, { name: 'alpha', kind: 'git', id: ALPHA.projectId })
   on.dispose()
 })
 
@@ -1428,7 +1438,7 @@ test('DSH default workspace: a chat there writes to global even with partitions 
   await new Promise((resolve) => setTimeout(resolve, 30))
   assert.equal(client.adds.at(-1).scope, 'global')
   assert.equal(client.adds.at(-1).projectId, undefined)
-  assert.deepEqual(await life.memoryScope('dw-1'), { partitions: true, available: true, project: null })
+  assert.deepEqual(await life.memoryScope('dw-1'), { partitions: true, available: true, project: null, detail: { basis: 'default-workspace', cwd: '/home/me/Documents/deepseek-harness/default-workspace', partition: 'global' } })
   life.dispose()
 })
 
@@ -1445,12 +1455,68 @@ test('scope chip: the session\'s project is kept across a plugin restart, so a f
   const off = engine(client, { projects: resolver(), overrides: { projectPartitions: false } })
   off.onSessionEvent(session, { type: 'turn/start', data: {} })
   await new Promise((resolve) => setTimeout(resolve, 10))
-  assert.deepEqual(await off.memoryScope('chip-1'), { partitions: false, available: true, project: { name: 'alpha', kind: 'git' } })
+  const alphaId = projectIdentity({ root: '/work/alpha', origin: 'git@github.com:org/alpha.git' }, { platform: 'linux' }).projectId
+  const before = await off.memoryScope('chip-1')
+  assert.deepEqual(before.project, { name: 'alpha', kind: 'git', id: alphaId })
+  assert.equal(before.partitions, false)
+  assert.deepEqual(before.detail, { basis: 'git-origin', cwd: '/work/alpha', path: '/work/alpha', partition: `project:${alphaId}` })
   off.dispose()
   // The switch flipped: DSH restarts the plugin; the new lifecycle has no
   // session registry and no event yet, and still knows the project.
   const on = engine(client, { projects: resolver() })
-  assert.deepEqual(await on.memoryScope('chip-1'), { partitions: true, available: true, project: { name: 'alpha', kind: 'git' } })
+  assert.deepEqual(await on.memoryScope('chip-1'), { partitions: true, available: true, project: { name: 'alpha', kind: 'git', id: alphaId }, detail: before.detail })
   on.dispose()
+  // With DSH's session registry: the new resolver answers from the shared
+  // map, and the hover still has the paths.
+  const again = engine(client, { projects: resolver() })
+  again.sessionRegistry = () => ({ get: (id) => (id === 'chip-1' ? session : undefined) })
+  assert.deepEqual((await again.memoryScope('chip-1')).detail, before.detail)
+  again.dispose()
   assert.ok(SESSION_PROJECTS instanceof Map, 'index.js shares one map per process')
+})
+
+test('a cd during the session: the chip, recall and new memories follow the new directory', async () => {
+  const client = partitionClient([
+    { id: 'pa', memory: 'Deploy alpha with make ship', score: 0.9, scope: 'project', project_id: ALPHA.projectId },
+  ])
+  let live = '/work/alpha'
+  const projects = new ProjectResolver({
+    platform: 'linux',
+    workingDirectory: () => ({ get: () => live, defaultDirectory: '/launch' }),
+    git: async (cwd, args) => {
+      if (cwd === '/work/alpha') return args[0] === 'rev-parse' ? '/work/alpha' : 'git@github.com:org/alpha.git'
+      if (cwd === '/work/beta') return args[0] === 'rev-parse' ? '/work/beta' : ''
+      return ''
+    },
+  })
+  const session = fakeSession({ id: 'cd-1' })
+  const life = engine(client, { projects })
+  life.sessionRegistry = () => ({ get: (id) => (id === 'cd-1' ? session : undefined) })
+  await recallText(life, session, 'how do we deploy here?')
+  assert.ok(client.searches.at(-1).partitions.some((p) => p.project_id === ALPHA.projectId))
+  assert.equal((await life.memoryScope('cd-1')).project.name, 'alpha')
+
+  live = '/work/beta'
+  const beta = projectIdentity({ cwd: '/work/beta', root: '/work/beta' }, { platform: 'linux' })
+  const block = await recallText(life, session, 'how do we deploy here?')
+  const partitions = client.searches.at(-1).partitions
+  assert.ok(partitions.some((p) => p.project_id === beta.projectId), 'recall reads the new project')
+  assert.equal(partitions.some((p) => p.project_id === ALPHA.projectId), false, 'and no longer the old one')
+  // Within one turn the memories already shown stay; the next turn shows only the new project's.
+  assert.match(block, /make ship/)
+  life.onSessionEvent(session, { type: 'turn/start', data: {} })
+  assert.equal((await recallText(life, session, 'how do we deploy here?')).includes('make ship'), false)
+  const scope = await life.memoryScope('cd-1')
+  assert.deepEqual(scope.project, { name: 'beta', kind: 'root', id: beta.projectId })
+  assert.equal(scope.detail.basis, 'git-root')
+  assert.equal(scope.detail.path, '/work/beta')
+
+  life.onSessionEvent(session, { type: 'turn/start', data: {} })
+  life.onSessionEvent(session, { type: 'user/message', data: userMessage('Please remember: beta deploys need a feature flag first.') })
+  life.onSessionEvent(session, { type: 'assistant/message', data: { message: { role: 'assistant', content: [{ type: 'text', text: 'Noted, a flag first.' }] } } })
+  life.onSessionEvent(session, { type: 'turn/end', data: { reason: { kind: 'completed' } } })
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(client.adds.at(-1).scope, 'project')
+  assert.equal(client.adds.at(-1).projectId, beta.projectId, 'the new memory goes to the new project')
+  life.dispose()
 })
