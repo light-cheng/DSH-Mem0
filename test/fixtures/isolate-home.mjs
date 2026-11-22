@@ -24,6 +24,8 @@ if (!process.env.DSH_MEM0_TEST_HOME) {
   // Nothing here runs mem0 itself; set anyway so no tool writes ~/.mem0.
   process.env.MEM0_TELEMETRY = 'false'
   process.env.MEM0_DIR = path.join(home, '.mem0')
+  // oMLX's settings (its API key) are read only from the test home.
+  process.env.OMLX_BASE_PATH = path.join(home, '.omlx')
   process.on('exit', () => {
     try {
       fs.rmSync(home, { recursive: true, force: true })
