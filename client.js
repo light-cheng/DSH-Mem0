@@ -594,9 +594,30 @@ window.__ModuleLoader__.load({
       failureStep_store: 'storing',
       failureStepRunning: '{step} still running after {ms} ms',
       dockOpen: 'Open Mem0 settings',
-      scopeChipProject: 'Memory: project {name}',
-      scopeChipGlobal: 'Memory: global',
-      scopeChipPending: 'Memory: project (found next turn)',
+      scopeChipProject: 'Project',
+      scopeChipGlobal: 'Global',
+      scopeChipAria: 'Mem0 memory partition: {where}',
+      scopeChipAriaProject: 'project {name}',
+      scopeChipAriaGlobal: 'global',
+      scopePopTitle: 'Mem0 memory partition',
+      scopePopProject: 'Project: {name}',
+      scopePopGlobal: 'Global (shared by every project)',
+      scopePopBasis: 'Decided by: {basis}',
+      scopeBasis_gitOrigin: 'git repository, by its origin remote',
+      scopeBasis_gitRoot: 'git repository root (no origin remote)',
+      scopeBasis_folder: 'folder (not in a git repository)',
+      scopeBasis_defaultWorkspace: 'DSH default workspace, so global',
+      scopeBasis_home: 'home folder outside git, so global',
+      scopeBasis_none: 'no working directory, so global',
+      scopeBasis_off: '"Partition by project" is off, so global',
+      scopeBasis_pending: 'not identified yet (DSH reports this conversation at its next turn), global until then',
+      scopePopWorktree: 'git worktree: shares the main checkout\'s partition',
+      scopePopCheckout: 'Worktree: {path}',
+      scopePopPath: 'Path: {path}',
+      scopePopCwd: 'Working directory: {path}',
+      scopePopPartition: 'Partition id: {id}',
+      scopePopWhenOn: 'With the switch on: project {name}',
+      scopePopGitError: 'git did not answer ({error}); treated as a plain folder',
       scopeChipPendingHint: 'Partition by project is on. This conversation\'s project is identified at its next turn; until then new memories go to global. Click to turn the switch off. Applies from the next turn; the same switch is in Mem0 settings.',
       dshDefaultWorkspace: 'DSH default workspace',
       scopeChipOnHint: 'Partition by project is on: new memories from this conversation stay in its project, and recall reads this project, this session and global. Click to turn it off (new memories then go to global). Applies from the next turn; the same switch is in Mem0 settings.',
@@ -1249,9 +1270,30 @@ window.__ModuleLoader__.load({
       failureStep_store: '写入',
       failureStepRunning: '{step}已运行 {ms} ms 仍未完成',
       dockOpen: '打开 Mem0 设置',
-      scopeChipProject: '记忆：项目 {name}',
-      scopeChipGlobal: '记忆：全局',
-      scopeChipPending: '记忆：项目（下一轮识别）',
+      scopeChipProject: '项目',
+      scopeChipGlobal: '全局',
+      scopeChipAria: 'Mem0 记忆分区：{where}',
+      scopeChipAriaProject: '项目 {name}',
+      scopeChipAriaGlobal: '全局',
+      scopePopTitle: 'Mem0 记忆分区',
+      scopePopProject: '项目：{name}',
+      scopePopGlobal: '全局（所有项目共用）',
+      scopePopBasis: '判定依据：{basis}',
+      scopeBasis_gitOrigin: 'git 仓库（按远程 origin 识别）',
+      scopeBasis_gitRoot: 'git 仓库根目录（没有远程 origin）',
+      scopeBasis_folder: '文件夹（不在 git 仓库里）',
+      scopeBasis_defaultWorkspace: 'DSH 默认工作区，所以算全局',
+      scopeBasis_home: '主目录（不在 git 仓库里），所以算全局',
+      scopeBasis_none: '没有工作目录，所以算全局',
+      scopeBasis_off: '「按项目分区」已关闭，所以算全局',
+      scopeBasis_pending: '还没识别（DSH 会在下一轮报告这个对话），在那之前算全局',
+      scopePopWorktree: 'git worktree：和主仓库共用分区',
+      scopePopCheckout: 'worktree 目录：{path}',
+      scopePopPath: '路径：{path}',
+      scopePopCwd: '当前工作目录：{path}',
+      scopePopPartition: '分区 id：{id}',
+      scopePopWhenOn: '开启后：项目 {name}',
+      scopePopGitError: 'git 没有响应（{error}），按普通文件夹处理',
       scopeChipPendingHint: '「按项目分区」已开启。这个对话的项目会在下一轮识别出来，在那之前新记忆写进全局。点击关闭这个开关。从下一轮开始生效；Mem0 设置里是同一个开关。',
       dshDefaultWorkspace: 'DSH 默认工作区',
       scopeChipOnHint: '「按项目分区」已开启：这个对话产生的新记忆只存在它所在的项目，召回时读取这个项目、本会话和全局的记忆。点击关闭（关闭后新记忆写进全局）。从下一轮开始生效；Mem0 设置里是同一个开关。',
@@ -1454,6 +1496,10 @@ window.__ModuleLoader__.load({
       .mem0-dock-wrap{position:relative;display:inline-flex;max-width:100%}
       .mem0-dock-pop{position:fixed;z-index:1000;width:max-content;max-width:min(360px,80vw);white-space:normal;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));box-shadow:0 6px 24px rgba(0,0,0,.18);padding:9px 11px;display:flex;flex-direction:column;gap:3px;font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
       .mem0-dock-pop-title{font-weight:600;color:var(--dsw-alias-state-error-primary)}
+      .mem0-scope-pop{pointer-events:none}
+      .mem0-scope-pop-title{font-weight:600;color:var(--dsw-alias-label-primary)}
+      .mem0-scope-pop-hint{margin-top:4px;color:var(--dsw-alias-label-tertiary)}
+      .mem0-scope-pop-failed{color:var(--dsw-alias-state-error-primary)}
       .mem0-dock-pop-line{word-break:break-word}
       .mem0-dock-pop-link{align-self:flex-start;margin-top:4px;border:0;background:transparent;padding:0;font:inherit;color:var(--dsw-alias-label-primary);text-decoration:underline;cursor:pointer}
       .mem0-failures{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:320px;overflow:auto}
@@ -2818,12 +2864,46 @@ window.__ModuleLoader__.load({
     function scopeChipView(t, scope, partitions) {
       if (!scope || scope.available === false) return null
       const on = typeof partitions === 'boolean' ? partitions : scope.partitions !== false
-      const name = on && scope.project?.name ? String(scope.project.name).replace(/\s+/g, ' ').trim().slice(0, 40) : ''
-      if (!on) return { on, label: t('scopeChipGlobal'), hint: t('scopeChipOffHint'), kind: 'global' }
-      // Switched on before DSH reported the session: named at its next turn.
-      if (!name && scope.pending) return { on, label: t('scopeChipPending'), hint: t('scopeChipPendingHint'), kind: 'pending' }
-      if (!name) return { on, label: t('scopeChipGlobal'), hint: t('scopeChipOnNoProjectHint'), kind: 'global' }
-      return { on, label: template(t('scopeChipProject'), { name }), hint: t('scopeChipOnHint'), kind: 'project' }
+      const projectName = scope.project?.name ? String(scope.project.name).replace(/\s+/g, ' ').trim().slice(0, 40) : ''
+      const name = on ? projectName : ''
+      const global = (hint, kind) => ({ on, label: t('scopeChipGlobal'), ariaLabel: template(t('scopeChipAria'), { where: t('scopeChipAriaGlobal') }), hint, kind })
+      let view
+      if (!on) view = global(t('scopeChipOffHint'), 'global')
+      // Switched on before DSH reported the session: named at its next turn;
+      // its new memories go to global until then.
+      else if (!name && scope.pending) view = global(t('scopeChipPendingHint'), 'pending')
+      else if (!name) view = global(t('scopeChipOnNoProjectHint'), 'global')
+      else view = { on, label: t('scopeChipProject'), ariaLabel: template(t('scopeChipAria'), { where: template(t('scopeChipAriaProject'), { name }) }), hint: t('scopeChipOnHint'), kind: 'project' }
+      return { ...view, lines: scopeDetailLines(t, scope, { on, name, projectName, kind: view.kind }) }
+    }
+
+    const SCOPE_BASIS_KEYS = { 'git-origin': 'scopeBasis_gitOrigin', 'git-root': 'scopeBasis_gitRoot', folder: 'scopeBasis_folder', 'default-workspace': 'scopeBasis_defaultWorkspace', home: 'scopeBasis_home', none: 'scopeBasis_none' }
+
+    /**
+     * The chip's hover lines under "Mem0 memory partition": where new
+     * memories go, how the project was decided (git origin, git root, folder,
+     * DSH default workspace, home folder), the paths (the server shows the
+     * home folder as ~) and the partition id.
+     */
+    function scopeDetailLines(t, scope, { on, name, projectName, kind }) {
+      const detail = scope?.detail && typeof scope.detail === 'object' ? scope.detail : {}
+      const text = (value) => String(value ?? '').slice(0, 400)
+      const lines = [name ? template(t('scopePopProject'), { name }) : t('scopePopGlobal')]
+      let basis
+      if (!on) basis = t('scopeBasis_off')
+      else if (kind === 'pending') basis = t('scopeBasis_pending')
+      else basis = t(SCOPE_BASIS_KEYS[detail.basis] ?? 'scopeBasis_none')
+      lines.push(template(t('scopePopBasis'), { basis }))
+      if (!on && projectName) lines.push(template(t('scopePopWhenOn'), { name: projectName }))
+      if (detail.gitError) lines.push(template(t('scopePopGitError'), { error: text(detail.gitError) }))
+      if (detail.worktree) lines.push(t('scopePopWorktree'))
+      if (detail.path) lines.push(template(t('scopePopPath'), { path: text(detail.path) }))
+      if (detail.worktree && detail.checkout) lines.push(template(t('scopePopCheckout'), { path: text(detail.checkout) }))
+      const shown = [detail.path, detail.checkout].filter(Boolean)
+      if (detail.cwd && !shown.includes(detail.cwd)) lines.push(template(t('scopePopCwd'), { path: text(detail.cwd) }))
+      const partition = name && scope.project?.id ? `project:${scope.project.id}` : 'global'
+      lines.push(template(t('scopePopPartition'), { id: partition }))
+      return lines
     }
 
     /** The "partition by project" switch as the config form holds it (undefined: not loaded). */
@@ -2837,7 +2917,15 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** The scope chip: shows where new memories go; a click flips the switch (same config as the settings page). */
+    let scopeTipCounter = 0
+
+    /**
+     * The scope chip: "Project" or "Global" for where new memories go; hover
+     * or focus shows how that was decided; a click flips the switch (same
+     * config as the settings page). DSH's `conversation.composer.dock` slot
+     * takes plain React entries (no chip, tooltip or details props), so the
+     * panel is the plugin's own, fixed-positioned like the dock's.
+     */
     function ScopeChip({ ctx, t, scope }) {
       const form = useMemo(() => {
         try {
@@ -2849,6 +2937,28 @@ window.__ModuleLoader__.load({
       const [partitions, setPartitions] = useState(() => formPartitions(form))
       const [busy, setBusy] = useState(false)
       const [failed, setFailed] = useState(false)
+      // Hover / keyboard-focus panel with the details (fixed, from the chip's
+      // rect, like the dock's failure panel: host containers clip overflow).
+      const [tip, setTip] = useState(null)
+      const tipRef = useRef(null)
+      const tipId = useMemo(() => `mem0-scope-tip-${++scopeTipCounter}`, [])
+      useLayoutEffect(() => {
+        const element = tipRef.current
+        if (!tip || !element) return
+        const rect = element.getBoundingClientRect()
+        const dx = rect.left - tip.left
+        const dy = rect.bottom - (window.innerHeight - tip.bottom)
+        if (Math.abs(dx) > 1) element.style.left = `${tip.left - dx}px`
+        if (Math.abs(dy) > 1) element.style.bottom = `${tip.bottom + dy}px`
+      }, [tip])
+      useEffect(() => {
+        if (!tip) return undefined
+        const onKey = (event) => {
+          if (event.key === 'Escape') setTip(null)
+        }
+        document.addEventListener('keydown', onKey)
+        return () => document.removeEventListener('keydown', onKey)
+      }, [tip])
       useEffect(() => {
         if (!form?.subscribe) return undefined
         setPartitions(formPartitions(form))
@@ -2879,18 +2989,54 @@ window.__ModuleLoader__.load({
           setBusy(false)
         }
       }
+      const show = (event) => {
+        const rect = event.currentTarget.getBoundingClientRect()
+        const width = Math.min(360, window.innerWidth - 16)
+        setTip({
+          left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+          bottom: Math.max(8, window.innerHeight - rect.top + 6),
+          width,
+        })
+      }
+      const hide = () => setTip(null)
       return h(
-        'button',
-        {
-          type: 'button',
-          className: 'mem0-scope',
-          'data-scope-kind': view.kind,
-          'aria-pressed': view.on,
-          disabled: busy,
-          title: failed ? `${view.hint}\n${t('scopeChipSaveFailed')}` : view.hint,
-          onClick: () => void flip(),
-        },
-        view.label,
+        React.Fragment,
+        null,
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'mem0-scope',
+            'data-scope-kind': view.kind,
+            'aria-pressed': view.on,
+            // The chip says only "Project" / "Global"; its accessible name is whole.
+            'aria-label': view.ariaLabel,
+            'aria-describedby': tip ? tipId : undefined,
+            disabled: busy,
+            onMouseEnter: show,
+            onMouseLeave: hide,
+            onFocus: show,
+            onBlur: hide,
+            onClick: () => void flip(),
+          },
+          view.label,
+        ),
+        tip
+          ? h(
+              'div',
+              {
+                className: 'mem0-dock-pop mem0-scope-pop',
+                role: 'tooltip',
+                id: tipId,
+                ref: tipRef,
+                style: { left: `${tip.left}px`, bottom: `${tip.bottom}px`, maxWidth: `${tip.width}px` },
+              },
+              h('div', { className: 'mem0-scope-pop-title' }, t('scopePopTitle')),
+              view.lines.map((line, index) => h('div', { className: 'mem0-dock-pop-line', key: index }, line)),
+              h('div', { className: 'mem0-scope-pop-hint' }, view.hint),
+              failed ? h('div', { className: 'mem0-scope-pop-failed' }, t('scopeChipSaveFailed')) : null,
+            )
+          : null,
       )
     }
 

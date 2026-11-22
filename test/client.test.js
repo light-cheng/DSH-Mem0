@@ -309,25 +309,74 @@ test('memory page helpers: report rows show current text or "deleted"; the tree 
   assert.equal(scopeLabel(t, { scope: 'global' }, tree), '全局')
 })
 
-test('scope chip view: project, global, switch off, REST backends', () => {
+test('scope chip view: only "Project" / "Global" on the chip; the accessible name and the hover say the rest', () => {
   const { exports } = loadClient()
   const { scopeChipView, en, zh } = exports.__test__
   const t = (key) => en[key]
-  assert.deepEqual({ ...scopeChipView(t, { available: true, partitions: true, project: { name: 'dsh-mem0' } }) }, { on: true, label: 'Memory: project dsh-mem0', hint: en.scopeChipOnHint, kind: 'project' })
-  const none = scopeChipView(t, { available: true, partitions: true, project: null })
-  assert.equal(none.label, 'Memory: global')
-  assert.equal(none.hint, en.scopeChipOnNoProjectHint)
+  const zt = (key) => zh[key]
+  const plain = (value) => JSON.parse(JSON.stringify(value))
+  const pocket = {
+    available: true,
+    partitions: true,
+    project: { name: 'pocket-ledger', kind: 'root', id: 'p0123456789abcdef' },
+    detail: { basis: 'git-root', cwd: '~/code/pocket-ledger/src', path: '~/code/pocket-ledger', partition: 'project:p0123456789abcdef' },
+  }
+  const on = scopeChipView(t, pocket)
+  assert.equal(on.label, 'Project')
+  assert.equal(on.kind, 'project')
+  assert.equal(on.ariaLabel, 'Mem0 memory partition: project pocket-ledger')
+  assert.equal(on.hint, en.scopeChipOnHint)
+  assert.deepEqual(plain(on.lines), [
+    'Project: pocket-ledger',
+    'Decided by: git repository root (no origin remote)',
+    'Path: ~/code/pocket-ledger',
+    'Working directory: ~/code/pocket-ledger/src',
+    'Partition id: project:p0123456789abcdef',
+  ])
+  const zon = scopeChipView(zt, pocket)
+  assert.equal(zon.label, '项目')
+  assert.equal(zon.ariaLabel, 'Mem0 记忆分区：项目 pocket-ledger')
+  assert.equal(zh.scopePopTitle, 'Mem0 记忆分区')
+  assert.equal(en.scopePopTitle, 'Mem0 memory partition')
+  assert.deepEqual(plain(zon.lines.slice(0, 2)), ['项目：pocket-ledger', '判定依据：git 仓库根目录（没有远程 origin）'])
+
   // The config form's value wins over the server's last report: a click shows at once.
-  assert.deepEqual({ ...scopeChipView(t, { available: true, partitions: true, project: { name: 'dsh-mem0' } }, false) }, { on: false, label: 'Memory: global', hint: en.scopeChipOffHint, kind: 'global' })
-  assert.equal(scopeChipView(t, { available: true, partitions: false, project: null }).kind, 'global')
+  const off = scopeChipView(zt, pocket, false)
+  assert.equal(off.label, '全局')
+  assert.equal(off.ariaLabel, 'Mem0 记忆分区：全局')
+  assert.equal(off.hint, zh.scopeChipOffHint)
+  assert.deepEqual(plain(off.lines), ['全局（所有项目共用）', '判定依据：「按项目分区」已关闭，所以算全局', '开启后：项目 pocket-ledger', '路径：~/code/pocket-ledger', '当前工作目录：~/code/pocket-ledger/src', '分区 id：global'])
+
+  // DSH's default workspace, the home folder, no directory: global, and why.
+  const workspace = scopeChipView(zt, { available: true, partitions: true, project: null, detail: { basis: 'default-workspace', cwd: '~/Documents/deepseek-harness/default-workspace', partition: 'global' } })
+  assert.equal(workspace.label, '全局')
+  assert.deepEqual(plain(workspace.lines), ['全局（所有项目共用）', '判定依据：DSH 默认工作区，所以算全局', '当前工作目录：~/Documents/deepseek-harness/default-workspace', '分区 id：global'])
+  assert.equal(workspace.hint, zh.scopeChipOnNoProjectHint)
+  assert.equal(scopeChipView(t, { available: true, partitions: true, project: null, detail: { basis: 'home', cwd: '~' } }).lines[1], 'Decided by: home folder outside git, so global')
+  assert.equal(scopeChipView(t, { available: true, partitions: true, project: null }).lines[1], 'Decided by: no working directory, so global')
+
+  // A git worktree: the main checkout's partition, both paths shown.
+  const tree = scopeChipView(zt, {
+    available: true,
+    partitions: true,
+    project: { name: 'ledger', kind: 'git', id: 'pfeed' },
+    detail: { basis: 'git-origin', worktree: true, path: '~/code/ledger', checkout: '~/code/ledger/.claude/worktrees/brave-fox', cwd: '~/code/ledger/.claude/worktrees/brave-fox', partition: 'project:pfeed' },
+  })
+  assert.deepEqual(plain(tree.lines), ['项目：ledger', '判定依据：git 仓库（按远程 origin 识别）', 'git worktree：和主仓库共用分区', '路径：~/code/ledger', 'worktree 目录：~/code/ledger/.claude/worktrees/brave-fox', '分区 id：project:pfeed'])
+  // git did not answer: a folder, and the hover says so.
+  assert.ok(scopeChipView(t, { available: true, partitions: true, project: { name: 'x', id: 'px' }, detail: { basis: 'folder', gitError: 'timeout', path: '/x' } }).lines.includes('git did not answer (timeout); treated as a plain folder'))
+
   assert.equal(scopeChipView(t, { available: false, partitions: true, project: null }), null, 'REST backends: no chip')
   assert.equal(scopeChipView(t, null), null)
-  const zt = (key) => zh[key]
-  assert.equal(scopeChipView(zt, { available: true, partitions: true, project: { name: 'dsh-mem0' } }).label, '记忆：项目 dsh-mem0')
-  assert.equal(scopeChipView(zt, { available: true, partitions: false, project: null }).label, '记忆：全局')
-  for (const key of ['projectPartitions', 'projectPartitionsHint', 'scopeChipProject', 'scopeChipGlobal', 'scopeChipOnHint', 'scopeChipOnNoProjectHint', 'scopeChipOffHint', 'scopeChipSaveFailed']) {
-    assert.ok(en[key] && zh[key], key)
+  // Every key in both languages, with the same placeholders.
+  const keys = Object.keys(en).filter((key) => key.startsWith('scopeChip') || key.startsWith('scopePop') || key.startsWith('scopeBasis_'))
+  assert.ok(keys.length >= 25)
+  for (const key of keys) {
+    assert.ok(zh[key], key)
+    const holes = (text) => (String(text).match(/\{[a-z]+\}/g) ?? []).sort().join()
+    assert.equal(holes(zh[key]), holes(en[key]), key)
   }
+  assert.equal(en.scopeChipPending, undefined, 'no third label')
 })
 
 test('scope chip: flipped on, it names the project at once; pending until DSH reports the session (Windows retest)', () => {
@@ -336,21 +385,24 @@ test('scope chip: flipped on, it names the project at once; pending until DSH re
   const t = (key) => en[key]
   const zt = (key) => zh[key]
   // The server names the project while the switch is still off; the form flips first.
-  const offWithProject = { available: true, partitions: false, project: { name: 'mem-test-a', kind: 'cwd' } }
-  assert.equal(scopeChipView(t, offWithProject).label, 'Memory: global')
-  assert.equal(scopeChipView(t, offWithProject, true).label, 'Memory: project mem-test-a')
-  assert.equal(scopeChipView(zt, offWithProject, true).label, '记忆：项目 mem-test-a')
+  const offWithProject = { available: true, partitions: false, project: { name: 'mem-test-a', kind: 'cwd', id: 'pa' } }
+  assert.equal(scopeChipView(t, offWithProject).label, 'Global')
+  assert.equal(scopeChipView(t, offWithProject, true).label, 'Project')
+  assert.equal(scopeChipView(zt, offWithProject, true).ariaLabel, 'Mem0 记忆分区：项目 mem-test-a')
   // Switched off again, then on again: still at once.
-  assert.equal(scopeChipView(zt, { ...offWithProject, partitions: true }, false).label, '记忆：全局')
-  assert.equal(scopeChipView(zt, offWithProject, true).label, '记忆：项目 mem-test-a')
-  // Not known yet: pending, not "global".
+  assert.equal(scopeChipView(zt, { ...offWithProject, partitions: true }, false).label, '全局')
+  assert.equal(scopeChipView(zt, offWithProject, true).label, '项目')
+  // Not known yet: new memories go to global until the next turn; the hover says it is pending.
   const pending = { available: true, partitions: false, project: null, pending: true }
-  assert.deepEqual({ ...scopeChipView(t, pending, true) }, { on: true, label: 'Memory: project (found next turn)', hint: en.scopeChipPendingHint, kind: 'pending' })
-  assert.equal(scopeChipView(zt, pending, true).label, '记忆：项目（下一轮识别）')
-  assert.equal(scopeChipView(zt, pending, false).label, '记忆：全局')
+  const waiting = scopeChipView(zt, pending, true)
+  assert.equal(waiting.label, '全局')
+  assert.equal(waiting.kind, 'pending')
+  assert.equal(waiting.hint, zh.scopeChipPendingHint)
+  assert.equal(waiting.lines[1], '判定依据：还没识别（DSH 会在下一轮报告这个对话），在那之前算全局')
+  assert.equal(scopeChipView(zt, pending, false).kind, 'global')
   // Known to be in no project (home folder, DSH default workspace): global.
-  assert.equal(scopeChipView(zt, { available: true, partitions: true, project: null }).label, '记忆：全局')
-  for (const key of ['scopeChipPending', 'scopeChipPendingHint', 'dshDefaultWorkspace']) assert.ok(en[key] && zh[key], key)
+  assert.equal(scopeChipView(zt, { available: true, partitions: true, project: null }).label, '全局')
+  for (const key of ['scopeChipPendingHint', 'dshDefaultWorkspace']) assert.ok(en[key] && zh[key], key)
 
   // The memory page names DSH's default workspace by its role.
   const tree = { partitioned: true, total: 3, global: 1, projects: [{ id: 'pdefault', key: 'project:pdefault', name: 'default-workspace', dshDefault: true, count: 2, sessions: [] }], sessions: [] }
