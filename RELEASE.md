@@ -22,7 +22,7 @@ A patch release for the Local OSS backend. The setup wizard now says why a local
 
 #### Upgrading from 0.4.0
 
-1. **DSH desktop app:** uninstall Mem0 Memory in the app, then reinstall it as an unofficial plugin (`dsh-mem0`). Other installs: update the package as usual and restart DSH if it asks.
+1. **Installed from the plugin marketplace:** the update shows up within a day (the marketplace syncs from npm nightly). To get it right away, uninstall Mem0 Memory and install it again. Other installs: update the package as usual and restart DSH if it asks.
 2. Nothing else is required. Your settings, memories and partitions are kept. To let extraction follow DSH's model, open **Local setup wizard** and pick **DSH's current model** in step 2.
 
 ### v0.4.0 — 2026-11-21
@@ -184,7 +184,7 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 #### 从 0.4.0 升级
 
-1. **DSH 桌面版：** 在 app 里卸载 Mem0 Memory，再作为非官方插件重新安装（`dsh-mem0`）。其他安装方式：照常更新包，DSH 提示需要重启就重启。
+1. **从插件市场安装的：** 一天内会自动出现更新（市场每晚从 npm 同步）。想马上用，可以卸载 Mem0 Memory 后重新安装。其他安装方式：照常更新包，DSH 提示需要重启就重启。
 2. 其他什么都不用做。设置、记忆和分区都保留。想让抽取跟随 DSH 的模型，打开 **本地配置向导**，在第 2 步选「使用 DSH 当前配置的模型」。
 
 ### v0.4.0 — 2026-11-21
