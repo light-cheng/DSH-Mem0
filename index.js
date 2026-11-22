@@ -42,10 +42,12 @@ export function mem0Guidance({ pin = true } = {}) {
 
 export const MEM0_GUIDANCE = mem0Guidance()
 
-function createClient(ctx, config, logger, resolveApiKey, onReady) {
+function createClient(ctx, config, logger, resolveApiKey, onReady, llmServices) {
   if (config.backend === 'oss') {
     return new Mem0NativeClient({
       config,
+      // llmProvider 'dsh': DSH's model services, looked up per extraction.
+      llmServices,
       // Embedder and LLM keys: DSH credentials (then the environment) by
       // the reference names in oss.json, looked up per request.
       resolveSecret: (ref, options) => resolveSecret(ctx, ref, { ...options, logger }),
@@ -129,6 +131,8 @@ export async function apply(ctx, rawConfig) {
   // DSH's model service: translation (opt-in) and model-led hygiene.
   // Optional, and it may appear after the backend started.
   const llmServices = { current: null }
+  // The setup wizard tests and shows DSH's current model through this.
+  runtime.llmServices = llmServices
   ctx.inject?.(['llm', 'agentDefaultModel'], (sub) => {
     localizer.setServices(sub)
     llmServices.current = { llm: sub.llm, agentDefaultModel: sub.agentDefaultModel }
@@ -170,7 +174,7 @@ export async function apply(ctx, rawConfig) {
       : async () => (await lookupApiKey(ctx, rawConfig, { logger }))?.value ?? process.env[config.apiKeyEnv]
   // Local backend: the settings worked once the store opened. REST
   // backends have nothing to open, so their settings count as in effect now.
-  const client = createClient(ctx, config, logger, resolveApiKey, () => configGuard.markWorking())
+  const client = createClient(ctx, config, logger, resolveApiKey, () => configGuard.markWorking(), () => llmServices.current)
   if (config.backend !== 'oss') configGuard.markWorking()
   const breaker = new CircuitBreaker()
   const maintenanceState = new MaintenanceState(dataDir ? path.join(dataDir, 'maintenance.json') : undefined, logger)
