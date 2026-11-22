@@ -10,7 +10,7 @@ Creating a GitHub release publishes the package to npm automatically (`.github/w
 
 ### Unreleased
 
-- **Setup wizard, local models: every failure now says why and what to do.** Detecting local services, **List models**, **Test** (embedder and LLM) and the self-test explain each failure instead of showing a bare status code: a service with API key verification on (HTTP 401/403, e.g. oMLX), a wrong address path (HTTP 404, with a **Change to …/v1** button when the address has no path), nothing running on the port, no answer in time, or another status with the first line of the server's error (secrets redacted). A service that answers 401/403 to detection counts as running: its address is filled in for you. A local OpenAI-compatible server (oMLX, LM Studio…) now has an optional API key field; the key is used for listing models, the tests and, after saving, for every embedding and extraction call, and is stored in DSH credentials, never in oss.json.
+- **Setup wizard, local models: every failure now says why and what to do.** Detecting local services, **List models**, **Test** (embedder and LLM) and the self-test explain each failure instead of showing a bare status code: a service with API key verification on (HTTP 401/403, e.g. oMLX), a wrong address path (HTTP 404, with a **Change to …/v1** button when the address has no path), nothing running on the port, no answer in time, or another status with the first line of the server's error (secrets redacted). A service that answers 401/403 to detection counts as running: its address is filled in for you. A local server now has an optional API key field; the key is used for listing models, the tests and, after saving, for every embedding and extraction call, and is stored in DSH credentials, never in oss.json. The API key hint names where each service keeps its key: oMLX (`auth.api_key` in its settings.json), LM Studio (Developer → Server Settings), Ollama (none: a 401 comes from a proxy in front of it). For oMLX, **Read the key from oMLX** reads `auth.api_key` from `~/.omlx/settings.json` (or `$OMLX_BASE_PATH/settings.json`) only when you click it; the key stays in DSH and is never shown on the page. **Show the settings file in Finder** points to the file without opening it.
 
 ### v0.4.0 — 2026-11-21
 
@@ -159,7 +159,7 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 ### 未发布
 
-- **设置向导的本地模型：失败时说清原因和下一步。** 探测本地服务、「列出模型」、「测试」（嵌入和 LLM）以及自检，失败时不再只给一个状态码，而是说明原因：服务开启了 API key 验证（HTTP 401/403，例如 oMLX）、地址路径不对（HTTP 404；地址不带路径时给出「改成 …/v1」按钮）、端口上没有服务在跑、超时没有回应，或者其他状态码加上服务返回的错误信息第一行（已脱敏）。探测时返回 401/403 的服务算作运行中，会自动填入它的地址。本地 OpenAI 兼容服务（oMLX、LM Studio 等）新增可选的 API key 输入框：列出模型、测试，以及保存后的每次嵌入和抽取调用都会带上它；key 存进 DSH 凭据库，不写进 oss.json。
+- **设置向导的本地模型：失败时说清原因和下一步。** 探测本地服务、「列出模型」、「测试」（嵌入和 LLM）以及自检，失败时不再只给一个状态码，而是说明原因：服务开启了 API key 验证（HTTP 401/403，例如 oMLX）、地址路径不对（HTTP 404；地址不带路径时给出「改成 …/v1」按钮）、端口上没有服务在跑、超时没有回应，或者其他状态码加上服务返回的错误信息第一行（已脱敏）。探测时返回 401/403 的服务算作运行中，会自动填入它的地址。本地服务新增可选的 API key 输入框：列出模型、测试，以及保存后的每次嵌入和抽取调用都会带上它；key 存进 DSH 凭据库，不写进 oss.json。需要 key 时，提示里写明各服务的 key 在哪：oMLX 在它的 settings.json 的 `auth.api_key`，LM Studio 在 Developer → Server Settings，Ollama 本身没有 key（401 来自它前面的代理）。对 oMLX，点「从 oMLX 读取 key」才会从 `~/.omlx/settings.json`（或 `$OMLX_BASE_PATH/settings.json`）读取 `auth.api_key`；key 只留在 DSH 里，页面上不显示。「在 Finder 中显示配置文件」只显示文件位置，不打开文件。
 
 ### v0.4.0 — 2026-11-21
 
