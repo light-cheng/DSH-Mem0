@@ -300,7 +300,8 @@ config:
 | `embedderModel` | — | 例如 `bge-m3` |
 | `embedderDims` | 取模型输出 | 设置后作为 `dimensions` 发送（仅 OpenAI 兼容） |
 | `embedderApiKeyRef` | — | embedding 密钥的凭据名 |
-| `llmBaseUrl`、`llmModel`、`llmApiKeyRef` | — | 抽取 LLM |
+| `llmProvider` | — | `"dsh"`：每次抽取使用 DSH 当时选中的模型（这里不填地址、模型和 key，由 DSH 保管）。不设置时使用 `llmBaseUrl`/`llmModel` |
+| `llmBaseUrl`、`llmModel`、`llmApiKeyRef` | — | 抽取 LLM（`llmProvider` 不是 `"dsh"` 时） |
 | `llmMaxTokens` | `8000` | 每次抽取调用的输出上限（Mem0 自己默认 2000，混合推理模型会把一部分花在思考上） |
 | `llmTemperature` | `0` | Mem0 发 0（`top_p` 0.1） |
 | `llmReasoningEffort` | 不发送 | 例如 `"none"`，在支持的网关上关闭思考 |

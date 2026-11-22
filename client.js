@@ -431,6 +431,32 @@ window.__ModuleLoader__.load({
       wzProbeTimeout: "no answer: nothing may be running on the port, or {label} is stuck. Restart {label}, then detect again.",
       wzLocalKeyHint: "Optional: only needed when the local service has API key verification on. Stored in DSH credentials, never in oss.json.",
       wzLlmHint: "An OpenAI-compatible chat API that turns conversations into facts. The test sends a fixed sample conversation, not your data.",
+      wzLlmViaDsh: "DSH's current model",
+      wzLlmViaManual: "Set a model myself",
+      wzLlmDshHint: "Extraction uses the model selected in DSH right now and follows it when you switch models in DSH. DSH keeps that model's address and key; nothing about them is stored here. The test sends a fixed sample conversation, not your data.",
+      wzLlmDshNow: "Current model: {model}",
+      wzLlmDshNone: "No model is selected in DSH. Pick one in DSH first, then test again.",
+      wzLlmDshNoService: "DSH's model service is not available yet. Wait a few seconds; if this stays, restart DSH.",
+      wzLlmDshBilling: "Cost: every captured turn calls this model once more. The conversation and similar memories are sent to it (secrets removed first). It is billed to your provider in DSH and not counted in DSH usage statistics; mem0_status shows the tokens of the last extraction.",
+      wzLlmDshUsed: "model {model}",
+      wzLlmDshModelAny: "DSH's model",
+      wzAdviceOtherModel: "The model did not answer JSON. Select another model in DSH, or set a model yourself.",
+      wzCheckModel: "Extraction model {model} answers",
+      wzFailDsh_NO_SERVICE: "DSH's model service is not available yet. Wait a few seconds and test again; if this stays, restart DSH.",
+      wzFailDsh_NO_MODEL: "No model is selected in DSH. Pick a model in DSH, then test again.",
+      wzFailDsh_NO_ADAPTER: "The provider of {model} is not loaded in DSH. Check DSH's model settings, or select another model.",
+      wzFailDsh_MISSING_CREDENTIAL: "{model} has no API key in DSH. Add it in DSH's model settings, then test again.",
+      wzFailDsh_INVALID_CREDENTIAL: "The API key of {model} in DSH is not valid. Correct it in DSH's model settings, then test again.",
+      wzFailDsh_AUTH: "{model} refused the API key DSH sent. Update the key in DSH's model settings, then test again.",
+      wzFailDsh_RATE_LIMIT: "{model} is rate limited right now. Wait a moment and test again.",
+      wzFailDsh_QUOTA: "{model} has no quota left. Top up with its provider, or select another model in DSH.",
+      wzFailDsh_ACCOUNT_QUOTA: "{model} has no balance left. Top up the account, or select another model in DSH.",
+      wzFailDsh_CONTEXT_WINDOW_EXCEEDED: "The extraction prompt is longer than the context window of {model}. Select a model with a larger context window in DSH.",
+      wzFailDsh_TIMEOUT: "{model} did not answer in time. Test again, or select a faster model in DSH.",
+      wzFailDsh_other: "{model} failed ({code}). Check the model in DSH, then test again.",
+      statusLlmDsh: "Extraction follows DSH's current model: {model}",
+      statusLlmDshLabel: "Extraction LLM · follows DSH",
+      statusLlmDshNone: "no model selected in DSH",
       wzHygieneBilling: 'Memory hygiene is separate: by default it uses the model currently set in DSH (not this one), billed to your provider in DSH and not counted in DSH usage statistics. Each hygiene report shows the tokens used; switch "Model-led hygiene" off in the settings to run script checks only.',
       wzMaxTokens: "Output budget (max_tokens)",
       wzEffort: "reasoning_effort (optional)",
@@ -1060,6 +1086,32 @@ window.__ModuleLoader__.load({
       wzProbeTimeout: "没有回应：端口上可能没有服务，或者 {label} 卡住了。重启 {label} 后再探测一次。",
       wzLocalKeyHint: "可选：本地服务开启了 API key 验证时才需要填。key 存进 DSH 凭据库，不写进 oss.json。",
       wzLlmHint: "用来从对话里抽取事实的 OpenAI 兼容聊天接口。测试时发送一段固定的示例对话，不发送你的数据。",
+      wzLlmViaDsh: "使用 DSH 当前配置的模型",
+      wzLlmViaManual: "自己填写模型",
+      wzLlmDshHint: "抽取使用 DSH 里当前选中的模型；在 DSH 里换了模型，这里也跟着换。这个模型的地址和 key 由 DSH 保管，这里不保存任何相关信息。测试时发送一段固定的示例对话，不发送你的数据。",
+      wzLlmDshNow: "当前模型：{model}",
+      wzLlmDshNone: "DSH 里还没有选中模型。请先在 DSH 里选一个模型，再测试。",
+      wzLlmDshNoService: "DSH 的模型服务还没就绪。请等几秒；如果一直这样，重启 DSH。",
+      wzLlmDshBilling: "费用：每记住一轮对话，会额外调用一次这个模型，发送的是这轮对话和相似的已有记忆（先去掉密钥等敏感内容）。费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计；mem0_status 会显示最近一次抽取用了多少 token。",
+      wzLlmDshUsed: "模型 {model}",
+      wzLlmDshModelAny: "DSH 的模型",
+      wzAdviceOtherModel: "模型没有返回 JSON。请在 DSH 里换一个模型，或者改成自己填写模型。",
+      wzCheckModel: "抽取模型 {model} 能正常回答",
+      wzFailDsh_NO_SERVICE: "DSH 的模型服务还没就绪。请等几秒再测；如果一直这样，重启 DSH。",
+      wzFailDsh_NO_MODEL: "DSH 里还没有选中模型。请在 DSH 里选一个模型，再测试。",
+      wzFailDsh_NO_ADAPTER: "DSH 没有加载 {model} 的 provider。请检查 DSH 的模型设置，或者换一个模型。",
+      wzFailDsh_MISSING_CREDENTIAL: "{model} 在 DSH 里没有填 API key。请在 DSH 的模型设置里填上，再测试。",
+      wzFailDsh_INVALID_CREDENTIAL: "{model} 在 DSH 里的 API key 格式不对。请在 DSH 的模型设置里改正，再测试。",
+      wzFailDsh_AUTH: "{model} 拒绝了 DSH 发送的 API key。请在 DSH 的模型设置里更新 key，再测试。",
+      wzFailDsh_RATE_LIMIT: "{model} 现在被限流了。请稍等一会儿再测。",
+      wzFailDsh_QUOTA: "{model} 的额度用完了。请到它的服务商那里充值，或者在 DSH 里换一个模型。",
+      wzFailDsh_ACCOUNT_QUOTA: "{model} 的账户余额不足。请充值，或者在 DSH 里换一个模型。",
+      wzFailDsh_CONTEXT_WINDOW_EXCEEDED: "抽取用的提示词超出了 {model} 的上下文长度。请在 DSH 里换一个上下文更长的模型。",
+      wzFailDsh_TIMEOUT: "{model} 没有及时回答。请再测一次，或者在 DSH 里换一个更快的模型。",
+      wzFailDsh_other: "{model} 调用失败（{code}）。请检查 DSH 里的这个模型，再测试。",
+      statusLlmDsh: "抽取跟随 DSH 当前模型：{model}",
+      statusLlmDshLabel: "抽取 LLM · 跟随 DSH",
+      statusLlmDshNone: "DSH 里没有选中模型",
       wzHygieneBilling: '记忆巡检是另一回事：默认调用你当前在 DSH 配置的模型（不是这里填的模型），费用记在你在 DSH 配置的 provider 上，不计入 DSH 的用量统计。每次巡检报告都会显示用了多少 token；在设置里关掉「模型巡检」后只做脚本巡检。',
       wzMaxTokens: "输出上限（max_tokens）",
       wzEffort: "reasoning_effort（可选）",
@@ -3053,7 +3105,9 @@ window.__ModuleLoader__.load({
             keyTyped: Boolean(current.embedder.apiKeyRef),
           }
         : { mode: 'cloud', provider: 'openai', baseUrl: cloud?.baseUrl ?? '', model: cloud?.model ?? '', dims: cloud?.dims ?? '', apiKeyRef: state?.refs?.embedder ?? '' }
+      // DSH's current model unless a model of its own was saved before.
       const llm = {
+        provider: current?.llm?.provider === 'dsh' || !current?.llm?.model ? 'dsh' : 'openai',
         baseUrl: current?.llm?.baseUrl || '',
         model: current?.llm?.model || '',
         apiKeyRef: current?.llm?.apiKeyRef || state?.refs?.llm || '',
@@ -3077,7 +3131,11 @@ window.__ModuleLoader__.load({
       // on): kept when typed now or stored for it before.
       if (draft.embedder.mode === 'local' && !draft.embedder.keyTyped) embedder.apiKeyRef = ''
       delete embedder.keyTyped
-      return { embedder, llm: { ...draft.llm, maxTokens: Number(draft.llm.maxTokens) || undefined }, storePath: draft.storePath, storeConfirmed: draft.storeConfirmed === true, useLiteralKey: draft.useLiteralKey }
+      // DSH's current model: only the choice (and the output budget) goes.
+      const llm = draft.llm.provider === 'dsh'
+        ? { provider: 'dsh', maxTokens: Number(draft.llm.maxTokens) || undefined }
+        : { ...draft.llm, provider: 'openai', maxTokens: Number(draft.llm.maxTokens) || undefined }
+      return { embedder, llm, storePath: draft.storePath, storeConfirmed: draft.storeConfirmed === true, useLiteralKey: draft.useLiteralKey }
     }
 
     /** `provider|host` of a server, as lib/setup-routes.js compares them. */
@@ -3104,6 +3162,11 @@ window.__ModuleLoader__.load({
      */
     function failureText(t, failure) {
       if (!failure?.reason) return ''
+      if (failure.reason === 'dsh') {
+        const code = String(failure.code || '')
+        const key = code && t(`wzFailDsh_${code}`) !== `wzFailDsh_${code}` ? `wzFailDsh_${code}` : 'wzFailDsh_other'
+        return template(t(key), { model: failure.model || t('wzLlmDshModelAny'), code: code || '?' })
+      }
       const service = failure.service || ''
       const values = {
         service,
@@ -3242,6 +3305,7 @@ window.__ModuleLoader__.load({
       }
       if (Number.isInteger(stats.promptTokens)) details.push(template(t('wzLlmPrompt'), { tokens: stats.promptTokens }))
       if (Number.isFinite(result.ms)) details.push(template(t('wzLlmTime'), { ms: result.ms }))
+      if (result.via === 'dsh' && result.model) details.unshift(template(t('wzLlmDshUsed'), { model: result.model }))
       if (result.ok) {
         return { ok: true, badge: t('wzLlmPassed'), facts: template(t('wzLlmFacts'), { facts: result.facts ?? 0 }), details, reason: '', advice: llmAdvice(t, result.advice) }
       }
@@ -3280,7 +3344,7 @@ window.__ModuleLoader__.load({
     }
 
     function llmAdvice(t, advice) {
-      const map = { 'raise-max-tokens': 'wzAdviceRaise', 'lower-effort': 'wzAdviceEffort', 'json-mode': 'wzAdviceJson' }
+      const map = { 'raise-max-tokens': 'wzAdviceRaise', 'lower-effort': 'wzAdviceEffort', 'json-mode': 'wzAdviceJson', 'other-model': 'wzAdviceOtherModel' }
       return (advice ?? []).map((code) => (map[code] ? t(map[code]) : '')).filter(Boolean)
     }
 
@@ -3329,6 +3393,33 @@ window.__ModuleLoader__.load({
       const [skipped, setSkipped] = useState(false)
       // The "LLM not tested" notice was shown once for this step visit.
       const [untestedWarned, setUntestedWarned] = useState(false)
+      // DSH's current model (names only), refreshed while the LLM step shows it.
+      const [dshModel, setDshModel] = useState(null)
+      const lastDshName = useRef(null)
+      const followsDshNow = step === 'llm' && draft?.llm?.provider === 'dsh'
+      useEffect(() => {
+        if (!followsDshNow) return undefined
+        let stopped = false
+        const refresh = async () => {
+          try {
+            const data = await fetchJson(SETUP_PATH, { method: 'POST', retry: false, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'dshModel' }) })
+            if (stopped || !data?.dshModel) return
+            // Another model now: earlier test results were for the old one.
+            const name = data.dshModel.name ?? ''
+            if (lastDshName.current !== null && lastDshName.current !== name) setResults((current) => ({ ...current, llm: null, selftest: null }))
+            lastDshName.current = name
+            setDshModel(data.dshModel)
+          } catch {
+            // the last known model stays shown
+          }
+        }
+        void refresh()
+        const timer = setInterval(() => void refresh(), 3000)
+        return () => {
+          stopped = true
+          clearInterval(timer)
+        }
+      }, [followsDshNow])
 
       const load = useCallback(async () => {
         try {
@@ -3651,7 +3742,38 @@ window.__ModuleLoader__.load({
       const llmStep = () => {
         const l = draft.llm
         const result = results.llm
+        const followsDsh = l.provider === 'dsh'
+        const modes = h(
+          'div',
+          { key: 'mode', className: 'mem0-segments mem0-wz-modes' },
+          [['dsh', t('wzLlmViaDsh')], ['openai', t('wzLlmViaManual')]].map(([id, label]) =>
+            h('button', { key: id, type: 'button', className: 'mem0-segment', 'data-active': (followsDsh ? 'dsh' : 'openai') === id ? 'true' : 'false', onClick: () => setLlm({ provider: id }) }, label),
+          ),
+        )
+        const badge = busy === 'testLlm'
+          ? null
+          : h('span', { className: 'mem0-wz-badge', 'data-ok': result ? (result.ok ? 'true' : 'false') : 'none' }, result ? `${result.ok ? '✓' : '✗'} ${t(result.ok ? 'wzLlmPassed' : 'wzLlmFailed')}` : t('wzLlmUntestedBadge'))
+        if (followsDsh) {
+          const current = dshModel ?? state.dshModel
+          const body = [
+            modes,
+            h('p', { key: 'hint', className: 'mem0-hint' }, t('wzLlmDshHint')),
+            h(ResultLine, {
+              key: 'model',
+              ok: Boolean(current?.available),
+              text: current?.available ? template(t('wzLlmDshNow'), { model: current.name }) : current?.reason === 'no_service' ? t('wzLlmDshNoService') : t('wzLlmDshNone'),
+            }),
+            h('p', { key: 'billing', className: 'mem0-hint' }, t('wzLlmDshBilling')),
+            h('div', { key: 'actions', className: 'mem0-wz-row' },
+              h('button', { type: 'button', className: 'mem0-primary', disabled: busy === 'testLlm', onClick: async () => record('llm', await post('testLlm')) }, busy === 'testLlm' ? t('wzTesting') : t('wzTest')),
+              badge,
+            ),
+          ]
+          if (result) body.push(h(LlmTestResult, { key: 'result', t, result }))
+          return body
+        }
         const body = [
+          modes,
           h('p', { key: 'hint', className: 'mem0-hint' }, t('wzLlmHint')),
           h('p', { key: 'hygiene-billing', className: 'mem0-hint' }, t('wzHygieneBilling')),
           h(TextField, { key: 'url', label: t('wzBaseUrl'), value: l.baseUrl, placeholder: 'https://api.deepseek.com', onChange: (value) => setLlm({ baseUrl: value }) }),
@@ -3685,9 +3807,7 @@ window.__ModuleLoader__.load({
             }, t('wzListModels')),
             h('button', { type: 'button', className: 'mem0-primary', disabled: busy === 'testLlm' || !l.baseUrl || !l.model, onClick: async () => record('llm', await post('testLlm')) }, busy === 'testLlm' ? t('wzTesting') : t('wzTest')),
             // Right beside the button: passed, failed or not tested yet.
-            busy === 'testLlm'
-              ? null
-              : h('span', { className: 'mem0-wz-badge', 'data-ok': result ? (result.ok ? 'true' : 'false') : 'none' }, result ? `${result.ok ? '✓' : '✗'} ${t(result.ok ? 'wzLlmPassed' : 'wzLlmFailed')}` : t('wzLlmUntestedBadge')),
+            badge,
           ),
         ]
         if (result) {
@@ -3738,7 +3858,7 @@ window.__ModuleLoader__.load({
         ]
       }
 
-      const stepLabel = (name) => t({ write: 'wzCheckWrite', search: 'wzCheckSearch', delete: 'wzCheckDelete', leftover: 'wzCheckLeftover', store: 'wzStepStore', credentials: 'wzCheckCredentials' }[name] ?? 'wzCheckWrite')
+      const stepLabel = (name, item) => name === 'model' ? template(t('wzCheckModel'), { model: item?.model || t('wzLlmDshModelAny') }) : t({ write: 'wzCheckWrite', search: 'wzCheckSearch', delete: 'wzCheckDelete', leftover: 'wzCheckLeftover', store: 'wzStepStore', credentials: 'wzCheckCredentials' }[name] ?? 'wzCheckWrite')
 
       const saveNow = async (extra = {}) => {
         let outcome = await post('save', extra)
@@ -3777,7 +3897,7 @@ window.__ModuleLoader__.load({
         ]
         if (result?.steps?.length) {
           body.push(h('div', { key: 'steps', className: 'mem0-wz-list' }, result.steps.map((item) =>
-            h('div', { key: item.step, className: item.ok ? 'mem0-wz-ok' : 'mem0-error' }, `${item.ok ? '✓' : '✗'} ${stepLabel(item.step)}${item.error ? `: ${item.error}` : ''}`),
+            h('div', { key: item.step, className: item.ok ? 'mem0-wz-ok' : 'mem0-error' }, `${item.ok ? '✓' : '✗'} ${stepLabel(item.step, item)}${item.error ? `: ${item.error}` : ''}`),
           )))
         }
         if (result) {
@@ -4426,10 +4546,16 @@ window.__ModuleLoader__.load({
           })
         }
         if (data.llm) {
+          // Following DSH: the label says so; the value is the model id now
+          // (provider in the tooltip), so it fits the cell.
+          const dshName = data.llm.followsDsh ? String(data.llm.model ?? '') : ''
           statusItems.push({
             key: 'llm',
-            label: t('statusLlm'),
-            value: data.llm.configured ? data.llm.model ?? 'OK' : data.llm.error ?? t('statusLlmMissing'),
+            label: data.llm.followsDsh ? t('statusLlmDshLabel') : t('statusLlm'),
+            value: data.llm.followsDsh
+              ? (dshName ? dshName.slice(dshName.indexOf('/') + 1) : t('statusLlmDshNone'))
+              : data.llm.configured ? data.llm.model ?? 'OK' : data.llm.error ?? t('statusLlmMissing'),
+            ...(dshName ? { title: template(t('statusLlmDsh'), { model: dshName }) } : {}),
           })
         }
         statusItems.push({
@@ -4677,7 +4803,7 @@ window.__ModuleLoader__.load({
                   'div',
                   { className: 'mem0-stat', key: item.key },
                   h('span', { className: 'mem0-stat-label' }, item.label),
-                  h('span', { className: 'mem0-stat-value', title: String(item.value) }, item.value),
+                  h('span', { className: 'mem0-stat-value', title: String(item.title ?? item.value) }, item.value),
                 ),
               ),
             ),

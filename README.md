@@ -300,7 +300,8 @@ Keys are referenced by name (`embedderApiKeyRef`, `llmApiKeyRef`) and looked up 
 | `embedderModel` | — | e.g. `bge-m3` |
 | `embedderDims` | from the model | Sent as `dimensions` (OpenAI-compatible only) when set |
 | `embedderApiKeyRef` | — | Credential name of the embedder key |
-| `llmBaseUrl`, `llmModel`, `llmApiKeyRef` | — | The extraction LLM |
+| `llmProvider` | — | `"dsh"`: extraction uses the model selected in DSH at the time of each call (no address, model or key here; DSH holds them). Leave unset to use `llmBaseUrl`/`llmModel` |
+| `llmBaseUrl`, `llmModel`, `llmApiKeyRef` | — | The extraction LLM (when `llmProvider` is not `"dsh"`) |
 | `llmMaxTokens` | `8000` | Output budget of each extraction call (Mem0's own default is 2000; hybrid reasoning models spend part of it on thinking) |
 | `llmTemperature` | `0` | Mem0 sends 0 (and `top_p` 0.1) |
 | `llmReasoningEffort` | not sent | e.g. `"none"` to turn thinking off on gateways that support it |
