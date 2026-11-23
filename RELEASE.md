@@ -8,6 +8,34 @@ English is the default; the Chinese version follows below.
 
 Creating a GitHub release publishes the package to npm automatically (`.github/workflows/release.yml`, npm trusted publishing, no token). Tag the release `vX.Y.Z`, matching the `version` in `package.json`; a mismatch fails the workflow before anything is published. A release marked **pre-release** is published to the `next` dist-tag, otherwise to `latest`. If the first pre-release publish fails with an error about dist-tags, publish stable releases only (leave **pre-release** unticked).
 
+### Unreleased
+
+#### What changes for you
+
+- **The settings page is reorganised into three tabs.** A header that is always visible shows the connection state, the backend, the number of memories and where they are stored, plus the **Memory on** master switch. Problems (no connection, legacy Qdrant memories, no local setup, configuration warnings, the circuit breaker, failures in the last 24 hours) appear as banners under the header, each with a button that takes you to the fix. Below are three tabs: **Memories**, **Settings** and **Maintenance**. Unsaved changes stay when you switch tabs, and a save bar at the bottom shows while there are any.
+- **The memory library is always on the Memories tab.** It lists every memory newest first, 20 per page, with search and an **All / Global / Project** filter (local backend). Deleting asks in a dialog on the page. The **Recently written memories** block and the **View all memories** button are gone: the library's first page now shows the newest memories.
+- **Auto-save lists what it wrote.** When the backend reports it, the auto-save card lists each memory with an **New / Updated / Removed** tag (an update also shows the old wording). On Mem0 Platform, which processes saves in the background, it says so. Otherwise it shows the one-line counts as before. On the local backend a note says that it only adds memories, and merging and cleanup happen in the weekly memory check. Click a recalled or saved memory to find it in the library.
+
+#### Where each setting went
+
+| Before | Now |
+|---|---|
+| Page title "Mem0 connection settings", **Save**, **Check again** | Header (title "Mem0 Memory"); **Save** is in the save bar |
+| Status card | One status line in the header; the full list is under Maintenance › Diagnostics |
+| Memory summary | Memories › Memory summary (folded) |
+| Memory activity | Memories › Memory activity (recall on the left, auto-save on the right) |
+| Upgrade notices, configuration warnings | Header banners |
+| Store status, recent failures | Maintenance › Diagnostics; a header banner when there are failures |
+| Recently written memories | Removed (see the library's first page) |
+| Memory page (hidden) | Memories › Memory library (always shown) |
+| Where are memories stored? + Connection | Settings › Storage backend |
+| Local setup wizard | Settings › Storage backend and Maintenance › Local setup and migration |
+| Memory owner | Settings › Memory owner |
+| Memory behaviour | **Enable Mem0 memory** → header switch; auto-recall, auto-save, partition by project, translate → Settings › Common switches; the rest → Settings › Recall and capture |
+| Memory maintenance | **Run hygiene now** and the report → Maintenance › Memory check; its switches and budgets → Maintenance › Check settings; **Partition by project** → Settings › Common switches; recall budget and weights → Settings › Recall and capture |
+| Advanced options | Settings › Advanced options |
+| Bottom row (Save, Test connection, Discard) | Save bar; **Test connection** is in Settings › Storage backend |
+
 ### v0.4.1 — 2026-11-22
 
 A patch release for the Local OSS backend. The setup wizard now says why a local model server fails and what to do about it, extraction can use the model you already selected in DSH, and the memory chip is shorter and follows the session's working directory. Nothing to migrate: memories, partition ids and saved settings stay as they are.
@@ -169,6 +197,34 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 ### 如何发布
 
 在 GitHub 上新建 release 就会自动发到 npm（`.github/workflows/release.yml`，npm trusted publishing，不用 token）。tag 写成 `vX.Y.Z`，和 `package.json` 的 `version` 一致；不一致时 workflow 在发布前失败，不会发出任何东西。勾选 **pre-release** 时发布到 `next` 标签，否则发布到 `latest`。如果第一次 prerelease 发布失败、报错和 dist-tag 有关，就改为只发正式版（不勾选 **pre-release**）。
+
+### 未发布
+
+#### 你会看到的变化
+
+- **设置页重新整理成三个标签页。** 常驻页头显示连接状态、后端、记忆条数和存放位置，以及「启用记忆」总开关。出问题时（没连上、旧版 Qdrant 里还有记忆、本地没配置、配置警告、熔断、最近 24 小时有失败）页头下方出现横幅，每条都带一个按钮，直接跳到处理的地方。下面分「记忆」「设置」「维护」三个标签页。切换标签页时未保存的修改不会丢，有修改时底部出现保存条。
+- **记忆库常驻「记忆」标签页。** 按时间倒序列出全部记忆，每页 20 条，可以搜索，本地后端还能按「全部 / 全局 / 项目」筛选。删除时在页面内弹框确认。「最近写入的记忆」和「查看全部记忆」按钮已删除：记忆库第一页就是最新的记忆。
+- **自动保存卡列出这次写了什么。** 后端提供明细时，逐条列出记忆并标上「新增 / 更新 / 删除」（更新还会显示旧的说法）。Mem0 Platform 在后台处理保存，卡片会说明这一点；其他情况仍显示原来的一行统计。本地后端另有一行说明：本地后端只新增记忆，合并和清理在每周巡检里做。点召回或保存里的某条记忆，可以在记忆库里定位到它。
+
+#### 设置搬到哪了
+
+| 原来 | 现在 |
+|---|---|
+| 页头「Mem0 连接设置」、「保存」、「重新检查」 | 常驻页头（标题改为「Mem0 长期记忆」）；「保存」在保存条 |
+| 状态卡 | 页头一行状态；完整状态在 维护 › 诊断 |
+| 记忆摘要 | 记忆 › 记忆摘要（折叠） |
+| 记忆活动 | 记忆 › 记忆活动（左召回、右保存） |
+| 升级提示、配置警告 | 页头横幅 |
+| 存储状态、最近失败 | 维护 › 诊断；有失败时页头出横幅 |
+| 最近写入的记忆 | 删除（看记忆库第一页） |
+| 记忆页（默认隐藏） | 记忆 › 记忆库（常显） |
+| 记忆存储在哪里？＋ 连接信息 | 设置 › 存储后端 |
+| 本地配置向导 | 设置 › 存储后端，以及 维护 › 本地配置和迁移 |
+| 记忆归属 | 设置 › 记忆归属 |
+| 记忆行为 | 「启用 Mem0 记忆」→ 页头开关；自动召回、自动保存、按项目分区、翻译 → 设置 › 常用开关；其余 → 设置 › 召回和保存 |
+| 记忆维护 | 「立即巡检」和报告 → 维护 › 巡检；巡检相关开关和预算 → 维护 › 巡检设置；「按项目分区」→ 设置 › 常用开关；召回预算和权重 → 设置 › 召回和保存 |
+| 高级选项 | 设置 › 高级选项 |
+| 底部操作行（保存、测试连接、放弃修改） | 保存条；「测试连接」在 设置 › 存储后端 |
 
 ### v0.4.1 — 2026-11-22
 
