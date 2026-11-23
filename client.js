@@ -4191,6 +4191,345 @@ window.__ModuleLoader__.load({
       return missing
     }
 
+    // ---- settings page pieces (state stays in ConfigPage) -----------------
+
+    const numberValue = (value) => (value === '' ? '' : Number(value))
+
+    /**
+     * How the page edits each draft field except `backend`, `apiKey` and
+     * `baseUrl` (their hints depend on the backend): control kind, label
+     * and hint keys. `oss`: only shown for the local backend.
+     */
+    const FIELD_SPECS = {
+      enabled: { kind: 'toggle', label: 'enabled', hint: 'enabledHint' },
+      autoRecall: { kind: 'toggle', label: 'autoRecall', hint: 'autoRecallHint' },
+      autoCapture: { kind: 'toggle', label: 'autoCapture', hint: 'autoCaptureHint' },
+      projectPartitions: { kind: 'toggle', label: 'projectPartitions', hint: 'projectPartitionsHint' },
+      translateMemories: { kind: 'toggle', label: 'translateMemories', hint: 'translateMemoriesHint' },
+      announceToAgent: { kind: 'toggle', label: 'announceToAgent', hint: 'announceToAgentHint' },
+      includeSubagents: { kind: 'toggle', label: 'includeSubagents', hint: 'includeSubagentsHint' },
+      captureStrataFolds: { kind: 'toggle', label: 'captureStrataFolds', hint: 'captureStrataFoldsHint' },
+      captureFilter: {
+        kind: 'select',
+        label: 'captureFilter',
+        hint: 'captureFilterHint',
+        options: [['heuristic', 'captureFilterHeuristic'], ['off', 'captureFilterOff']],
+      },
+      profileEnabled: { kind: 'toggle', label: 'profileEnabled', hint: 'profileEnabledHint' },
+      hygieneEnabled: { kind: 'toggle', label: 'hygieneEnabled', hint: 'hygieneEnabledHint' },
+      modelHygiene: { kind: 'toggle', label: 'modelHygiene', hint: 'modelHygieneHint' },
+      profileBudgetTokens: { kind: 'number', label: 'profileBudgetTokens', hint: 'profileBudgetTokensHint' },
+      memoryBudgetTokens: { kind: 'number', label: 'memoryBudgetTokens', hint: 'memoryBudgetTokensHint' },
+      storeSafetyLimit: { kind: 'number', label: 'storeSafetyLimit', hint: 'storeSafetyLimitHint' },
+      importanceWeight: { kind: 'number', label: 'importanceWeight', hint: 'importanceWeightHint' },
+      projectRecallBoost: { kind: 'number', label: 'projectRecallBoost', hint: 'projectRecallBoostHint' },
+      hygieneIntervalDays: { kind: 'number', label: 'hygieneIntervalDays', hint: 'hygieneIntervalDaysHint' },
+      captureMaxChars: { kind: 'number', label: 'captureMaxChars', hint: 'captureMaxCharsHint' },
+      recallTopK: { kind: 'number', label: 'recallTopK', hint: 'recallTopKHint' },
+      timeoutMs: { kind: 'number', label: 'timeoutMs', hint: 'timeoutMsHint' },
+      recallTimeoutMs: { kind: 'number', label: 'recallTimeoutMs', hint: 'recallTimeoutMsHint' },
+      addTimeoutMs: { kind: 'number', label: 'addTimeoutMs', hint: 'addTimeoutMsHint' },
+      captureTurnDedupThreshold: { kind: 'number', label: 'captureTurnDedupThreshold', hint: 'captureTurnDedupThresholdHint', oss: true },
+      embedderKeepAlive: { kind: 'text', label: 'embedderKeepAlive', hint: 'embedderKeepAliveHint', trim: true, oss: true },
+      userId: { kind: 'text', label: 'userId' },
+      agentId: { kind: 'text', label: 'agentId' },
+      apiKeyEnv: { kind: 'text', label: 'apiKeyEnv', hint: 'apiKeyEnvHint' },
+      authType: {
+        kind: 'select',
+        label: 'authType',
+        options: [['apiKey', 'authApiKey'], ['bearer', 'authBearer'], ['token', 'authToken'], ['none', 'authNone']],
+      },
+      storePath: { kind: 'text', label: 'storePath', hint: 'storePathHint', placeholder: '~/.dsh/mem0/memory.sqlite', className: 'mem0-grid-single' },
+    }
+
+    /** One draft field as its control (FIELD_SPECS). */
+    function SettingControl({ t, name, draft, setField }) {
+      const spec = FIELD_SPECS[name]
+      if (!spec) return null
+      const label = t(spec.label)
+      const hint = spec.hint ? t(spec.hint) : undefined
+      const onChange = (value) => setField(name, value)
+      if (spec.kind === 'toggle') return h(ToggleRow, { label, hint, checked: draft[name], onChange })
+      if (spec.kind === 'select') {
+        return h(SelectField, {
+          label,
+          hint,
+          value: draft[name],
+          onChange,
+          options: spec.options.map(([value, key]) => ({ value, label: t(key) })),
+        })
+      }
+      return h(TextField, {
+        label,
+        hint,
+        type: spec.kind === 'number' ? 'number' : 'text',
+        value: draft[name],
+        placeholder: spec.placeholder,
+        className: spec.className,
+        onChange: (value) => setField(name, spec.kind === 'number' ? numberValue(value) : spec.trim ? value.trim() : value),
+      })
+    }
+
+    /** Controls for the named fields, leaving out local-only ones on other backends. */
+    function settingControls({ t, names, draft, setField }) {
+      return names
+        .filter((name) => !FIELD_SPECS[name]?.oss || draft.backend === 'oss')
+        .map((name) => h(SettingControl, { key: name, t, name, draft, setField }))
+    }
+
+    /** Cells of the full status grid (backend, endpoint, store, models, key). Pure. */
+    function statusItemsFor(t, data) {
+      const items = []
+      if (!data) return items
+      items.push(
+        { key: 'backend', label: t('statusBackend'), value: statusLabel(t, data.backend) },
+        { key: 'collection', label: t('statusCollection'), value: data.collection ?? '—' },
+        { key: 'endpoint', label: t('statusEndpoint'), value: data.endpoint ?? '—' },
+      )
+      const choice = backendChoiceText(t, data)
+      if (choice) items.push({ key: 'backendChoice', label: t('statusBackendChoice'), value: choice })
+      if (data.mem0Reference) items.push({ key: 'mem0', label: t('statusMem0'), value: template(t('statusMem0Native'), { version: data.mem0Reference }) })
+      if (data.store) {
+        items.push({
+          key: 'store',
+          label: t('statusStore'),
+          value: data.store.ok ? `OK (${data.store.kind ?? 'sqlite'})` : data.store.error ?? '—',
+        })
+      } else if (data.qdrant) {
+        items.push({ key: 'qdrant', label: t('statusVectorStore'), value: data.qdrant.ok ? 'OK' : data.qdrant.error ?? '—' })
+      }
+      if (data.embedder) {
+        items.push({
+          key: 'embedder',
+          label: t('statusEmbedder'),
+          value: data.embedder.ok
+            ? `${data.embedder.model ? `${data.embedder.model} · ` : ''}${data.embedder.dimensions ?? '?'} dims`
+            : data.embedder.error ?? '—',
+        })
+      }
+      if (data.llm) {
+        // Following DSH: the label says so; the value is the model id now
+        // (provider in the tooltip), so it fits the cell.
+        const dshName = data.llm.followsDsh ? String(data.llm.model ?? '') : ''
+        items.push({
+          key: 'llm',
+          label: data.llm.followsDsh ? t('statusLlmDshLabel') : t('statusLlm'),
+          value: data.llm.followsDsh
+            ? (dshName ? dshName.slice(dshName.indexOf('/') + 1) : t('statusLlmDshNone'))
+            : data.llm.configured ? data.llm.model ?? 'OK' : data.llm.error ?? t('statusLlmMissing'),
+          ...(dshName ? { title: template(t('statusLlmDsh'), { model: dshName }) } : {}),
+        })
+      }
+      items.push({ key: 'key', label: t('statusKey'), value: data.apiKeyConfigured ? t('keySet') : t('keyUnset') })
+      return items
+    }
+
+    function StatusGrid({ items }) {
+      return h(
+        'div',
+        { className: 'mem0-status-grid' },
+        items.map((item) =>
+          h(
+            'div',
+            { className: 'mem0-stat', key: item.key },
+            h('span', { className: 'mem0-stat-label' }, item.label),
+            h('span', { className: 'mem0-stat-value', title: String(item.title ?? item.value) }, item.value),
+          ),
+        ),
+      )
+    }
+
+    /** "12 items · 380 tok · Edited manually · Updated …" for the summary card. Pure. */
+    function profileMetaFor(t, maintenance) {
+      const meta = []
+      const profile = maintenance?.profile
+      if (!profile) return meta
+      meta.push(`${profile.items ?? 0} ${t('profileSummaryItems')}`)
+      if (profile.tokens !== undefined) meta.push(`${profile.tokens} tok`)
+      if (profile.manual) meta.push(t('profileManual'))
+      if (profile.sourcesChanged) meta.push(t('profileSourcesChanged'))
+      if (profile.stale) meta.push(t('profileStale'))
+      if (profile.updatedAt) meta.push(`${t('profileSummaryUpdated')} ${activityTime(profile.updatedAt)}`)
+      return meta
+    }
+
+    /** Project summaries (partition L0): name, size, whether being rebuilt. Pure. */
+    function projectSummaryLineFor(t, maintenance) {
+      const list = Array.isArray(maintenance?.projectProfiles) ? maintenance.projectProfiles : []
+      if (list.length === 0) return ''
+      return template(t('projectSummaries'), {
+        list: list
+          .map((item) => `${item.name || shortId(item.projectId)} (${item.items ?? 0} · ${item.tokens ?? 0} ${t('tokUnit')}${item.stale ? ` · ${t('projectSummaryStale')}` : ''})`)
+          .join(', '),
+      })
+    }
+
+    /** "Last run … · Next run … · N pending · Profile …" for the hygiene card. Pure. */
+    function maintenanceMetaFor(t, maintenance) {
+      const meta = []
+      meta.push(`${t('hygieneLastRun')} ${maintenance?.lastRunAt ? activityTime(maintenance.lastRunAt) : t('hygieneNever')}`)
+      if (maintenance?.nextRunAt) meta.push(`${t('hygieneNextRun')} ${activityTime(maintenance.nextRunAt)}`)
+      else if (maintenance?.due) meta.push(`${t('hygieneNextRun')} ${t('hygieneDue')}`)
+      if (maintenance?.pending > 0) {
+        meta.push(template(t(maintenance.catchUp ? 'hygienePending' : 'hygienePendingSlow'), { count: maintenance.pending }))
+      }
+      if (maintenance?.profile) meta.push(`${t('hygieneProfile')} ${maintenance.profile.items ?? 0} · ${maintenance.profile.tokens ?? 0} tok`)
+      return meta
+    }
+
+    function ProfilePreview({ value }) {
+      const lines = String(value ?? '').split('\n')
+      return h(
+        'div',
+        { className: 'mem0-profile-preview' },
+        lines.map((line, index) => {
+          const text = line.trim()
+          if (!text) return null
+          if (/^#{1,6}\s+/.test(text)) return h('h4', { key: index, className: 'mem0-profile-heading' }, text.replace(/^#{1,6}\s+/, ''))
+          if (/^[-*]\s+/.test(text)) return h('div', { key: index, className: 'mem0-profile-item' }, text.replace(/^[-*]\s+/, ''))
+          return h('p', { key: index, className: 'mem0-profile-paragraph' }, text)
+        }),
+      )
+    }
+
+    /** The memory summary body: preview or editor, and its buttons. */
+    function ProfileEditor({ t, enabled, profileText, profile }) {
+      const { draft, editing, state, message, setDraft, edit, save, cancel, reset } = profile
+      const shown = draft ?? profileText
+      return h(
+        React.Fragment,
+        null,
+        editing
+          ? h('textarea', {
+              className: 'mem0-profile-edit',
+              value: draft ?? '',
+              placeholder: enabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled'),
+              disabled: !enabled || state === 'saving',
+              rows: 8,
+              onChange: (event) => setDraft(event.target.value),
+            })
+          : String(shown ?? '').trim()
+            ? h(ProfilePreview, { value: shown })
+            : h('p', { className: 'mem0-hint' }, enabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled')),
+        editing ? h('p', { className: 'mem0-hint' }, t('profileEditHint')) : null,
+        h(
+          'div',
+          { className: 'mem0-profile-actions' },
+          editing
+            ? h(
+                'button',
+                { type: 'button', className: 'mem0-primary', disabled: !enabled || state === 'saving' || !String(draft ?? '').trim(), onClick: save },
+                state === 'saving' ? t('profileSaving') : t('profileSave'),
+              )
+            : h('button', { type: 'button', className: 'mem0-primary', disabled: !enabled || state === 'saving', onClick: edit }, t('profileEdit')),
+          editing
+            ? h('button', { type: 'button', className: 'mem0-secondary', disabled: state === 'saving', onClick: cancel }, t('profileCancel'))
+            : h('button', { type: 'button', className: 'mem0-secondary', disabled: !enabled || state === 'saving', onClick: reset }, t('profileReset')),
+          message ? h('span', { className: state === 'error' ? 'mem0-error' : 'mem0-hint' }, message) : null,
+        ),
+        h('p', { className: 'mem0-hint' }, t('profileResetHint')),
+      )
+    }
+
+    /** The last hygiene report: one summary line and the expandable details. */
+    function HygieneReport({ t, report, texts }) {
+      if (!report) return null
+      return h(
+        React.Fragment,
+        null,
+        h(
+          'p',
+          { className: 'mem0-activity-meta' },
+          `${t('hygieneLastReport')} · ${hygieneReason(t, report.reason)}${report.finishedAt ? ` · ${activityTime(report.finishedAt)}` : ''} · ${formatHygieneReport(t, report)}`,
+        ),
+        h(
+          'details',
+          { className: 'mem0-details mem0-report-details' },
+          h('summary', null, t('hygieneDetails')),
+          h(
+            'div',
+            { className: 'mem0-report-grid' },
+            h('span', null, `${t('hygieneReportWindow')}: ${activityTime(report.startedAt)} → ${activityTime(report.finishedAt)}`),
+            h('span', null, `${t('hygieneReportDuration')}: ${report.durationMs ?? '—'} ms`),
+            h('span', null, `${t('hygieneReportStore')}: ${report.storeBefore ?? report.scanned ?? 0} → ${report.storeCount ?? 0}`),
+            h('span', null, `${t('hygieneReportStoreTokens')}: ${report.storeTokensBefore ?? 0} → ${report.storeTokens ?? 0}`),
+            h('span', null, `${t('hygieneReportProfile')}: ${report.profileItems ?? 0} · ${report.profileTokens ?? 0} tok`),
+          ),
+          ['duplicateDetails', 'mergedDetails', 'deletedDetails', 'failedDetails', 'prunedDetails'].some((key) => Array.isArray(report[key]))
+            ? h(
+                'div',
+                { className: 'mem0-report-details-list' },
+                report.dryRun
+                  ? reportDetail(t, `${t('hygienePlannedDetails')} (${report.planned ?? 0})`, report.plannedDetails, (item) => reportItem(t, item))
+                  : null,
+                reportDetail(t, t('hygieneDuplicateDetails'), report.duplicateDetails, (item) => reportItem(t, item)),
+                Array.isArray(report.prunedDetails) ? reportDetail(t, t('hygienePrunedDetails'), report.prunedDetails, (item) => reportItem(t, item)) : null,
+                reportDetail(t, t('hygieneMergeDetails'), report.dryRun ? report.mergePlan : report.mergedDetails, (item) => mergeLine(t, texts, item)),
+                reportDetail(t, t('hygieneImportanceDetails'), report.reviewDetails, (item) => importanceLine(t, texts, item)),
+                reportDetail(t, t('hygieneDeletedDetails'), report.deletedDetails, (item) => reportItem(t, item)),
+                reportDetail(t, t('hygieneFailedDetails'), report.failedDetails, (item) => `${item.id}: ${item.error}`),
+              )
+            : h('p', { className: 'mem0-hint' }, t('hygieneLegacyDetails')),
+        ),
+      )
+    }
+
+    /** Connection fields of the chosen backend (key, env, URL, auth / local file and wizard). */
+    function ConnectionFields({ t, draft, setField, apiKey, setApiKey, keyConfigured, onOpenWizard }) {
+      const fields = []
+      const control = (name) => h(SettingControl, { key: name, t, name, draft, setField })
+      if (draft.backend === 'auto' || draft.backend === 'platform' || draft.backend === 'server') {
+        fields.push(
+          h(TextField, {
+            key: 'apiKey',
+            label: t('apiKey'),
+            hint: keyConfigured ? t('apiKeySet') : t('apiKeyHint'),
+            type: 'password',
+            value: apiKey,
+            autoComplete: 'off',
+            placeholder: keyConfigured ? '••••••••' : t('apiKeyUnset'),
+            onChange: setApiKey,
+          }),
+          control('apiKeyEnv'),
+        )
+      }
+      if (draft.backend === 'auto' || draft.backend === 'platform') {
+        fields.push(
+          h(TextField, {
+            key: 'baseUrl',
+            label: t('baseUrl'),
+            hint: draft.backend === 'platform' ? t('baseUrlPlatformHint') : undefined,
+            value: draft.baseUrl,
+            placeholder: 'https://api.mem0.ai',
+            onChange: (value) => setField('baseUrl', value),
+          }),
+        )
+      }
+      if (draft.backend === 'server') {
+        fields.push(
+          h(TextField, {
+            key: 'baseUrl',
+            label: t('baseUrl'),
+            hint: t('baseUrlServerHint'),
+            value: draft.baseUrl,
+            placeholder: 'http://127.0.0.1:8888',
+            onChange: (value) => setField('baseUrl', value),
+          }),
+          control('authType'),
+        )
+      }
+      if (draft.backend === 'oss') {
+        fields.push(
+          control('storePath'),
+          h('p', { key: 'ossConfigHint', className: 'mem0-hint mem0-grid-single' }, t('ossConfigHint')),
+          h('div', { key: 'wizard', className: 'mem0-wz-row mem0-grid-single' },
+            h('button', { type: 'button', className: 'mem0-secondary', onClick: onOpenWizard }, t('wzOpen')),
+          ),
+        )
+      }
+      return h('div', { className: 'mem0-grid' }, fields)
+    }
+
     function ConfigPage({ t, ctx }) {
       const form = ctx.configForms.get(ENTRY_ID)
       const mirror = ctx.configForms.describe()
@@ -4659,57 +4998,7 @@ window.__ModuleLoader__.load({
       const data = status.data
       const keyConfigured = data ? Boolean(data.apiKeyConfigured) : apiKeySet
       const statusOk = status.phase === 'ready' && data?.ok
-      const statusItems = []
-      if (data) {
-        statusItems.push(
-          { key: 'backend', label: t('statusBackend'), value: statusLabel(t, data.backend) },
-          { key: 'collection', label: t('statusCollection'), value: data.collection ?? '—' },
-          { key: 'endpoint', label: t('statusEndpoint'), value: data.endpoint ?? '—' },
-        )
-        const choice = backendChoiceText(t, data)
-        if (choice) statusItems.push({ key: 'backendChoice', label: t('statusBackendChoice'), value: choice })
-        if (data.mem0Reference) statusItems.push({ key: 'mem0', label: t('statusMem0'), value: template(t('statusMem0Native'), { version: data.mem0Reference }) })
-        if (data.store) {
-          statusItems.push({
-            key: 'store',
-            label: t('statusStore'),
-            value: data.store.ok ? `OK (${data.store.kind ?? 'sqlite'})` : data.store.error ?? '—',
-          })
-        } else if (data.qdrant) {
-          statusItems.push({
-            key: 'qdrant',
-            label: t('statusVectorStore'),
-            value: data.qdrant.ok ? 'OK' : data.qdrant.error ?? '—',
-          })
-        }
-        if (data.embedder) {
-          statusItems.push({
-            key: 'embedder',
-            label: t('statusEmbedder'),
-            value: data.embedder.ok
-              ? `${data.embedder.model ? `${data.embedder.model} · ` : ''}${data.embedder.dimensions ?? '?'} dims`
-              : data.embedder.error ?? '—',
-          })
-        }
-        if (data.llm) {
-          // Following DSH: the label says so; the value is the model id now
-          // (provider in the tooltip), so it fits the cell.
-          const dshName = data.llm.followsDsh ? String(data.llm.model ?? '') : ''
-          statusItems.push({
-            key: 'llm',
-            label: data.llm.followsDsh ? t('statusLlmDshLabel') : t('statusLlm'),
-            value: data.llm.followsDsh
-              ? (dshName ? dshName.slice(dshName.indexOf('/') + 1) : t('statusLlmDshNone'))
-              : data.llm.configured ? data.llm.model ?? 'OK' : data.llm.error ?? t('statusLlmMissing'),
-            ...(dshName ? { title: template(t('statusLlmDsh'), { model: dshName }) } : {}),
-          })
-        }
-        statusItems.push({
-          key: 'key',
-          label: t('statusKey'),
-          value: data.apiKeyConfigured ? t('keySet') : t('keyUnset'),
-        })
-      }
+      const statusItems = statusItemsFor(t, data)
 
       const capture = data?.activity?.capture ?? null
       const recall = data?.activity?.recall ?? null
@@ -4717,43 +5006,27 @@ window.__ModuleLoader__.load({
       const lastReport = maintenance?.lastReport ?? null
       const recentMemories = Array.isArray(data?.recentMemories) ? data.recentMemories : []
       const profileText = typeof data?.profileText === 'string' ? data.profileText.trim() : ''
-      const profileMeta = []
-      if (maintenance?.profile) {
-        profileMeta.push(`${maintenance.profile.items ?? 0} ${t('profileSummaryItems')}`)
-        if (maintenance.profile.tokens !== undefined) profileMeta.push(`${maintenance.profile.tokens} tok`)
-        if (maintenance.profile.manual) profileMeta.push(t('profileManual'))
-        if (maintenance.profile.sourcesChanged) profileMeta.push(t('profileSourcesChanged'))
-        if (maintenance.profile.stale) profileMeta.push(t('profileStale'))
-        if (maintenance.profile.updatedAt) {
-          profileMeta.push(`${t('profileSummaryUpdated')} ${activityTime(maintenance.profile.updatedAt)}`)
-        }
-      }
-      // Project summaries (partition L0): name, size, whether being rebuilt.
-      const projectSummaryLine = Array.isArray(maintenance?.projectProfiles) && maintenance.projectProfiles.length > 0
-        ? template(t('projectSummaries'), {
-            list: maintenance.projectProfiles
-              .map((item) => `${item.name || shortId(item.projectId)} (${item.items ?? 0} · ${item.tokens ?? 0} ${t('tokUnit')}${item.stale ? ` · ${t('projectSummaryStale')}` : ''})`)
-              .join(', '),
-          })
-        : ''
-      const maintenanceMeta = []
-      if (maintenance?.lastRunAt) {
-        maintenanceMeta.push(`${t('hygieneLastRun')} ${activityTime(maintenance.lastRunAt)}`)
-      } else {
-        maintenanceMeta.push(`${t('hygieneLastRun')} ${t('hygieneNever')}`)
-      }
-      if (maintenance?.nextRunAt) {
-        maintenanceMeta.push(`${t('hygieneNextRun')} ${activityTime(maintenance.nextRunAt)}`)
-      } else if (maintenance?.due) {
-        maintenanceMeta.push(`${t('hygieneNextRun')} ${t('hygieneDue')}`)
-      }
-      if (maintenance?.pending > 0) {
-        maintenanceMeta.push(template(t(maintenance.catchUp ? 'hygienePending' : 'hygienePendingSlow'), { count: maintenance.pending }))
-      }
-      if (maintenance?.profile) {
-        maintenanceMeta.push(
-          `${t('hygieneProfile')} ${maintenance.profile.items ?? 0} · ${maintenance.profile.tokens ?? 0} tok`,
-        )
+      const profileMeta = profileMetaFor(t, maintenance)
+      const projectSummaryLine = projectSummaryLineFor(t, maintenance)
+      const maintenanceMeta = maintenanceMetaFor(t, maintenance)
+      const profile = {
+        draft: profileDraft,
+        editing: profileEditing,
+        state: profileState,
+        message: profileMessage,
+        setDraft: (value) => {
+          setProfileDraft(value)
+          setProfileState('editing')
+          setProfileMessage('')
+        },
+        edit: () => {
+          setProfileEditing(true)
+          setProfileState('editing')
+          setProfileMessage('')
+        },
+        save: saveProfile,
+        cancel: cancelProfileEdit,
+        reset: resetProfile,
       }
       const captureMeta = []
       if (capture?.messages) captureMeta.push(`${capture.messages} ${t('activityMessages')}`)
@@ -4785,101 +5058,6 @@ window.__ModuleLoader__.load({
             : draft.backend === 'oss'
               ? t('backendOssHint')
               : t('backendAutoHint')
-
-      const connectionFields = []
-      if (draft.backend === 'auto' || draft.backend === 'platform' || draft.backend === 'server') {
-        connectionFields.push(
-          h(TextField, {
-            key: 'apiKey',
-            label: t('apiKey'),
-            hint: keyConfigured ? t('apiKeySet') : t('apiKeyHint'),
-            type: 'password',
-            value: apiKey,
-            autoComplete: 'off',
-            placeholder: keyConfigured ? '••••••••' : t('apiKeyUnset'),
-            onChange: setApiKey,
-          }),
-          h(TextField, {
-            key: 'apiKeyEnv',
-            label: t('apiKeyEnv'),
-            hint: t('apiKeyEnvHint'),
-            value: draft.apiKeyEnv,
-            onChange: (value) => setField('apiKeyEnv', value),
-          }),
-        )
-      }
-      if (draft.backend === 'auto' || draft.backend === 'platform') {
-        connectionFields.push(
-          h(TextField, {
-            key: 'baseUrl',
-            label: t('baseUrl'),
-            hint: draft.backend === 'platform' ? t('baseUrlPlatformHint') : undefined,
-            value: draft.baseUrl,
-            placeholder: 'https://api.mem0.ai',
-            onChange: (value) => setField('baseUrl', value),
-          }),
-        )
-      }
-      if (draft.backend === 'server') {
-        connectionFields.push(
-          h(TextField, {
-            key: 'baseUrl',
-            label: t('baseUrl'),
-            hint: t('baseUrlServerHint'),
-            value: draft.baseUrl,
-            placeholder: 'http://127.0.0.1:8888',
-            onChange: (value) => setField('baseUrl', value),
-          }),
-          h(SelectField, {
-            key: 'authType',
-            label: t('authType'),
-            value: draft.authType,
-            onChange: (value) => setField('authType', value),
-            options: [
-              { value: 'apiKey', label: t('authApiKey') },
-              { value: 'bearer', label: t('authBearer') },
-              { value: 'token', label: t('authToken') },
-              { value: 'none', label: t('authNone') },
-            ],
-          }),
-        )
-      }
-      if (draft.backend === 'oss') {
-        connectionFields.push(
-          h(TextField, {
-            key: 'storePath',
-            label: t('storePath'),
-            hint: t('storePathHint'),
-            value: draft.storePath,
-            placeholder: '~/.dsh/mem0/memory.sqlite',
-            className: 'mem0-grid-single',
-            onChange: (value) => setField('storePath', value),
-          }),
-          h('p', { key: 'ossConfigHint', className: 'mem0-hint mem0-grid-single' }, t('ossConfigHint')),
-          h('div', { key: 'wizard', className: 'mem0-wz-row mem0-grid-single' },
-            h('button', { type: 'button', className: 'mem0-secondary', onClick: () => setWizardOpen(true) }, t('wzOpen')),
-          ),
-        )
-      }
-
-      const renderProfilePreview = (value) => {
-        const lines = String(value ?? '').split('\n')
-        return h(
-          'div',
-          { className: 'mem0-profile-preview' },
-          lines.map((line, index) => {
-            const text = line.trim()
-            if (!text) return null
-            if (/^#{1,6}\s+/.test(text)) {
-              return h('h4', { key: index, className: 'mem0-profile-heading' }, text.replace(/^#{1,6}\s+/, ''))
-            }
-            if (/^[-*]\s+/.test(text)) {
-              return h('div', { key: index, className: 'mem0-profile-item' }, text.replace(/^[-*]\s+/, ''))
-            }
-            return h('p', { key: index, className: 'mem0-profile-paragraph' }, text)
-          }),
-        )
-      }
 
       return h(
         'div',
@@ -4941,18 +5119,7 @@ window.__ModuleLoader__.load({
               ),
               testState === 'ok' ? h('span', { className: 'mem0-chip mem0-chip-ok' }, t('testOk')) : null,
             ),
-            h(
-              'div',
-              { className: 'mem0-status-grid' },
-              statusItems.map((item) =>
-                h(
-                  'div',
-                  { className: 'mem0-stat', key: item.key },
-                  h('span', { className: 'mem0-stat-label' }, item.label),
-                  h('span', { className: 'mem0-stat-value', title: String(item.title ?? item.value) }, item.value),
-                ),
-              ),
-            ),
+            h(StatusGrid, { items: statusItems }),
           ),
           status.phase === 'error' || (data && data.ok === false)
             ? h('p', { className: 'mem0-error' }, data?.error ?? status.message)
@@ -4969,81 +5136,7 @@ window.__ModuleLoader__.load({
           ),
           h('p', { className: 'mem0-section-hint' }, t('profileSummaryHint')),
           projectSummaryLine ? h('p', { className: 'mem0-hint' }, projectSummaryLine) : null,
-          profileEditing
-            ? h('textarea', {
-                className: 'mem0-profile-edit',
-                value: profileDraft ?? '',
-                placeholder: draft.profileEnabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled'),
-                disabled: !draft.profileEnabled || profileState === 'saving',
-                rows: 8,
-                onChange: (event) => {
-                  setProfileDraft(event.target.value)
-                  setProfileState('editing')
-                  setProfileMessage('')
-                },
-              })
-            : (profileDraft ?? profileText).trim()
-              ? renderProfilePreview(profileDraft ?? profileText)
-              : h('p', { className: 'mem0-hint' }, draft.profileEnabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled')),
-          profileEditing ? h('p', { className: 'mem0-hint' }, t('profileEditHint')) : null,
-          h(
-            'div',
-            { className: 'mem0-profile-actions' },
-            profileEditing
-              ? h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-primary',
-                    disabled: !draft.profileEnabled || profileState === 'saving' || !String(profileDraft ?? '').trim(),
-                    onClick: saveProfile,
-                  },
-                  profileState === 'saving' ? t('profileSaving') : t('profileSave'),
-                )
-              : h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-primary',
-                    disabled: !draft.profileEnabled || profileState === 'saving',
-                    onClick: () => {
-                      setProfileEditing(true)
-                      setProfileState('editing')
-                      setProfileMessage('')
-                    },
-                  },
-                  t('profileEdit'),
-                ),
-            profileEditing
-              ? h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-secondary',
-                    disabled: profileState === 'saving',
-                    onClick: cancelProfileEdit,
-                  },
-                  t('profileCancel'),
-                )
-              : h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-secondary',
-                    disabled: !draft.profileEnabled || profileState === 'saving',
-                    onClick: resetProfile,
-                  },
-                  t('profileReset'),
-                ),
-            profileMessage
-              ? h(
-                  'span',
-                  { className: profileState === 'error' ? 'mem0-error' : 'mem0-hint' },
-                  profileMessage,
-                )
-              : null,
-          ),
-          h('p', { className: 'mem0-hint' }, t('profileResetHint')),
+          h(ProfileEditor, { t, enabled: draft.profileEnabled, profileText, profile }),
         ),
         h(
           'div',
@@ -5423,7 +5516,7 @@ window.__ModuleLoader__.load({
           'div',
           { className: 'mem0-card mem0-section' },
           h('h3', { className: 'mem0-section-title' }, t('connectionSection')),
-          h('div', { className: 'mem0-grid' }, connectionFields),
+          h(ConnectionFields, { t, draft, setField, apiKey, setApiKey, keyConfigured, onOpenWizard: () => setWizardOpen(true) }),
         ),
         h(
           'div',
@@ -5432,16 +5525,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'mem0-grid' },
-            h(TextField, {
-              label: t('userId'),
-              value: draft.userId,
-              onChange: (value) => setField('userId', value),
-            }),
-            h(TextField, {
-              label: t('agentId'),
-              value: draft.agentId,
-              onChange: (value) => setField('agentId', value),
-            }),
+            settingControls({ t, names: ['userId', 'agentId'], draft, setField }),
           ),
         ),
         h(
@@ -5451,58 +5535,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'mem0-toggles' },
-            h(ToggleRow, {
-              label: t('autoRecall'),
-              hint: t('autoRecallHint'),
-              checked: draft.autoRecall,
-              onChange: (value) => setField('autoRecall', value),
-            }),
-            h(ToggleRow, {
-              label: t('autoCapture'),
-              hint: t('autoCaptureHint'),
-              checked: draft.autoCapture,
-              onChange: (value) => setField('autoCapture', value),
-            }),
-            h(ToggleRow, {
-              label: t('announceToAgent'),
-              hint: t('announceToAgentHint'),
-              checked: draft.announceToAgent,
-              onChange: (value) => setField('announceToAgent', value),
-            }),
-            h(ToggleRow, {
-              label: t('includeSubagents'),
-              hint: t('includeSubagentsHint'),
-              checked: draft.includeSubagents,
-              onChange: (value) => setField('includeSubagents', value),
-            }),
-            h(ToggleRow, {
-              label: t('translateMemories'),
-              hint: t('translateMemoriesHint'),
-              checked: draft.translateMemories,
-              onChange: (value) => setField('translateMemories', value),
-            }),
-            h(ToggleRow, {
-              label: t('captureStrataFolds'),
-              hint: t('captureStrataFoldsHint'),
-              checked: draft.captureStrataFolds,
-              onChange: (value) => setField('captureStrataFolds', value),
-            }),
-            h(SelectField, {
-              label: t('captureFilter'),
-              hint: t('captureFilterHint'),
-              value: draft.captureFilter,
-              onChange: (value) => setField('captureFilter', value),
-              options: [
-                { value: 'heuristic', label: t('captureFilterHeuristic') },
-                { value: 'off', label: t('captureFilterOff') },
-              ],
-            }),
-            h(ToggleRow, {
-              label: t('enabled'),
-              hint: t('enabledHint'),
-              checked: draft.enabled,
-              onChange: (value) => setField('enabled', value),
-            }),
+            settingControls({ t, names: ['autoRecall', 'autoCapture', 'announceToAgent', 'includeSubagents', 'translateMemories', 'captureStrataFolds', 'captureFilter', 'enabled'], draft, setField }),
           ),
         ),
         h(
@@ -5533,120 +5566,17 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'mem0-toggles' },
-            h(ToggleRow, {
-              label: t('profileEnabled'),
-              hint: t('profileEnabledHint'),
-              checked: draft.profileEnabled,
-              onChange: (value) => setField('profileEnabled', value),
-            }),
-            h(ToggleRow, {
-              label: t('hygieneEnabled'),
-              hint: t('hygieneEnabledHint'),
-              checked: draft.hygieneEnabled,
-              onChange: (value) => setField('hygieneEnabled', value),
-            }),
-            h(ToggleRow, {
-              label: t('modelHygiene'),
-              hint: t('modelHygieneHint'),
-              checked: draft.modelHygiene,
-              onChange: (value) => setField('modelHygiene', value),
-            }),
-            h(ToggleRow, {
-              label: t('projectPartitions'),
-              hint: t('projectPartitionsHint'),
-              checked: draft.projectPartitions,
-              onChange: (value) => setField('projectPartitions', value),
-            }),
+            settingControls({ t, names: ['profileEnabled', 'hygieneEnabled', 'modelHygiene', 'projectPartitions'], draft, setField }),
           ),
           h(
             'div',
             { className: 'mem0-grid' },
-            h(TextField, {
-              label: t('profileBudgetTokens'),
-              hint: t('profileBudgetTokensHint'),
-              type: 'number',
-              value: draft.profileBudgetTokens,
-              onChange: (value) => setField('profileBudgetTokens', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('memoryBudgetTokens'),
-              hint: t('memoryBudgetTokensHint'),
-              type: 'number',
-              value: draft.memoryBudgetTokens,
-              onChange: (value) => setField('memoryBudgetTokens', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('storeSafetyLimit'),
-              hint: t('storeSafetyLimitHint'),
-              type: 'number',
-              value: draft.storeSafetyLimit,
-              onChange: (value) => setField('storeSafetyLimit', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('importanceWeight'),
-              hint: t('importanceWeightHint'),
-              type: 'number',
-              value: draft.importanceWeight,
-              onChange: (value) => setField('importanceWeight', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('projectRecallBoost'),
-              hint: t('projectRecallBoostHint'),
-              type: 'number',
-              value: draft.projectRecallBoost,
-              onChange: (value) => setField('projectRecallBoost', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('hygieneIntervalDays'),
-              hint: t('hygieneIntervalDaysHint'),
-              type: 'number',
-              value: draft.hygieneIntervalDays,
-              onChange: (value) => setField('hygieneIntervalDays', value === '' ? '' : Number(value)),
-            }),
+            settingControls({ t, names: ['profileBudgetTokens', 'memoryBudgetTokens', 'storeSafetyLimit', 'importanceWeight', 'projectRecallBoost', 'hygieneIntervalDays'], draft, setField }),
           ),
           maintenanceMeta.length > 0
             ? h('p', { className: 'mem0-activity-meta' }, maintenanceMeta.join(' · '))
             : null,
-          lastReport
-            ? h(
-                'p',
-                { className: 'mem0-activity-meta' },
-                `${t('hygieneLastReport')} · ${hygieneReason(t, lastReport.reason)}${
-                  lastReport.finishedAt ? ` · ${activityTime(lastReport.finishedAt)}` : ''
-                } · ${formatHygieneReport(t, lastReport)}`,
-              )
-            : null,
-          lastReport
-            ? h(
-                'details',
-                { className: 'mem0-details mem0-report-details' },
-                h('summary', null, t('hygieneDetails')),
-                h(
-                  'div',
-                  { className: 'mem0-report-grid' },
-                  h('span', null, `${t('hygieneReportWindow')}: ${activityTime(lastReport.startedAt)} → ${activityTime(lastReport.finishedAt)}`),
-                  h('span', null, `${t('hygieneReportDuration')}: ${lastReport.durationMs ?? '—'} ms`),
-                  h('span', null, `${t('hygieneReportStore')}: ${lastReport.storeBefore ?? lastReport.scanned ?? 0} → ${lastReport.storeCount ?? 0}`),
-                  h('span', null, `${t('hygieneReportStoreTokens')}: ${lastReport.storeTokensBefore ?? 0} → ${lastReport.storeTokens ?? 0}`),
-                  h('span', null, `${t('hygieneReportProfile')}: ${lastReport.profileItems ?? 0} · ${lastReport.profileTokens ?? 0} tok`),
-                ),
-                ['duplicateDetails', 'mergedDetails', 'deletedDetails', 'failedDetails', 'prunedDetails'].some((key) => Array.isArray(lastReport[key]))
-                  ? h(
-                      'div',
-                      { className: 'mem0-report-details-list' },
-                      lastReport.dryRun
-                        ? reportDetail(t, `${t('hygienePlannedDetails')} (${lastReport.planned ?? 0})`, lastReport.plannedDetails, (item) => reportItem(t, item))
-                        : null,
-                      reportDetail(t, t('hygieneDuplicateDetails'), lastReport.duplicateDetails, (item) => reportItem(t, item)),
-                      Array.isArray(lastReport.prunedDetails) ? reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => reportItem(t, item)) : null,
-                      reportDetail(t, t('hygieneMergeDetails'), lastReport.dryRun ? lastReport.mergePlan : lastReport.mergedDetails, (item) => mergeLine(t, reportTexts, item)),
-                      reportDetail(t, t('hygieneImportanceDetails'), lastReport.reviewDetails, (item) => importanceLine(t, reportTexts, item)),
-                      reportDetail(t, t('hygieneDeletedDetails'), lastReport.deletedDetails, (item) => reportItem(t, item)),
-                      reportDetail(t, t('hygieneFailedDetails'), lastReport.failedDetails, (item) => `${item.id}: ${item.error}`),
-                    )
-                  : h('p', { className: 'mem0-hint' }, t('hygieneLegacyDetails')),
-              )
-            : null,
+          h(HygieneReport, { t, report: lastReport, texts: reportTexts }),
           maintenance?.lastError
             ? h('p', { className: 'mem0-error' }, `${t('hygieneFailed')}: ${maintenance.lastError}`)
             : null,
@@ -5669,58 +5599,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'mem0-grid' },
-            h(TextField, {
-              label: t('captureMaxChars'),
-              hint: t('captureMaxCharsHint'),
-              type: 'number',
-              value: draft.captureMaxChars,
-              onChange: (value) => setField('captureMaxChars', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('recallTopK'),
-              hint: t('recallTopKHint'),
-              type: 'number',
-              value: draft.recallTopK,
-              onChange: (value) => setField('recallTopK', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('timeoutMs'),
-              hint: t('timeoutMsHint'),
-              type: 'number',
-              value: draft.timeoutMs,
-              onChange: (value) => setField('timeoutMs', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('recallTimeoutMs'),
-              hint: t('recallTimeoutMsHint'),
-              type: 'number',
-              value: draft.recallTimeoutMs,
-              onChange: (value) => setField('recallTimeoutMs', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('addTimeoutMs'),
-              hint: t('addTimeoutMsHint'),
-              type: 'number',
-              value: draft.addTimeoutMs,
-              onChange: (value) => setField('addTimeoutMs', value === '' ? '' : Number(value)),
-            }),
-            draft.backend === 'oss'
-              ? h(TextField, {
-                  label: t('captureTurnDedupThreshold'),
-                  hint: t('captureTurnDedupThresholdHint'),
-                  type: 'number',
-                  value: draft.captureTurnDedupThreshold,
-                  onChange: (value) => setField('captureTurnDedupThreshold', value === '' ? '' : Number(value)),
-                })
-              : null,
-            draft.backend === 'oss'
-              ? h(TextField, {
-                  label: t('embedderKeepAlive'),
-                  hint: t('embedderKeepAliveHint'),
-                  value: draft.embedderKeepAlive,
-                  onChange: (value) => setField('embedderKeepAlive', value.trim()),
-                })
-              : null,
+            settingControls({ t, names: ['captureMaxChars', 'recallTopK', 'timeoutMs', 'recallTimeoutMs', 'addTimeoutMs', 'captureTurnDedupThreshold', 'embedderKeepAlive'], draft, setField }),
           ),
         ),
         h(
