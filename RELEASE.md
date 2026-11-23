@@ -8,6 +8,10 @@ English is the default; the Chinese version follows below.
 
 Creating a GitHub release publishes the package to npm automatically (`.github/workflows/release.yml`, npm trusted publishing, no token). Tag the release `vX.Y.Z`, matching the `version` in `package.json`; a mismatch fails the workflow before anything is published. A release marked **pre-release** is published to the `next` dist-tag, otherwise to `latest`. If the first pre-release publish fails with an error about dist-tags, publish stable releases only (leave **pre-release** unticked).
 
+### Unreleased
+
+- **The settings page can list what one automatic save wrote.** The capture record behind the **Auto save** card (`status.activity.capture`, gui status and activity routes) gains two optional fields: `preview`, up to 5 rows `{ id, memory, event: ADD | UPDATE | DELETE, previous?, partition? }`, and `pending: { eventId }` while Platform's asynchronous add is still processing. Texts are redacted and cut to 240 characters like the recall preview, and translated with it when page translation is on. Local OSS lists the memories it added (it never updates or deletes; a round whose facts were all duplicates has no rows); a self-hosted server also lists updates (with the old text when the server reports it) and deletions. The record stays in memory only. A page that does not read the new fields shows the one-line counts as before.
+
 ### v0.4.1 — 2026-11-22
 
 A patch release for the Local OSS backend. The setup wizard now says why a local model server fails and what to do about it, extraction can use the model you already selected in DSH, and the memory chip is shorter and follows the session's working directory. Nothing to migrate: memories, partition ids and saved settings stay as they are.
@@ -169,6 +173,10 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 ### 如何发布
 
 在 GitHub 上新建 release 就会自动发到 npm（`.github/workflows/release.yml`，npm trusted publishing，不用 token）。tag 写成 `vX.Y.Z`，和 `package.json` 的 `version` 一致；不一致时 workflow 在发布前失败，不会发出任何东西。勾选 **pre-release** 时发布到 `next` 标签，否则发布到 `latest`。如果第一次 prerelease 发布失败、报错和 dist-tag 有关，就改为只发正式版（不勾选 **pre-release**）。
+
+### Unreleased
+
+- **设置页可以列出一次自动保存写了哪些记忆。** 「自动保存」卡片背后的 capture 记录（`status.activity.capture`，gui 的 status 和 activity 接口）新增两个可选字段：`preview`，最多 5 条 `{ id, memory, event: ADD | UPDATE | DELETE, previous?, partition? }`；以及 Platform 异步保存还在处理时的 `pending: { eventId }`。文本和召回预览一样脱敏、截断到 240 字，开着页面翻译时一起翻译。本地 OSS 只列出它新增的记忆（它不更新也不删除；事实全部重复的一轮没有条目）；自建 Server 还会列出更新（服务端给了旧文本时带上）和删除。记录只在内存里。不读新字段的页面照旧显示一行统计。
 
 ### v0.4.1 — 2026-11-22
 
