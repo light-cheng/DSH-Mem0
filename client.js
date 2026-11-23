@@ -329,6 +329,7 @@ window.__ModuleLoader__.load({
       failureCause_startup: 'Local backend failed to start',
       failureCause_config: 'Configuration error',
       failureHintUnreachable: '{component} unreachable at {endpoint}. Is it running? On Windows, a port in a reserved range fails to bind (os error 10013 in the service log): see the README, Windows troubleshooting.',
+      failureHintOutputLimit: "The LLM answer reached its output limit (max_tokens {n}): reasoning used up the output. Raise Mem0's llmMaxTokens (8000 or more), or set llmReasoningEffort to low; this is not DSH's model setting. Gateway: {detail}",
       configWarning: 'dsh-mem0 settings look rewritten (DSH settings sync); missing: {fields}',
       upgradeLegacyQdrant: 'Earlier memories are still in Qdrant ({endpoint}, collection {collection}). This version keeps memories in SQLite and does not read them; move them with the local setup wizard (last step).',
       upgradeNoLocalConfig: 'No local backend settings were found in ~/.dsh/mem0/oss.json. Earlier versions fell back to reading settings from elsewhere; this one does not. Set it up again with the setup wizard.',
@@ -1005,6 +1006,7 @@ window.__ModuleLoader__.load({
       failureCause_startup: '本地后端启动失败',
       failureCause_config: '配置错误',
       failureHintUnreachable: '{component}不可达：{endpoint}。请确认服务在运行；Windows 上端口落在系统保留段时服务会绑定失败（服务日志里有 os error 10013），见 README「Windows 排障」。',
+      failureHintOutputLimit: 'LLM 回复达到输出上限（max_tokens {n}），推理把输出用完了。请调高 Mem0 的 llmMaxTokens（建议 ≥ 8000），或把 llmReasoningEffort 设成 low；这不是 DSH 的模型设置。网关原话：{detail}',
       configWarning: 'dsh-mem0 配置疑似被重写（DSH 设置同步），缺少：{fields}',
       upgradeLegacyQdrant: '旧记忆仍在 Qdrant（{endpoint}，collection {collection}）。这个版本把记忆存在 SQLite，不读取它们；请用本地配置向导的最后一步迁移。',
       upgradeNoLocalConfig: '在 ~/.dsh/mem0/oss.json 里没有找到本地后端配置。旧版本会从其他位置回退读取配置，这个版本不会，请用设置向导重新配置。',
@@ -2763,7 +2765,13 @@ window.__ModuleLoader__.load({
         parts.push(template(t('failureExit'), { how: exitHow(t, failure), uptime: formatDuration(failure.uptimeMs) }))
       }
       if (failure.retry === 'failed') parts.push(t('failureRetryFailed'))
-      if (failure.message) parts.push(failure.message)
+      // A gateway's "cut at its output budget" error (`detail`, its words):
+      // the localized advice replaces Mem0's English message.
+      const outputLimit = failure.cause === 'extraction' && failure.reason === 'truncated' && failure.detail
+        ? template(t('failureHintOutputLimit'), { n: failure.extract?.maxTokens ?? '?', detail: failure.detail })
+        : ''
+      if (outputLimit) parts.push(outputLimit)
+      else if (failure.message) parts.push(failure.message)
       const hint = unreachableHint(t, failure)
       if (hint) parts.push(hint)
       return parts.join(' · ')

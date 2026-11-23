@@ -8,6 +8,14 @@ English is the default; the Chinese version follows below.
 
 Creating a GitHub release publishes the package to npm automatically (`.github/workflows/release.yml`, npm trusted publishing, no token). Tag the release `vX.Y.Z`, matching the `version` in `package.json`; a mismatch fails the workflow before anything is published. A release marked **pre-release** is published to the `next` dist-tag, otherwise to `latest`. If the first pre-release publish fails with an error about dist-tags, publish stable releases only (leave **pre-release** unticked).
 
+### Unreleased
+
+#### What changes for you
+
+- **A gateway that reports "cut at the output limit" as an HTTP error is now handled as a cut-off answer.** Some local OpenAI-compatible gateways (seen with magpie) answer HTTP 502 when the model spent all of `max_tokens` on reasoning and answered nothing, e.g. "… cut at its length, the whole output spent on reasoning (the request's limit was 2000 tokens …)". Mem0 treated that as an ordinary server error: no retry, counted toward the pause after repeated failures, filed as "other error". It now treats it like an answer with `finish_reason=length`: the capture is retried once with twice the `max_tokens`, it does not count toward the pause, and the failure is filed as an extraction failure (answer cut off) with its numbers. Nothing is stored before the LLM answers, so the retry cannot store a memory twice. Only these phrases count; any other HTTP 502 behaves as before.
+- **The failure says what to change.** The memory page, the setup wizard's **Test** and `mem0_status` say: the LLM answer reached its output limit (max_tokens N) because reasoning used it up; raise Mem0's `llmMaxTokens` (8000 or more) or set `llmReasoningEffort` to `low`. This is Mem0's setting, not DSH's model setting. The gateway's own words are kept in full (a separate `detail` field of the failure history) instead of being cut at 240 characters.
+- **`mem0_status` shows the extraction budget.** The "extraction LLM:" line shows the `max_tokens` in use and where it comes from: the plugin setting `llmMaxTokens`, `llm.config.max_tokens` of a Mem0-format oss.json, or the default 8000. "last extraction:" is now also written when the LLM server answers with an HTTP error.
+
 ### v0.4.1 — 2026-11-22
 
 A patch release for the Local OSS backend. The setup wizard now says why a local model server fails and what to do about it, extraction can use the model you already selected in DSH, and the memory chip is shorter and follows the session's working directory. Nothing to migrate: memories, partition ids and saved settings stay as they are.
@@ -169,6 +177,14 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 ### 如何发布
 
 在 GitHub 上新建 release 就会自动发到 npm（`.github/workflows/release.yml`，npm trusted publishing，不用 token）。tag 写成 `vX.Y.Z`，和 `package.json` 的 `version` 一致；不一致时 workflow 在发布前失败，不会发出任何东西。勾选 **pre-release** 时发布到 `next` 标签，否则发布到 `latest`。如果第一次 prerelease 发布失败、报错和 dist-tag 有关，就改为只发正式版（不勾选 **pre-release**）。
+
+### 未发布
+
+#### 对你的影响
+
+- **网关用 HTTP 错误报告「输出被截断」时，按截断处理。** 有些本地 OpenAI 兼容网关（magpie 上见过），在模型把 `max_tokens` 全部用在推理、没有给出回复时，会返回 HTTP 502，例如「… cut at its length, the whole output spent on reasoning (the request's limit was 2000 tokens …)」。Mem0 以前把它当普通服务器错误：不重试，计入连续失败后的暂停，记为「其他错误」。现在按 `finish_reason=length` 的回复处理：自动保存重试一次，`max_tokens` 翻倍；不计入暂停；失败记录归为「LLM 抽取失败：回复被截断」，并带上统计数字。LLM 回复之前什么都没写入，所以重试不会把同一条记忆存两次。只有这几种说法会被识别，其他 HTTP 502 的行为不变。
+- **失败提示会说明要改什么。** 记忆页、设置向导的「测试」和 `mem0_status` 都会提示：LLM 回复达到输出上限（max_tokens N），推理把输出用完了；请调高 Mem0 的 `llmMaxTokens`（建议 ≥ 8000），或把 `llmReasoningEffort` 设成 `low`。这是 Mem0 的设置，不是 DSH 的模型设置。网关的原话完整保留（失败记录里单独的 `detail` 字段），不再在 240 字处截断。
+- **`mem0_status` 显示抽取的输出上限。** 「extraction LLM:」一行显示当前的 `max_tokens` 和它的来源：插件设置 `llmMaxTokens`、Mem0 格式 oss.json 的 `llm.config.max_tokens`，或默认值 8000。LLM 服务返回 HTTP 错误时，也会写「last extraction:」一行。
 
 ### v0.4.1 — 2026-11-22
 
