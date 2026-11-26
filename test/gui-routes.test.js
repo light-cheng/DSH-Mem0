@@ -399,9 +399,10 @@ test('memories route lists, filters and sanitizes the memory library', async () 
   assert.equal(filtered.body.total, 1)
   assert.equal(filtered.body.memories[0].id, 'm1')
   assert.equal(filtered.body.memories[0].memory, '喜欢茶')
+  // Only the shown page is translated (PR3), so a search matches the
+  // stored text and the id, not a translation.
   const translatedQuery = await invoke(routes.get(GUI_MEMORIES_PATH), 'GET', `${GUI_MEMORIES_PATH}?q=%E8%8C%B6&lang=zh`)
-  assert.equal(translatedQuery.body.total, 1)
-  assert.equal(translatedQuery.body.memories[0].id, 'm1')
+  assert.equal(translatedQuery.body.total, 0)
   const activity = await invoke(routes.get(GUI_ACTIVITY_PATH), 'GET')
   assert.deepEqual(activity.body.activity.recall.preview, [{ id: 'm1', memory: 'Likes tea' }])
   const rejected = await invoke(routes.get(GUI_MEMORIES_PATH), 'PUT')

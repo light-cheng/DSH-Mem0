@@ -710,7 +710,7 @@ window.__ModuleLoader__.load({
       libraryHint: 'Every memory, newest first.',
       libraryHintPartitioned: 'Every memory, newest first. The local backend keeps memories by project.',
       libraryServerCap: 'Self-hosted servers show the newest 1,000 memories.',
-      libraryCapped: 'Listing the first {shown} of {total}; search to find older ones.',
+      librarySemantic: 'Platform search finds memories by meaning, sorted by relevance.',
       libraryEmpty: 'No memories yet. With automatic capture on, facts from your chats show up here; the agent can also save one with mem0_add.',
       filterAll: 'All',
       filterGlobal: 'Global',
@@ -721,6 +721,7 @@ window.__ModuleLoader__.load({
       orderNewest: 'Newest first',
       orderOldest: 'Oldest first',
       pageLine: 'Page {page} of {pages} · {count} memories',
+      pageLineOpen: 'Page {page}',
       pagePrev: 'Previous',
       pageNext: 'Next',
       memoryMore: 'Show more',
@@ -1442,7 +1443,7 @@ window.__ModuleLoader__.load({
       libraryHint: '所有记忆都在这里，按写入时间倒序。',
       libraryHintPartitioned: '所有记忆都在这里，按写入时间倒序。本地后端按项目分区保存。',
       libraryServerCap: '自建 Server 最多显示最新 1,000 条。',
-      libraryCapped: '只列出前 {shown} 条（共 {total} 条），更早的可以用搜索找到。',
+      librarySemantic: 'Platform 按语义搜索，结果按相关度排序。',
       libraryEmpty: '还没有记忆。开启自动保存后，对话里的事实会出现在这里；也可以让 Agent 用 mem0_add 记一条。',
       filterAll: '全部',
       filterGlobal: '全局',
@@ -1453,6 +1454,7 @@ window.__ModuleLoader__.load({
       orderNewest: '最新在前',
       orderOldest: '最早在前',
       pageLine: '第 {page} / {pages} 页 · 共 {count} 条',
+      pageLineOpen: '第 {page} 页',
       pagePrev: '上一页',
       pageNext: '下一页',
       memoryMore: '展开',
@@ -4904,49 +4906,53 @@ window.__ModuleLoader__.load({
         const name = projectName(t, project)
         return {
           id: project.id,
-          // Session memories belong to their project (user decision 8).
-          keys: [project.key, ...(Array.isArray(project.sessions) ? project.sessions : []).map((session) => session.key)].filter(Boolean),
+          // Session memories belong to their project (user decision 8):
+          // the filter asks for `tree:<id>`.
           label: sessions > 0 ? template(t('filterProjectSessions'), { name, count, sessions }) : template(t('filterProjectCount'), { name, count }),
         }
       })
     }
 
     /**
-     * Partition keys one library load asks for: [''] for everything,
-     * ['global'], or a project with its sessions (every project when none is
-     * picked). Pure.
+     * The partition key of one library load (lib/gui-routes.js
+     * libraryPartitions): '' for everything, 'global', 'tree:<id>' for a
+     * project with its sessions (user decision 8), or 'projects' for every
+     * project when none is picked. Pure.
      */
-    function libraryPartitionKeys(filter, project, options) {
-      if (filter === 'global') return ['global']
-      if (filter !== 'project') return ['']
-      const chosen = project ? options.filter((option) => option.id === project) : options
-      const keys = chosen.flatMap((option) => option.keys)
-      return keys.length > 0 ? keys : ['global:none']
+    function libraryPartitionKey(filter, project) {
+      if (filter === 'global') return 'global'
+      if (filter !== 'project') return ''
+      return project ? `tree:${project}` : 'projects'
     }
 
-    /** Memories newest or oldest first (no time keeps the backend's order). Pure. */
-    function sortMemories(memories, order) {
-      const list = (Array.isArray(memories) ? memories : []).map((memory, index) => ({ memory, index, at: Date.parse(memory?.createdAt) }))
-      list.sort((a, b) => {
-        const known = Number.isFinite(a.at) && Number.isFinite(b.at)
-        const diff = known ? b.at - a.at : 0
-        return diff !== 0 ? (order === 'oldest' ? -diff : diff) : order === 'oldest' ? b.index - a.index : a.index - b.index
-      })
-      return list.map((entry) => entry.memory)
+    /** The request for one library page of 20 (the backend pages, PR3). Pure. */
+    function libraryUrl({ query = '', key = '', page = 1, order = 'newest', lang = '', locate = '' } = {}) {
+      // Built by hand: the page's sandbox has no URLSearchParams.
+      const params = [
+        ['q', String(query ?? '').trim()],
+        ['limit', String(LIBRARY_PAGE_SIZE)],
+        ['offset', String((Math.max(1, Math.floor(Number(page) || 1)) - 1) * LIBRARY_PAGE_SIZE)],
+        ['order', order === 'oldest' ? 'oldest' : 'newest'],
+        ['lang', String(lang ?? '')],
+        ['partition', String(key ?? '')],
+        ...(locate ? [['locate', String(locate)]] : []),
+      ]
+      return `${MEMORIES_PATH}?${params.map(([name, value]) => `${name}=${encodeURIComponent(value)}`).join('&')}`
     }
 
-    /** One page of the list, the page clamped to what exists. Pure. */
-    function pageOf(list, page, size = LIBRARY_PAGE_SIZE) {
-      const total = Array.isArray(list) ? list.length : 0
-      const pages = Math.max(1, Math.ceil(total / size))
-      const current = Math.min(Math.max(1, Number(page) || 1), pages)
-      return { items: (list ?? []).slice((current - 1) * size, current * size), page: current, pages, total }
-    }
-
-    /** The page a memory is on in the list, or 0. Pure. */
-    function pageContaining(list, id, size = LIBRARY_PAGE_SIZE) {
-      const index = (Array.isArray(list) ? list : []).findIndex((memory) => memory?.id === id)
-      return index < 0 ? 0 : Math.floor(index / size) + 1
+    /**
+     * The pager of one library answer: its rows, page n of N (N null when
+     * the Platform gives no total: "next" only), the count. Pure.
+     */
+    function libraryView(data, size = LIBRARY_PAGE_SIZE) {
+      const items = data?.ok === false || !Array.isArray(data?.memories) ? [] : data.memories
+      const offset = Math.max(0, Number(data?.offset) || 0)
+      const page = Math.floor(offset / size) + 1
+      const known = data?.totalKnown !== false && Number.isFinite(data?.total)
+      const total = known ? Number(data.total) : null
+      const pages = known ? Math.max(1, Math.ceil(total / size)) : null
+      const hasNext = known ? page < pages : Boolean(data?.hasMore)
+      return { items, page, pages, total, hasPrev: page > 1, hasNext }
     }
 
     /** The partition chip of a library row: global, a project, or "project › session". Pure. */
@@ -5226,13 +5232,14 @@ window.__ModuleLoader__.load({
     }
 
     function MemoryLibrary({ t, backend, tree, library, actions }) {
-      const { query, filter, project, order, page, state, list, expanded, flash, notice, deleting } = library
+      const { query, filter, project, order, state, expanded, flash, notice, deleting } = library
       const options = projectOptions(t, tree)
-      const view = pageOf(list, page)
       const data = state.data
+      const view = libraryView(data)
       const notes = []
       if (backend === 'server') notes.push(t('libraryServerCap'))
-      const capped = data?.ok !== false && Number.isFinite(data?.total) && data.total > (data.memories?.length ?? 0)
+      // The Platform searches by meaning and keeps its own order.
+      if (data?.mode === 'semantic') notes.push(t('librarySemantic'))
       const filtered = Boolean(query.trim()) || filter !== 'all'
       return h(
         Card,
@@ -5276,12 +5283,14 @@ window.__ModuleLoader__.load({
                 options.map((option) => h('option', { key: option.id, value: option.id }, option.label)),
               )
             : null,
-          h(
-            'select',
-            { className: 'mem0-select mem0-lib-select', value: order, onChange: (event) => actions.setOrder(event.target.value) },
-            h('option', { value: 'newest' }, t('orderNewest')),
-            h('option', { value: 'oldest' }, t('orderOldest')),
-          ),
+          backend === 'platform'
+            ? null
+            : h(
+                'select',
+                { className: 'mem0-select mem0-lib-select', value: order, 'aria-label': t('orderNewest'), onChange: (event) => actions.setOrder(event.target.value) },
+                h('option', { value: 'newest' }, t('orderNewest')),
+                h('option', { value: 'oldest' }, t('orderOldest')),
+              ),
         ),
         notice ? h('p', { className: notice.error ? 'mem0-error' : 'mem0-saved', role: 'status' }, notice.text) : null,
         state.phase === 'error' || data?.ok === false
@@ -5311,17 +5320,23 @@ window.__ModuleLoader__.load({
               )
             : h('p', { className: 'mem0-empty' }, filtered ? t('memoryEmpty') : t('libraryEmpty'))
           : null,
-        capped ? h('p', { className: 'mem0-hint' }, template(t('libraryCapped'), { shown: data.memories.length, total: data.total })) : null,
-        view.total > 0
+        data && data.ok !== false && (view.items.length > 0 || view.hasPrev)
           ? h(
               'div',
               { className: 'mem0-pager' },
-              h('span', null, template(t('pageLine'), { page: view.page, pages: view.pages, count: view.total.toLocaleString() })),
+              h(
+                'span',
+                null,
+                // No total from the Platform: "page n" and "next" only.
+                view.pages === null
+                  ? template(t('pageLineOpen'), { page: view.page })
+                  : template(t('pageLine'), { page: view.page, pages: view.pages, count: view.total.toLocaleString() }),
+              ),
               h(
                 'span',
                 { className: 'mem0-pager-btns' },
-                h('button', { type: 'button', className: 'mem0-secondary mem0-sm', disabled: view.page <= 1, onClick: () => actions.setPage(view.page - 1) }, t('pagePrev')),
-                h('button', { type: 'button', className: 'mem0-secondary mem0-sm', disabled: view.page >= view.pages, onClick: () => actions.setPage(view.page + 1) }, t('pageNext')),
+                h('button', { type: 'button', className: 'mem0-secondary mem0-sm', disabled: !view.hasPrev, onClick: () => actions.setPage(view.page - 1) }, t('pagePrev')),
+                h('button', { type: 'button', className: 'mem0-secondary mem0-sm', disabled: !view.hasNext, onClick: () => actions.setPage(view.page + 1) }, t('pageNext')),
               ),
             )
           : null,
@@ -5657,31 +5672,15 @@ window.__ModuleLoader__.load({
       }, [])
 
       // Only the latest request's answer is shown (quick typing and clicks).
-      // Several partition keys (a project and its sessions) are read at once
-      // and merged; the page sorts and pages the result.
+      // The backend pages (PR3): one request is one page of 20; `locate`
+      // asks for the page holding that memory.
       const memoryRequest = useRef(0)
-      const loadMemories = useCallback(async (query, keys = ['']) => {
-        const q = String(query ?? '').trim()
+      const loadMemories = useCallback(async ({ query = '', key = '', page = 1, order = 'newest', locate = '' } = {}) => {
         const request = ++memoryRequest.current
         setMemoryState((current) => ({ phase: 'loading', data: current.data, message: '' }))
         try {
-          const answers = await Promise.all(
-            keys.map((key) => fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(ctx)}&partition=${encodeURIComponent(key)}`)),
-          )
+          const data = (await fetchJson(libraryUrl({ query, key, page, order, lang: pageLanguage(ctx), locate }))) ?? { ok: false, error: 'empty answer', memories: [] }
           if (request !== memoryRequest.current) return null
-          const failed = answers.find((answer) => answer?.ok === false)
-          const seen = new Set()
-          const memories = []
-          for (const answer of answers) {
-            for (const memory of Array.isArray(answer?.memories) ? answer.memories : []) {
-              if (memory?.id && seen.has(memory.id)) continue
-              if (memory?.id) seen.add(memory.id)
-              memories.push(memory)
-            }
-          }
-          const data = failed
-            ? { ok: false, error: failed.error, memories: [], total: 0 }
-            : { ok: true, memories, total: answers.reduce((sum, answer) => sum + (Number(answer?.total) || 0), 0) }
           setMemoryState({ phase: 'ready', data, message: '' })
           return data
         } catch (error) {
@@ -5691,14 +5690,23 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
-      const libraryKeys = (filter = libraryFilter, project = libraryProject, tree = memoryTree) =>
-        libraryPartitionKeys(tree?.partitioned ? filter : 'all', project, projectOptions(t, tree))
-      const reloadLibrary = () => loadMemories(memoryQuery, libraryKeys())
+      const libraryKey = (filter = libraryFilter, project = libraryProject, tree = memoryTree) =>
+        libraryPartitionKey(tree?.partitioned ? filter : 'all', project)
+      const libraryRequest = (overrides = {}) => ({ query: memoryQuery, key: libraryKey(), page: libraryPage, order: libraryOrder, ...overrides })
+      // After a delete the page may be empty: step back to the one before.
+      const reloadLibrary = async () => {
+        const data = await loadMemories(libraryRequest())
+        if (data?.ok !== false && Array.isArray(data?.memories) && data.memories.length === 0 && libraryPage > 1) {
+          setLibraryPage(libraryPage - 1)
+          return loadMemories(libraryRequest({ page: libraryPage - 1 }))
+        }
+        return data
+      }
 
-      // First load: the tree (for counts and filters) and every memory.
+      // First load: the tree (for counts and filters) and the first page.
       useEffect(() => {
         void loadTree()
-        void loadMemories('', [''])
+        void loadMemories({})
       }, [loadTree, loadMemories])
 
       // Search as the user types (Enter searches at once).
@@ -5708,7 +5716,7 @@ window.__ModuleLoader__.load({
         setMemoryQuery(value)
         setLibraryPage(1)
         clearTimeout(searchTimer.current)
-        searchTimer.current = setTimeout(() => void loadMemories(value, libraryKeys()), 300)
+        searchTimer.current = setTimeout(() => void loadMemories(libraryRequest({ query: value, page: 1 })), 300)
       }
 
       // Scroll to a jump target or a section after the render that shows it.
@@ -5726,41 +5734,30 @@ window.__ModuleLoader__.load({
         return () => clearTimeout(timer)
       }, [flashMemory])
 
-      const sortedMemories = useMemo(
-        () => sortMemories(memoryState.data?.ok === false ? [] : memoryState.data?.memories, libraryOrder),
-        [memoryState, libraryOrder],
-      )
-
-      // A memory from the activity card: show it in the library. Not in the
-      // current list → all memories; still not there → search by its id.
+      // A memory from the activity card: show it in the library. Not on the
+      // shown page → the page holding it among all memories (by id on the
+      // Platform, which cannot say which page it is on).
       const jumpToMemory = async (id) => {
         setTab('memories')
         setLibraryNotice(null)
-        let list = sortedMemories
-        let page = pageContaining(list, id)
-        if (!page) {
+        const shown = libraryView(memoryState.data).items.some((memory) => memory?.id === id)
+        if (!shown) {
+          clearTimeout(searchTimer.current)
           setMemoryQuery('')
           setLibraryFilter('all')
           setLibraryProject('')
-          list = sortMemories((await loadMemories('', ['']))?.memories, libraryOrder)
-          page = pageContaining(list, id)
-          if (!page) {
-            setMemoryQuery(id)
-            list = sortMemories((await loadMemories(id, ['']))?.memories, libraryOrder)
-            page = pageContaining(list, id)
+          const data = await loadMemories({ order: libraryOrder, locate: id })
+          if (!data?.located) {
+            setLibraryPage(1)
+            // Leave the library as a plain list, not an empty id lookup.
+            if (data?.mode === 'id') void loadMemories({ order: libraryOrder })
+            setLibraryNotice({ error: true, text: t('jumpNotFound') })
+            setScrollTarget('mem0-library')
+            return
           }
+          setLibraryPage(Math.floor((Number(data.offset) || 0) / LIBRARY_PAGE_SIZE) + 1)
+          if (data.mode === 'id') setMemoryQuery(id)
         }
-        if (!page) {
-          // Leave the library as a plain list, not an empty id search.
-          if (list.length === 0) {
-            setMemoryQuery('')
-            void loadMemories('', [''])
-          }
-          setLibraryNotice({ error: true, text: t('jumpNotFound') })
-          setScrollTarget('mem0-library')
-          return
-        }
-        setLibraryPage(page)
         setFlashMemory(id)
         setScrollTarget(`mem0-m-${id}`)
       }
@@ -5826,25 +5823,29 @@ window.__ModuleLoader__.load({
         setQuery,
         searchNow: () => {
           clearTimeout(searchTimer.current)
-          void reloadLibrary()
+          setLibraryPage(1)
+          void loadMemories(libraryRequest({ page: 1 }))
         },
+        // A new filter, project or order starts again at page 1.
         setFilter: (filter) => {
           setLibraryFilter(filter)
           setLibraryProject('')
           setLibraryPage(1)
-          void loadMemories(memoryQuery, libraryKeys(filter, ''))
+          void loadMemories(libraryRequest({ key: libraryKey(filter, ''), page: 1 }))
         },
         setProject: (project) => {
           setLibraryProject(project)
           setLibraryPage(1)
-          void loadMemories(memoryQuery, libraryKeys('project', project))
+          void loadMemories(libraryRequest({ key: libraryKey('project', project), page: 1 }))
         },
         setOrder: (order) => {
           setLibraryOrder(order)
           setLibraryPage(1)
+          void loadMemories(libraryRequest({ order, page: 1 }))
         },
         setPage: (page) => {
           setLibraryPage(page)
+          void loadMemories(libraryRequest({ page }))
           setScrollTarget('mem0-library')
         },
         expand: (id) => setExpandedMemory((current) => (current === id ? null : id)),
@@ -5939,7 +5940,8 @@ window.__ModuleLoader__.load({
           await delay(450)
           await refreshStatus()
           // The backend or user may have changed: read the library again.
-          void loadTree().then((tree) => loadMemories(memoryQuery, libraryKeys(libraryFilter, libraryProject, tree)))
+          setLibraryPage(1)
+          void loadTree().then((tree) => loadMemories(libraryRequest({ key: libraryKey(libraryFilter, libraryProject, tree), page: 1 })))
           return true
         } catch (error) {
           setSaveState('error')
@@ -6233,9 +6235,7 @@ window.__ModuleLoader__.load({
               filter: libraryFilter,
               project: libraryProject,
               order: libraryOrder,
-              page: libraryPage,
               state: memoryState,
-              list: sortedMemories,
               expanded: expandedMemory,
               flash: flashMemory,
               notice: libraryNotice,
@@ -6314,6 +6314,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKeys, sortMemories, pageOf, pageContaining, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
   },
 })
