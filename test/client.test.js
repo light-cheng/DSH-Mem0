@@ -265,7 +265,9 @@ test('memory page helpers: sessions are labelled by time, refused moves by a loc
   assert.equal(makeGlobalReason(t, { reason: 'not-project', message: 'a memory can only be moved to global' }), '只有项目记忆可以改为全局')
   assert.equal(makeGlobalReason(t, { reason: 'not-own' }), '只能移动本插件写入的记忆')
   assert.equal(makeGlobalReason(t, { message: 'HTTP 500' }), 'HTTP 500')
-  assert.equal(zh.memoryTreeTitle, '记忆页')
+  // One name for the library: 记忆库 (the old 记忆页 title is gone).
+  assert.equal(zh.memoryBrowserTitle, '记忆库')
+  assert.equal(zh.memoryTreeTitle, undefined)
   assert.equal(zh.tokUnit, 'token')
   assert.equal(en.tokUnit, 'tok')
   const rows = treeEntries(t, { partitioned: true, total: 2, global: 0, projects: [{ id: 'p1', key: 'project:p1', name: 'alpha', count: 2, sessions: [{ id: 'S1', key: 'session:S1', count: 1, newest: local.toISOString() }] }], sessions: [] })

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import vm from 'node:vm'
 import { MemoryLifecycle, toCapturePreview } from '../lib/memory-lifecycle.js'
 import { Mem0NativeClient } from '../lib/native-client.js'
 import { Mem0RestClient } from '../lib/rest-client.js'
@@ -341,5 +342,54 @@ test('old format: a capture record without preview or pending is returned as bef
   for (const url of ['/?translate=0', '/?lang=zh']) {
     const body = await get(routes.get(GUI_ACTIVITY_PATH), url)
     assert.deepEqual(body.activity.capture, capture)
+  }
+})
+
+// --- end to end with the settings page (PR1, client.js captureView) ------
+
+function loadClientTest() {
+  let registered
+  const window = { __ModuleLoader__: { load: (entry) => { registered = entry } } }
+  vm.runInNewContext(fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8'), { window })
+  const hook = (value) => [typeof value === 'function' ? value() : value, () => {}]
+  const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), Fragment: 'fragment', useState: hook, useEffect() {}, useMemo: (fn) => fn(), useCallback: (fn) => fn, useRef: (value) => ({ current: value }) }
+  return registered.factory((name) => {
+    if (name === 'react') return react
+    throw new Error(`unexpected require ${name}`)
+  }).__test__
+}
+
+test('the gui routes hand the page what its capture card reads: tagged rows, jumps, Platform pending', async (t) => {
+  const client = loadClientTest()
+  const plain = (value) => JSON.parse(JSON.stringify(value))
+
+  const server = restSetup(t, 'server', {
+    results: [
+      { id: 'a1', memory: '用户喜欢绿茶', event: 'ADD' },
+      { id: 'u1', memory: '用户住在杭州', event: 'UPDATE', previous_memory: '用户住在上海' },
+      { id: 'd1', memory: '用户不喝咖啡', event: 'DELETE' },
+    ],
+  })
+  await turn(server, '记住：我搬到杭州了，喜欢绿茶')
+  const routes = harness({ config: guiConfig, client: guiClient, activity: server.activity })
+  for (const route of [GUI_STATUS_PATH, GUI_ACTIVITY_PATH]) {
+    const body = await get(routes.get(route), '/?translate=0')
+    const view = client.captureView(body.activity.capture, 'server')
+    assert.deepEqual(plain(view.items.map(({ id, memory, event, previous, jumpable }) => ({ id, memory, event, previous, jumpable }))), [
+      { id: 'a1', memory: '用户喜欢绿茶', event: 'ADD', previous: '', jumpable: true },
+      { id: 'u1', memory: '用户住在杭州', event: 'UPDATE', previous: '用户住在上海', jumpable: true },
+      { id: 'd1', memory: '用户不喝咖啡', event: 'DELETE', previous: '', jumpable: false },
+    ], route)
+    assert.equal(view.pending, null, route)
+  }
+
+  const platform = restSetup(t, 'platform', { status: 'PENDING', event_id: 'evt-123' })
+  await turn(platform, '记住：我下周去北京出差')
+  const platformRoutes = harness({ config: { ...guiConfig, backend: 'platform' }, client: guiClient, activity: platform.activity })
+  for (const route of [GUI_STATUS_PATH, GUI_ACTIVITY_PATH]) {
+    const body = await get(platformRoutes.get(route), '/?translate=0')
+    const view = client.captureView(body.activity.capture, 'platform')
+    assert.deepEqual(plain(view.items), [], route)
+    assert.deepEqual(plain(view.pending), { eventId: 'evt-123' }, route)
   }
 })
