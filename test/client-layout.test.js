@@ -279,3 +279,18 @@ test('the save bar shows only with unsaved changes or a save result', () => {
   const bar = render(client.SaveBar({ t, dirty: true, saveState: 'idle', onSave() {}, onDiscard() {}, writable: true }))
   assert.match(textOf(bar), /unsaved.*discard.*save/)
 })
+
+test('the failure list shows the output-limit advice in place of the gateway error, like the dock', () => {
+  const tEn = (key) => client.en[key] ?? key
+  const truncated = {
+    at: '2026-11-23T08:00:00.000Z', kind: 'add', cause: 'extraction', reason: 'truncated', component: 'llm',
+    message: 'HTTP 502 cut at its length', detail: 'cut at its length, the whole output spent on reasoning', extract: { maxTokens: 2000 },
+  }
+  const other = { at: '2026-11-23T07:00:00.000Z', kind: 'add', cause: 'other', component: 'llm', message: 'HTTP 500 boom' }
+  const text = textOf(render(client.FailureList({ t: tEn, failures: [truncated, other] })))
+  assert.match(text, /max_tokens 2000/)
+  assert.match(text, /whole output spent on reasoning/)
+  assert.doesNotMatch(text, /HTTP 502 cut at its length/)
+  assert.match(text, /HTTP 500 boom/)
+  assert.equal(client.failureMessage(tEn, truncated), client.failureSummary(tEn, truncated).split(' · ').find((part) => part.includes('max_tokens')))
+})
