@@ -184,6 +184,9 @@ test('the panel keeps the last 5, newest first', () => {
   feed.prime()
   for (let i = 1; i <= 7; i += 1) feed.observe([{ key: `k${i}`, at: i, full: `F${i}`, tone: 'ok', lines: [] }])
   assert.deepEqual(plain(feed.snapshot().recent.map((item) => item.key)), ['k7', 'k6', 'k5', 'k4', 'k3'])
+  // A record that arrives late is placed by its time, not its arrival.
+  feed.observe([{ key: 'late', at: 4.5, full: 'L', tone: 'ok', lines: [] }])
+  assert.deepEqual(plain(feed.snapshot().recent.map((item) => item.key)), ['k7', 'k6', 'k5', 'late', 'k4'])
   assert.equal(client.DOCK_RECENT_MAX, 5)
   assert.equal(client.DOCK_DWELL_MS, 8000)
 })

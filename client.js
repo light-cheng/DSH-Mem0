@@ -3352,7 +3352,9 @@ window.__ModuleLoader__.load({
           for (const notice of fresh) seen.add(notice.key)
           if (fresh.length === 0) return null
           const ordered = [...fresh].sort((left, right) => left.at - right.at)
-          for (const notice of ordered) recent = [notice, ...recent.filter((item) => item.key !== notice.key)].slice(0, limit)
+          for (const notice of ordered) recent = [notice, ...recent.filter((item) => item.key !== notice.key)]
+          // Newest first by the record's time (stable for equal times).
+          recent = recent.map((item, index) => [item, index]).sort((a, b) => (b[0].at - a[0].at) || (a[1] - b[1])).map(([item]) => item).slice(0, limit)
           if (!primed) {
             primed = true
             emit()
