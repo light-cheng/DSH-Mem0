@@ -1673,6 +1673,24 @@ window.__ModuleLoader__.load({
       .mem0-scope-pop-hint{margin-top:4px;color:var(--dsw-alias-label-tertiary)}
       .mem0-scope-pop-failed{color:var(--dsw-alias-state-error-primary)}
       .mem0-dock-pop-line{word-break:break-word}
+      .mem0-dock-text{animation:mem0-dock-in .18s ease-out}
+      @keyframes mem0-dock-in{from{opacity:0}to{opacity:1}}
+      @media (prefers-reduced-motion: reduce){.mem0-dock-text{animation:none}}
+      .mem0-dock[data-dock-tone="error"]{color:var(--dsw-alias-state-error-primary)}
+      .mem0-dock-panel{gap:4px}
+      .mem0-dock-pop-now{color:var(--dsw-alias-label-primary);word-break:break-word}
+      .mem0-dock-pop-now.is-error{color:var(--dsw-alias-state-error-primary)}
+      .mem0-dock-pop-head{margin-top:6px;font-size:11px;color:var(--dsw-alias-label-tertiary)}
+      .mem0-dock-pop-muted{color:var(--dsw-alias-label-tertiary)}
+      .mem0-dock-recent{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+      .mem0-dock-item{display:flex;gap:8px;width:100%;text-align:left;border:0;background:transparent;padding:2px 4px;margin:0 -4px;border-radius:5px;font:inherit;color:var(--dsw-alias-label-secondary);cursor:pointer}
+      .mem0-dock-item:hover,.mem0-dock-item[aria-expanded="true"]{background:var(--dsw-alias-bg-layer-2)}
+      .mem0-dock-item[data-tone="error"]{color:var(--dsw-alias-state-error-primary)}
+      .mem0-dock-item-time{flex:none;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+      .mem0-dock-item-lines{margin:2px 0 4px 44px;display:flex;flex-direction:column;gap:2px;font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
+      .mem0-dock-pop-foot{margin-top:6px;color:var(--dsw-alias-label-tertiary)}
+      .mem0-dock-pop-foot .mem0-dock-pop-link{margin-top:0;display:inline}
+      .mem0-sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
       .mem0-dock-pop-link{align-self:flex-start;margin-top:4px;border:0;background:transparent;padding:0;font:inherit;color:var(--dsw-alias-label-primary);text-decoration:underline;cursor:pointer}
       .mem0-failures{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:320px;overflow:auto}
       .mem0-failure{border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -3123,6 +3141,293 @@ window.__ModuleLoader__.load({
       return { state: 'idle', kind: 'idle', label: t('dockIdle'), details: null }
     }
 
+    // ---- composer status: short state, 8 s notice, hover panel ------------
+    // (footer-details-spec.md, shared with dsh-strata)
+
+    const DOCK_DWELL_MS = 8000
+    const DOCK_RECENT_MAX = 5
+
+    /** One line of at most `max` characters. */
+    function oneLine(value, max) {
+      const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+      return text.length > max ? `${text.slice(0, max - 1)}…` : text
+    }
+
+    /** "14:31" for a notice time (local clock). */
+    function clockTime(ms) {
+      const date = new Date(ms)
+      if (Number.isNaN(date.getTime())) return ''
+      const pad = (n) => String(n).padStart(2, '0')
+      return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+    }
+
+    /** The stored failure for an error record: the newest one of its kind, else the newest. */
+    function failureFor(data, kind) {
+      const list = Array.isArray(data?.failures) ? data.failures : []
+      return list.find((failure) => failure?.kind === kind) ?? list[0] ?? null
+    }
+
+    /**
+     * The notices in the activity data, newest first: a finished recall, a
+     * finished (or skipped) capture, a failed one, a breaker pause. An
+     * in-progress state is not a notice. `key` is stable while the record
+     * is the same, so the feed can tell new from seen. Pure.
+     */
+    function dockNotices(t, data, now = Date.now()) {
+      const capture = data?.activity?.capture ?? null
+      const recall = data?.activity?.recall ?? null
+      const notices = []
+      const at = (record) => {
+        const value = Date.parse(record?.at)
+        return Number.isFinite(value) ? value : now
+      }
+      if (recall?.status === 'ok') {
+        const count = recall.count
+        const ms = Number.isFinite(recall.latencyMs) ? recall.latencyMs : recall.timings?.totalMs
+        const lines = []
+        if (recall.query) lines.push(template(t('dockPopQuery'), { query: oneLine(recall.query, 60) }))
+        if (count !== undefined) lines.push(template(t('dockPopReturned'), { count }))
+        for (const item of (Array.isArray(recall.preview) ? recall.preview : []).slice(0, 3)) lines.push(`· ${oneLine(item?.memory, 80)}`)
+        const timing = recallTimingLine(t, recall.timings)
+        if (timing) lines.push(timing)
+        notices.push({
+          key: `recall:${recall.at ?? ''}`,
+          kind: 'recall',
+          at: at(recall),
+          tone: 'ok',
+          short: count !== undefined ? template(t('dockShortRecalled'), { count }) : t('dockShortRecalledPlain'),
+          full: `${count !== undefined ? template(t('dockFullRecalled'), { count }) : t('dockRecallOk')}${Number.isFinite(ms) ? ` · ${ms} ms` : ''}`,
+          lines,
+        })
+      }
+      if (capture?.status === 'saved') {
+        const nothing = chipState(capture) === 'nothing_new'
+        const written = captureWritten(capture)
+        const n = written ?? capture.count
+        let full
+        if (nothing) full = t('dockCaptureNothingNew')
+        else if (Number.isInteger(capture.add) && capture.add > 0) {
+          full = template(t('dockFullSaved'), { count: capture.add })
+          if (capture.update > 0) full += ` · ${template(t('dockFullSavedUpdated'), { update: capture.update })}`
+        } else if (written > 0) full = template(t('dockFullUpdated'), { count: written })
+        else full = Number.isInteger(n) && n > 0 ? template(t('dockFullSavedCount'), { count: n }) : t('dockCaptureSaved')
+        const lines = activityDetails(t, capture, now)
+        for (const item of captureView(capture).items.slice(0, 3)) {
+          lines.push(`${item.event ? `${t(`captureTag_${item.event}`)} · ` : '· '}${oneLine(item.memory, 80)}`)
+        }
+        notices.push({
+          key: `capture:${capture.at ?? ''}`,
+          kind: nothing ? 'nothing' : 'capture',
+          at: at(capture),
+          tone: nothing ? 'idle' : 'ok',
+          short: nothing ? t('dockShortNothingNew') : Number.isInteger(n) && n > 0 ? template(t('dockShortSaved'), { count: n }) : t('dockShortSavedPlain'),
+          full,
+          lines,
+        })
+      }
+      const paused = [capture, recall].find(
+        (record) => record?.status === 'skipped' && record.reason === 'circuit-open' && Date.parse(record.circuitUntil) > now,
+      )
+      if (paused) {
+        const left = Date.parse(paused.circuitUntil) - now
+        notices.push({
+          key: `paused:${paused.circuitUntil}`,
+          kind: 'paused',
+          at: at(paused),
+          tone: 'error',
+          short: t('dockShortPaused'),
+          full: template(t('dockFullPaused'), { left: template(t('circuitRemaining'), { time: formatDuration(left) }) }),
+          lines: activityDetails(t, paused, now),
+        })
+      } else if (capture?.status === 'skipped') {
+        notices.push({
+          key: `skipped:${capture.at ?? ''}:${capture.reason ?? ''}`,
+          kind: 'skipped',
+          at: at(capture),
+          tone: 'idle',
+          short: t('dockShortSkipped'),
+          full: capture.reason === 'low-value' ? t('dockCaptureSkippedShort') : t('dockCaptureSkipped'),
+          lines: activityDetails(t, capture, now),
+        })
+      }
+      for (const [kind, record] of [['capture', capture], ['recall', recall]]) {
+        if (record?.status !== 'error') continue
+        const failure = failureFor(data, kind)
+        const reason = failure ? t(`failureCause_${failure.cause || 'other'}`) : oneLine(record.error, 60) || t('dockNoFailureDetail')
+        const lines = []
+        if (failure) {
+          lines.push(`${failureCauseLabel(t, failure)} · ${failureComponentLabel(t, failure)}`)
+          const message = failureMessage(t, failure)
+          if (message) lines.push(message)
+          const hint = unreachableHint(t, failure)
+          if (hint) lines.push(hint)
+        } else if (record.error) lines.push(String(record.error).slice(0, 400))
+        lines.push(t('dockFailNext'))
+        notices.push({ key: `error:${kind}:${record.at ?? ''}`, kind: 'error', at: at(record), tone: 'error', short: t('dockShortFailed'), full: template(t('dockFullFailed'), { reason }), lines })
+      }
+      return notices.sort((left, right) => right.at - left.at)
+    }
+
+    /**
+     * The activity with a failed record dropped once the other kind has
+     * succeeded since: a failure stays red until the next recall or save
+     * succeeds, not until the same kind runs again. Pure.
+     */
+    function withoutStaleError(data) {
+      const capture = data?.activity?.capture ?? null
+      const recall = data?.activity?.recall ?? null
+      const succeeded = (record) => record?.status === 'ok' || record?.status === 'saved'
+      const newer = (left, right) => Date.parse(left?.at) > Date.parse(right?.at)
+      let activity = data?.activity
+      if (capture?.status === 'error' && succeeded(recall) && newer(recall, capture)) activity = { ...activity, capture: null }
+      if (recall?.status === 'error' && succeeded(capture) && newer(capture, recall)) activity = { ...activity, recall: null }
+      return activity === data?.activity ? data : { ...data, activity }
+    }
+
+    const DOCK_BUSY_SHORT = { dockCaptureSaving: 'dockShortSaving', dockCaptureQueued: 'dockShortQueued', dockCaptureExtracting: 'dockShortExtracting', dockRecallSearching: 'dockShortRecalling' }
+
+    /**
+     * The status chip, before the notice timing: `short` (at most 12
+     * characters, no product name), `full` (the whole sentence, always the
+     * accessible name), `sticky` (a failure or pause: never collapsed).
+     * Pure, for tests.
+     */
+    function dockChip(t, input = {}, now = Date.now()) {
+      const data = withoutStaleError(input.data)
+      const view = dockView(t, { ...input, data }, now)
+      const notices = dockNotices(t, data, now)
+      const of = (...kinds) => notices.find((notice) => kinds.includes(notice.kind))
+      let short = view.label
+      let full = view.label
+      let notice = null
+      if (view.kind === 'memory') notice = of('error')
+      else if (view.kind === 'circuit') notice = of('paused')
+      else if (view.kind === 'ok' || (view.kind === 'idle' && view.label !== t('dockIdle'))) notice = of('recall', 'capture', 'nothing', 'skipped')
+      else if (view.kind === 'busy') {
+        const key = Object.keys(DOCK_BUSY_SHORT).find((name) => t(name) === view.label)
+        if (key) short = t(DOCK_BUSY_SHORT[key])
+      }
+      if (notice) {
+        short = notice.short
+        full = notice.full
+      }
+      return { ...view, short, full, sticky: view.state === 'error', notice, notices }
+    }
+
+    /**
+     * The notices of one composer: the last five (newest first, memory
+     * only), and the one on show for 8 s. Timers are injected so tests can
+     * use a fake clock. The first observation only fills the list: what
+     * happened before the page loaded is not shown as new.
+     */
+    function createDockFeed({ setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = (id) => clearTimeout(id), now = () => Date.now(), dwellMs = DOCK_DWELL_MS, limit = DOCK_RECENT_MAX } = {}) {
+      const seen = new Set()
+      const listeners = new Set()
+      let recent = []
+      let dwell = null
+      let timer = null
+      let left = 0
+      let startedAt = 0
+      let hovered = false
+      let primed = false
+      let announce = ''
+      const emit = () => listeners.forEach((fn) => fn())
+      const stop = () => {
+        if (timer !== null) clearTimer(timer)
+        timer = null
+      }
+      const start = (ms) => {
+        stop()
+        left = ms
+        startedAt = now()
+        timer = setTimer(() => {
+          timer = null
+          dwell = null
+          emit()
+        }, ms)
+      }
+      return {
+        observe(notices) {
+          const fresh = (Array.isArray(notices) ? notices : []).filter((notice) => notice?.key && !seen.has(notice.key))
+          for (const notice of fresh) seen.add(notice.key)
+          if (fresh.length === 0) return null
+          const ordered = [...fresh].sort((left, right) => left.at - right.at)
+          for (const notice of ordered) recent = [notice, ...recent.filter((item) => item.key !== notice.key)].slice(0, limit)
+          if (!primed) {
+            primed = true
+            emit()
+            return null
+          }
+          const newest = ordered[ordered.length - 1]
+          // A newer notice replaces the one on show and restarts the 8 s.
+          dwell = newest
+          announce = newest.full
+          left = dwellMs
+          if (hovered) stop()
+          else start(dwellMs)
+          emit()
+          return newest
+        },
+        /** Hover or keyboard focus pauses the countdown; leaving resumes it. */
+        hover(on) {
+          if (on === hovered) return
+          hovered = on
+          if (!dwell) return
+          if (on) {
+            if (timer !== null) left = Math.max(0, left - (now() - startedAt))
+            stop()
+          } else start(left > 0 ? left : dwellMs)
+        },
+        prime() {
+          primed = true
+        },
+        snapshot: () => ({ recent, dwell, hovered, announce }),
+        subscribe(fn) {
+          listeners.add(fn)
+          return () => listeners.delete(fn)
+        },
+        dispose() {
+          stop()
+          listeners.clear()
+        },
+      }
+    }
+
+    /**
+     * What the chip shows. `details` on: always the whole sentence. Off: a
+     * failure or pause keeps its whole sentence (never collapsed); a notice
+     * on show for 8 s shows its sentence; else the short state. The
+     * accessible name is always the whole sentence. Pure.
+     */
+    function dockDisplay(chip, { dwell = null, details = false } = {}) {
+      let text
+      let mode
+      if (details) [text, mode] = [chip.full, 'details']
+      else if (chip.sticky) [text, mode] = [chip.full, 'sticky']
+      else if (dwell && chip.state !== 'active') [text, mode] = [dwell.full, 'dwell']
+      else [text, mode] = [chip.short, 'short']
+      const aria = mode === 'dwell' ? dwell.full : chip.full
+      return { text, mode, aria, tone: mode === 'dwell' ? dwell.tone : chip.state === 'error' ? 'error' : chip.state === 'success' ? 'ok' : 'idle' }
+    }
+
+    // Per conversation, in memory only: a remount keeps the last five.
+    const dockFeeds = new Map()
+    function dockFeedFor(sessionId) {
+      const key = String(sessionId ?? '')
+      if (!dockFeeds.has(key)) dockFeeds.set(key, createDockFeed())
+      return dockFeeds.get(key)
+    }
+
+    /** `dockDetails` as the config form holds it (false while not loaded). */
+    function formDockDetails(form) {
+      try {
+        const snapshot = form?.getSnapshot?.()
+        return snapshot?.status === 'ready' && snapshot.value?.dockDetails === true
+      } catch {
+        return false
+      }
+    }
+
     /**
      * The composer chip: where this conversation's new memories go. Null when
      * the backend has no partitions (REST backends keep everything global).
@@ -3144,7 +3449,9 @@ window.__ModuleLoader__.load({
       else if (!name && scope.pending) view = global(t('scopeChipPendingHint'), 'pending')
       else if (!name) view = global(t('scopeChipOnNoProjectHint'), 'global')
       else view = { on, label: t('scopeChipProject'), ariaLabel: template(t('scopeChipAria'), { where: template(t('scopeChipAriaProject'), { name }) }), hint: t('scopeChipOnHint'), kind: 'project' }
-      return { ...view, lines: scopeDetailLines(t, scope, { on, name, projectName, kind: view.kind }) }
+      // "Project pocket-ledger" when the status bar shows details.
+      const long = name ? template(t('scopeChipLong'), { name }) : view.label
+      return { ...view, long, lines: scopeDetailLines(t, scope, { on, name, projectName, kind: view.kind }) }
     }
 
     const SCOPE_BASIS_KEYS = { 'git-origin': 'scopeBasis_gitOrigin', 'git-root': 'scopeBasis_gitRoot', folder: 'scopeBasis_folder', 'default-workspace': 'scopeBasis_defaultWorkspace', home: 'scopeBasis_home', none: 'scopeBasis_none' }
@@ -3196,7 +3503,7 @@ window.__ModuleLoader__.load({
      * takes plain React entries (no chip, tooltip or details props), so the
      * panel is the plugin's own, fixed-positioned like the dock's.
      */
-    function ScopeChip({ ctx, t, scope }) {
+    function ScopeChip({ ctx, t, scope, details = false }) {
       const form = useMemo(() => {
         try {
           return ctx.configForms?.get?.(ENTRY_ID) ?? null
@@ -3289,7 +3596,7 @@ window.__ModuleLoader__.load({
             onBlur: hide,
             onClick: () => void flip(),
           },
-          view.label,
+          details ? view.long : view.label,
         ),
         tip
           ? h(
@@ -3313,12 +3620,31 @@ window.__ModuleLoader__.load({
     function MemoryDockStatus({ ctx, t, sessionId }) {
       const [data, setData] = useState(null)
       const [readFailure, setReadFailure] = useState(null)
-      // Popover position (fixed, from the button's rect): the composer dock
+      // Panel position (fixed, from the button's rect): the composer dock
       // sits inside host containers with overflow hidden/auto, which clip
-      // anything positioned relative to it.
+      // anything positioned relative to it. `pinned`: opened by a click.
       const [open, setOpen] = useState(null)
+      const [expanded, setExpanded] = useState(null)
+      const [, setTick] = useState(0)
       const rootRef = useRef(null)
       const popRef = useRef(null)
+      const closeTimer = useRef(null)
+      const feed = useMemo(() => dockFeedFor(sessionId), [sessionId])
+      const popId = useMemo(() => `mem0-dock-pop-${++scopeTipCounter}`, [])
+      const form = useMemo(() => {
+        try {
+          return ctx.configForms?.get?.(ENTRY_ID) ?? null
+        } catch {
+          return null
+        }
+      }, [ctx])
+      const [formDetails, setFormDetails] = useState(() => formDockDetails(form))
+      useEffect(() => {
+        if (!form?.subscribe) return undefined
+        setFormDetails(formDockDetails(form))
+        return form.subscribe(() => setFormDetails(formDockDetails(form)))
+      }, [form])
+      useEffect(() => feed.subscribe(() => setTick((n) => n + 1)), [feed])
 
       // A transformed host ancestor turns `position: fixed` into a box
       // relative to that ancestor; measure once and shift by the difference.
@@ -3360,48 +3686,79 @@ window.__ModuleLoader__.load({
         }
       }, [sessionId])
 
-      const view = dockView(t, {
+      const chip = dockChip(t, {
         data,
         failed: Boolean(readFailure),
         fetchError: readFailure?.message,
         failedAt: readFailure?.at,
       })
-      const details = view.details
-
+      // The server's value (MEM0_DOCK_DETAILS) wins when it reports one.
+      const details = typeof data?.dockDetails === 'boolean' ? data.dockDetails : formDetails
       useEffect(() => {
-        if (!details) setOpen(null)
-      }, [Boolean(details)])
+        if (data) feed.observe(chip.notices)
+      }, [data, feed])
+      const snap = feed.snapshot()
+      const display = dockDisplay(chip, { dwell: snap.dwell, details })
 
-      const toggle = (event) => {
-        if (open) return setOpen(null)
-        const rect = event.currentTarget.getBoundingClientRect()
+      const place = (element) => {
+        const rect = element.getBoundingClientRect()
         const width = Math.min(360, window.innerWidth - 16)
-        setOpen({
+        return {
           left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
           bottom: Math.max(8, window.innerHeight - rect.top + 6),
           width,
-        })
+        }
+      }
+      const cancelClose = () => {
+        if (closeTimer.current) clearTimeout(closeTimer.current)
+        closeTimer.current = null
+      }
+      const enter = (event) => {
+        cancelClose()
+        feed.hover(true)
+        if (!open) setOpen({ ...place(event.currentTarget), pinned: false })
+      }
+      // A short delay lets the pointer move from the chip into the panel.
+      const leave = () => {
+        cancelClose()
+        closeTimer.current = setTimeout(() => {
+          closeTimer.current = null
+          feed.hover(false)
+          setOpen((current) => (current?.pinned ? current : null))
+        }, 200)
+      }
+      const close = () => {
+        cancelClose()
+        feed.hover(false)
+        setOpen(null)
+      }
+      const toggle = (event) => {
+        if (open?.pinned) return close()
+        feed.hover(true)
+        setOpen({ ...place(event.currentTarget), pinned: true })
       }
 
       useEffect(() => {
         if (!open) return undefined
-        const close = (event) => {
-          if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(null)
+        const outside = (event) => {
+          if (rootRef.current && !rootRef.current.contains(event.target)) close()
         }
         const onKey = (event) => {
-          if (event.key === 'Escape') setOpen(null)
+          if (event.key === 'Escape') close()
         }
-        document.addEventListener('mousedown', close)
+        document.addEventListener('mousedown', outside)
         document.addEventListener('keydown', onKey)
         return () => {
-          document.removeEventListener('mousedown', close)
+          document.removeEventListener('mousedown', outside)
           document.removeEventListener('keydown', onKey)
         }
       }, [open])
+      useEffect(() => () => cancelClose(), [])
 
       const openSettings = () => {
-        setOpen(null)
+        close()
         try {
+          // The page opens on its Memories tab.
           ctx.get('pluginNavigation')?.openBundle?.(PKG)
         } catch {
           // Navigation is optional; the indicator still works without it.
@@ -3410,40 +3767,99 @@ window.__ModuleLoader__.load({
 
       return h(
         'span',
-        { className: 'mem0-dock-wrap', ref: rootRef },
+        {
+          className: 'mem0-dock-wrap',
+          ref: rootRef,
+          onMouseEnter: enter,
+          onMouseLeave: leave,
+          onFocus: enter,
+          onBlur: (event) => {
+            if (!rootRef.current?.contains(event.relatedTarget)) leave()
+          },
+        },
         h(
           'button',
           {
             type: 'button',
             className: 'mem0-dock',
-            // Hover shows the cause; a click on a failure state opens it in place.
-            title: details ? `${view.label}\n${details.join('\n')}` : t('dockOpen'),
-            'aria-expanded': details ? Boolean(open) : undefined,
-            'data-dock-kind': view.kind,
-            onClick: details ? toggle : openSettings,
+            'aria-label': display.aria,
+            'aria-expanded': Boolean(open),
+            'aria-controls': open ? popId : undefined,
+            'data-dock-kind': chip.kind,
+            'data-dock-mode': display.mode,
+            'data-dock-tone': display.tone,
+            onClick: toggle,
           },
-          h(OrbStatus, { state: view.orb }),
-          h('span', { className: 'mem0-dock-text' }, view.label),
+          h(OrbStatus, { state: chip.orb }),
+          // Keyed by text: a new text fades in (none with reduced motion).
+          h('span', { className: 'mem0-dock-text', key: display.text }, display.text),
         ),
-        h(ScopeChip, { ctx, t, scope: data?.memoryScope ?? null }),
-        details && open
-          ? h(
-              'div',
-              {
-                className: 'mem0-dock-pop',
-                role: 'dialog',
-                ref: popRef,
-                style: { left: `${open.left}px`, bottom: `${open.bottom}px`, maxWidth: `${open.width}px` },
-              },
-              h('div', { className: 'mem0-dock-pop-title' }, view.label),
-              details.map((line, index) => h('div', { className: 'mem0-dock-pop-line', key: index }, line)),
-              h(
-                'button',
-                { type: 'button', className: 'mem0-dock-pop-link', onClick: openSettings },
-                t('dockOpen'),
-              ),
-            )
+        // Says each new notice once; stays put while the chip collapses.
+        h('span', { className: 'mem0-sr-only', 'aria-live': 'polite', role: 'status' }, snap.announce),
+        h(ScopeChip, { ctx, t, scope: data?.memoryScope ?? null, details }),
+        open
+          ? h(DockPanel, {
+              t,
+              chip,
+              recent: snap.recent,
+              expanded,
+              onExpand: (key) => setExpanded((current) => (current === key ? null : key)),
+              onSettings: openSettings,
+              id: popId,
+              popRef,
+              style: { left: `${open.left}px`, bottom: `${open.bottom}px`, maxWidth: `${open.width}px` },
+            })
           : null,
+      )
+    }
+
+    /**
+     * The hover panel: title, the whole current sentence (with the failure
+     * panel's lines for a failure), the last five notices (newest first,
+     * each opens its details), then "Click an entry for details · Open
+     * settings".
+     */
+    function DockPanel({ t, chip, recent, expanded, onExpand, onSettings, id, popRef, style }) {
+      return h(
+        'div',
+        { className: 'mem0-dock-pop mem0-dock-panel', role: 'dialog', 'aria-label': t('dockPopTitle'), id, ref: popRef, style },
+        h('div', { className: 'mem0-scope-pop-title' }, t('dockPopTitle')),
+        h('div', { className: ['mem0-dock-pop-now', chip.state === 'error' ? 'is-error' : ''].filter(Boolean).join(' ') }, chip.full),
+        ...(chip.details ?? []).map((line, index) => h('div', { className: 'mem0-dock-pop-line', key: `d${index}` }, line)),
+        h('div', { className: 'mem0-dock-pop-head' }, t('dockPopRecent')),
+        recent.length === 0
+          ? h('div', { className: 'mem0-dock-pop-line mem0-dock-pop-muted' }, t('dockPopEmpty'))
+          : h(
+              'ul',
+              { className: 'mem0-dock-recent' },
+              recent.map((notice) =>
+                h(
+                  'li',
+                  { key: notice.key },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'mem0-dock-item',
+                      'data-tone': notice.tone,
+                      'aria-expanded': expanded === notice.key,
+                      onClick: () => onExpand(notice.key),
+                    },
+                    h('span', { className: 'mem0-dock-item-time' }, clockTime(notice.at)),
+                    h('span', null, notice.full),
+                  ),
+                  expanded === notice.key && notice.lines.length > 0
+                    ? h('div', { className: 'mem0-dock-item-lines' }, notice.lines.map((line, index) => h('div', { className: 'mem0-dock-pop-line', key: index }, line)))
+                    : null,
+                ),
+              ),
+            ),
+        h(
+          'div',
+          { className: 'mem0-dock-pop-foot' },
+          h('span', null, `${t('dockPopFooter')} · `),
+          h('button', { type: 'button', className: 'mem0-dock-pop-link', onClick: onSettings }, t('dockPopSettings')),
+        ),
       )
     }
 
@@ -6377,6 +6793,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKeys, sortMemories, pageOf, pageContaining, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKeys, sortMemories, pageOf, pageContaining, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
   },
 })
