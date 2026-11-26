@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import vm from 'node:vm'
 import { Config, dockDetailsFromEnv, resolveConfig, unwrapConfig } from '../lib/config.js'
+import { GUI_ACTIVITY_PATH, registerGuiRoutes } from '../lib/gui-routes.js'
 
 const react = {
   Fragment: 'fragment',
@@ -344,4 +345,45 @@ test('config: dockDetails defaults to false; MEM0_DOCK_DETAILS=on/off wins', (t)
   assert.equal(dockDetailsFromEnv({}), null)
   assert.equal(dockDetailsFromEnv({ MEM0_DOCK_DETAILS: 'on' }), true)
   assert.equal(dockDetailsFromEnv({ MEM0_DOCK_DETAILS: 'off' }), false)
+})
+
+test('MEM0_DOCK_DETAILS=on: /activity reports dockDetails true and the chip shows the whole sentence', async (t) => {
+  const saved = process.env.MEM0_DOCK_DETAILS
+  t.after(() => {
+    if (saved === undefined) delete process.env.MEM0_DOCK_DETAILS
+    else process.env.MEM0_DOCK_DETAILS = saved
+  })
+  const routes = new Map()
+  let runtime
+  registerGuiRoutes({
+    inject(names, register) {
+      register({ get: () => ({ requestRejection: () => undefined }), webServer: { register(route) { routes.set(route.path, route.handler); return () => {} } }, effect(fn) { fn() } })
+    },
+  }, () => runtime)
+  const read = async () => {
+    const res = { statusCode: 200, headers: {}, body: '', setHeader(name, value) { this.headers[name] = value }, end(body = '') { this.body = body } }
+    await routes.get(GUI_ACTIVITY_PATH)({ method: 'GET', url: '/?translate=0' }, res)
+    return JSON.parse(res.body)
+  }
+  const activity = { recall: recallOk(new Date().toISOString()), capture: null }
+  delete process.env.MEM0_DOCK_DETAILS
+  runtime = { config: resolveConfig({ backend: 'oss', dockDetails: false }), activity, client: {} }
+  assert.equal((await read()).dockDetails, false)
+  process.env.MEM0_DOCK_DETAILS = 'on'
+  runtime = { config: resolveConfig({ backend: 'oss', dockDetails: false }), activity, client: {} }
+  const body = await read()
+  assert.equal(body.dockDetails, true, 'the environment wins over the setting')
+
+  // The dock prefers the server's value over the config form's.
+  const ctx = { configForms: { get: () => ({ getSnapshot: () => ({ status: 'ready', value: { dockDetails: false } }), subscribe: () => () => {} }) }, get: () => null }
+  const states = []
+  const fakeReact = { ...react, useState: (value) => { const initial = typeof value === 'function' ? value() : value; states.push(initial); return [states.length === 1 ? body : initial, () => {}] } }
+  let registered
+  const window = { __ModuleLoader__: { load: (entry) => { registered = entry } } }
+  vm.runInNewContext(fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8'), { window })
+  const withData = registered.factory((name) => (name === 'react' ? fakeReact : null)).__test__
+  let button
+  walk(render(withData.MemoryDockStatus({ ctx, t: tz, sessionId: 'env-on' })), (node) => { if (node.props.className === 'mem0-dock') button = node })
+  assert.equal(button.props['data-dock-mode'], 'details')
+  assert.match(textOf(button), /^已召回记忆 20 · 119 ms$/)
 })
