@@ -208,27 +208,32 @@ test('header status line: state, backend, count and where memories live', () => 
   assert.equal(client.headerStatusView(t, { phase: 'ready', data: { ok: false, backend: 'server', endpoint: 'http://127.0.0.1:8888' }, enabled: true }).where.code, 'http://127.0.0.1:8888')
 })
 
-test('library: project filter takes its sessions, pages of 20, newest or oldest first', () => {
+test('library: project filter takes its sessions; one request is one page of 20', () => {
   const tree = { partitioned: true, total: 9, global: 4, projects: [{ id: 'p1', key: 'project:p1', name: 'alpha', count: 3, sessions: [{ id: 'S1', key: 'session:S1', count: 2 }] }, { id: 'p2', key: 'project:p2', name: 'beta', count: 0, sessions: [] }] }
   const options = client.projectOptions(t, tree)
-  assert.deepEqual(plain(options.map((option) => [option.id, option.keys, option.label])), [['p1', ['project:p1', 'session:S1'], 'filterProjectSessions'], ['p2', ['project:p2'], 'filterProjectCount']])
-  assert.deepEqual(plain(client.libraryPartitionKeys('all', '', options)), [''])
-  assert.deepEqual(plain(client.libraryPartitionKeys('global', '', options)), ['global'])
-  assert.deepEqual(plain(client.libraryPartitionKeys('project', 'p1', options)), ['project:p1', 'session:S1'])
-  assert.deepEqual(plain(client.libraryPartitionKeys('project', '', options)), ['project:p1', 'session:S1', 'project:p2'])
+  assert.deepEqual(plain(options.map((option) => [option.id, option.label])), [['p1', 'filterProjectSessions'], ['p2', 'filterProjectCount']])
+  assert.equal(client.libraryPartitionKey('all', ''), '')
+  assert.equal(client.libraryPartitionKey('global', ''), 'global')
+  assert.equal(client.libraryPartitionKey('project', 'p1'), 'tree:p1', 'a project with its sessions (decision 8)')
+  assert.equal(client.libraryPartitionKey('project', ''), 'projects')
   assert.equal(client.memoryScopeTag(t, { scope: 'session', projectId: 'p1', sessionId: 'S1' }, tree), 'alpha › scopeSessionShort')
   assert.equal(client.memoryScopeTag(t, { scope: 'project', projectId: 'p1' }, tree), 'alpha')
   assert.equal(client.memoryScopeTag(t, { scope: 'global' }, tree), 'scopeGlobal')
 
-  const memories = Array.from({ length: 45 }, (_, index) => ({ id: `m${index}`, createdAt: new Date(Date.UTC(2026, 10, 1) + index * 60_000).toISOString() }))
-  const newest = client.sortMemories(memories, 'newest')
-  assert.equal(newest[0].id, 'm44')
-  assert.equal(client.sortMemories(memories, 'oldest')[0].id, 'm0')
-  const page = client.pageOf(newest, 3)
-  assert.deepEqual([page.page, page.pages, page.total, page.items.length], [3, 3, 45, 5])
-  assert.equal(client.pageOf(newest, 9).page, 3, 'clamped to the last page')
-  assert.equal(client.pageContaining(newest, 'm0'), 3)
-  assert.equal(client.pageContaining(newest, 'nope'), 0)
+  const params = (url) => Object.fromEntries(new URL(url, 'http://x/').searchParams)
+  assert.deepEqual(params(client.libraryUrl({ query: ' 100% ', key: 'tree:p1', page: 3, order: 'oldest', lang: 'zh' })), { q: '100%', limit: '20', offset: '40', order: 'oldest', lang: 'zh', partition: 'tree:p1' })
+  assert.deepEqual(params(client.libraryUrl({ locate: 'abc' })), { q: '', limit: '20', offset: '0', order: 'newest', lang: '', partition: '', locate: 'abc' })
+  assert.match(client.libraryUrl({}), /^dsh-mem0\/gui\/memories\?/)
+
+  const memories = Array.from({ length: 20 }, (_, index) => ({ id: `m${index}` }))
+  const view = client.libraryView({ ok: true, memories, total: 45, offset: 20 })
+  assert.deepEqual([view.page, view.pages, view.total, view.items.length, view.hasPrev, view.hasNext], [2, 3, 45, 20, true, true])
+  const last = client.libraryView({ ok: true, memories: memories.slice(0, 5), total: 45, offset: 40 })
+  assert.deepEqual([last.page, last.hasNext], [3, false])
+  // The Platform without a total: next only.
+  const open = client.libraryView({ ok: true, memories, total: null, totalKnown: false, hasMore: true, offset: 0 })
+  assert.deepEqual([open.page, open.pages, open.total, open.hasPrev, open.hasNext], [1, null, null, false, true])
+  assert.deepEqual(plain(client.libraryView({ ok: false, error: 'x' }).items), [])
 })
 
 test('library card: 20 rows a page, a pager, delete only for this plugin\'s memories', () => {
@@ -237,7 +242,7 @@ test('library card: 20 rows a page, a pager, delete only for this plugin\'s memo
     t,
     backend: 'oss',
     tree: { partitioned: true, global: 23, projects: [] },
-    library: { query: '', filter: 'all', project: '', order: 'newest', page: 1, state: { phase: 'ready', data: { ok: true, memories, total: 23 } }, list: memories, expanded: null, flash: null, notice: null, deleting: null },
+    library: { query: '', filter: 'all', project: '', order: 'newest', state: { phase: 'ready', data: { ok: true, memories: memories.slice(0, 20), total: 23, offset: 0, mode: 'sql' } }, expanded: null, flash: null, notice: null, deleting: null },
     actions: {},
   }))
   const rows = []
@@ -249,6 +254,41 @@ test('library card: 20 rows a page, a pager, delete only for this plugin\'s memo
   assert.equal(deletes[1].props.disabled, true, 'another app\'s memory cannot be deleted here')
   assert.match(textOf(tree), /pageLine/)
   assert.match(textOf(tree), /memoryId id-0-000/, 'the list shows the first 8 characters of an id')
+})
+
+test('library card per backend: Platform hides order and filter, says "by relevance", next only without a total; server says 1,000', () => {
+  const memories = Array.from({ length: 20 }, (_, index) => ({ id: `id-${index}-0000-0000`, memory: `fact ${index}`, deletable: true, createdAt: null }))
+  const card = (backend, data, tree = { partitioned: false }) => render(client.MemoryLibrary({
+    t,
+    backend,
+    tree,
+    library: { query: '', filter: 'all', project: '', order: 'newest', state: { phase: 'ready', data }, expanded: null, flash: null, notice: null, deleting: null },
+    actions: {},
+  }))
+  const selects = (tree) => {
+    const found = []
+    walk(tree, (node) => { if (node.type === 'select') found.push(node) })
+    return found
+  }
+  const buttons = (tree) => {
+    const found = []
+    walk(tree, (node) => { if (node.type === 'button' && /pagePrev|pageNext/.test(textOf(node))) found.push(node) })
+    return found
+  }
+  const platform = card('platform', { ok: true, memories, total: null, totalKnown: false, hasMore: true, offset: 20, mode: 'pages' })
+  assert.equal(selects(platform).length, 0, 'no order (the Platform has none) and no project filter')
+  assert.match(textOf(platform), /pageLineOpen/)
+  assert.doesNotMatch(textOf(platform), /pageLine[^O]/)
+  assert.deepEqual(buttons(platform).map((node) => node.props.disabled), [false, false])
+  const semantic = card('platform', { ok: true, memories: memories.slice(0, 3), total: 3, offset: 0, mode: 'semantic' })
+  assert.match(textOf(semantic), /librarySemantic/)
+  const server = card('server', { ok: true, memories, total: 1000, offset: 980, mode: 'cached', capped: true })
+  assert.match(textOf(server), /libraryServerCap/)
+  assert.equal(selects(server).length, 1, 'order only; no partition filter')
+  assert.deepEqual(buttons(server).map((node) => node.props.disabled), [false, true])
+  const empty = card('oss', { ok: true, memories: [], total: 0, offset: 0, mode: 'sql' }, { partitioned: true, global: 0, projects: [] })
+  assert.match(textOf(empty), /libraryEmpty/)
+  assert.doesNotMatch(textOf(empty), /pageLine/)
 })
 
 test('the delete flow waits for the in-page dialog and gets the full memory', async () => {
