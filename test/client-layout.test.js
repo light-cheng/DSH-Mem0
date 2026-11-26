@@ -294,3 +294,31 @@ test('the failure list shows the output-limit advice in place of the gateway err
   assert.match(text, /HTTP 500 boom/)
   assert.equal(client.failureMessage(tEn, truncated), client.failureSummary(tEn, truncated).split(' · ').find((part) => part.includes('max_tokens')))
 })
+
+test('the local database path field shows the path in use as its placeholder, and saves nothing', () => {
+  const tEn = (key) => client.en[key] ?? key
+  const data = { backend: 'oss', store: { path: '/tmp/mem0-test/memory.sqlite' } }
+  assert.equal(client.storePathPlaceholder({ storePath: '' }, data), '/tmp/mem0-test/memory.sqlite')
+  assert.equal(client.storePathPlaceholder({ storePath: '~/custom.sqlite' }, data), '~/.dsh/mem0/memory.sqlite')
+  assert.equal(client.storePathPlaceholder({ storePath: '' }, null), '~/.dsh/mem0/memory.sqlite')
+  assert.equal(client.en.storePathHint, 'Leave blank to use the default path.')
+  assert.equal(client.zh.storePathHint, '留空则使用默认路径。')
+
+  let calls = 0
+  const draft = { ...client.normalise({}), backend: 'oss', storePath: '' }
+  const tree = render(client.SettingsTab({
+    t: tEn,
+    draft,
+    setField() { calls += 1 },
+    backend: { choose() {}, switchPrompt: null, openWizard() {}, switchAnyway() {} },
+    connection: { apiKey: '', setApiKey() {}, keyConfigured: false, test() {}, testState: 'idle', testDisabled: false },
+    storePlaceholder: client.storePathPlaceholder({ storePath: '' }, data),
+  }))
+  const input = controls(tree).get(client.en.storePath)
+  assert.ok(input, 'database path field rendered')
+  assert.equal(input.props.value, '')
+  assert.equal(input.props.placeholder, '/tmp/mem0-test/memory.sqlite')
+  assert.match(textOf(tree), /Leave blank to use the default path\./)
+  assert.equal(calls, 0)
+  assert.equal(draft.storePath, '')
+})

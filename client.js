@@ -89,7 +89,7 @@ window.__ModuleLoader__.load({
       authToken: 'Token',
       authNone: 'No authentication',
       storePath: 'Memory database file',
-      storePathHint: 'Leave blank for ~/.dsh/mem0/memory.sqlite.',
+      storePathHint: 'Leave blank to use the default path.',
       ossConfigHint: 'The embedding model and the extraction LLM are set with the local setup wizard; it writes the "dsh_mem0" block of ~/.dsh/mem0/oss.json and stores keys in DSH credentials.',
       identityTitle: 'Memory owner',
       userId: 'User ID',
@@ -821,7 +821,7 @@ window.__ModuleLoader__.load({
       authToken: 'Token',
       authNone: '无认证',
       storePath: '记忆数据库文件',
-      storePathHint: '留空即 ~/.dsh/mem0/memory.sqlite。',
+      storePathHint: '留空则使用默认路径。',
       ossConfigHint: 'embedding 模型和抽取 LLM 用本地配置向导设置：向导写入 ~/.dsh/mem0/oss.json 的 "dsh_mem0" 段，key 存进 DSH 凭据库。',
       identityTitle: '记忆归属',
       userId: '用户 ID',
@@ -2947,7 +2947,6 @@ window.__ModuleLoader__.load({
       return `${t(`failureComponent_${component}`)}${extra.length ? ` (${extra.join(', ')})` : ''}`
     }
 
-    /** One-line description of a stored failure: kind · component · cause · message. */
     /**
      * The failure's message for the dock and the failure list. A gateway's
      * "cut at its output budget" error (`detail`, its words): the localized
@@ -2960,6 +2959,7 @@ window.__ModuleLoader__.load({
       return failure?.message || ''
     }
 
+    /** One-line description of a stored failure: kind · component · cause · message. */
     function failureSummary(t, failure) {
       if (!failure) return ''
       const parts = [t(`failureKind_${failure.kind}`), failureComponentLabel(t, failure), failureCauseLabel(t, failure)]
@@ -4450,8 +4450,18 @@ window.__ModuleLoader__.load({
       storePath: { kind: 'text', label: 'storePath', hint: 'storePathHint', placeholder: '~/.dsh/mem0/memory.sqlite', className: 'mem0-grid-single' },
     }
 
-    /** One draft field as its control (FIELD_SPECS). */
-    function SettingControl({ t, name, draft, setField }) {
+    /**
+     * Placeholder of the database path field: the path in use when the saved
+     * value is blank (the status reports it), else the built-in default. Only
+     * shown, never saved.
+     */
+    function storePathPlaceholder(saved, data) {
+      if (!String(saved?.storePath ?? '').trim() && data?.store?.path) return data.store.path
+      return FIELD_SPECS.storePath.placeholder
+    }
+
+    /** One draft field as its control (FIELD_SPECS); `placeholder` overrides the spec's. */
+    function SettingControl({ t, name, draft, setField, placeholder }) {
       const spec = FIELD_SPECS[name]
       if (!spec) return null
       const label = t(spec.label)
@@ -4472,7 +4482,7 @@ window.__ModuleLoader__.load({
         hint,
         type: spec.kind === 'number' ? 'number' : 'text',
         value: draft[name],
-        placeholder: spec.placeholder,
+        placeholder: placeholder ?? spec.placeholder,
         className: spec.className,
         onChange: (value) => setField(name, spec.kind === 'number' ? numberValue(value) : spec.trim ? value.trim() : value),
       })
@@ -4683,7 +4693,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Connection fields of the chosen backend (key, env, URL, auth / local file and wizard). */
-    function ConnectionFields({ t, draft, setField, apiKey, setApiKey, keyConfigured, onOpenWizard }) {
+    function ConnectionFields({ t, draft, setField, apiKey, setApiKey, keyConfigured, onOpenWizard, storePlaceholder }) {
       const fields = []
       const control = (name) => h(SettingControl, { key: name, t, name, draft, setField })
       if (draft.backend === 'auto' || draft.backend === 'platform' || draft.backend === 'server') {
@@ -4728,7 +4738,7 @@ window.__ModuleLoader__.load({
       }
       if (draft.backend === 'oss') {
         fields.push(
-          control('storePath'),
+          h(SettingControl, { key: 'storePath', t, name: 'storePath', draft, setField, placeholder: storePlaceholder }),
           h('p', { key: 'ossConfigHint', className: 'mem0-hint mem0-grid-single' }, t('ossConfigHint')),
           h('div', { key: 'wizard', className: 'mem0-wz-row mem0-grid-single' },
             h('button', { type: 'button', className: 'mem0-secondary', onClick: onOpenWizard }, t('wzOpen')),
@@ -5372,7 +5382,7 @@ window.__ModuleLoader__.load({
     }
 
     /** The settings tab: common switches, storage backend, identity, recall and capture, advanced. */
-    function SettingsTab({ t, draft, setField, backend, connection }) {
+    function SettingsTab({ t, draft, setField, backend, connection, storePlaceholder }) {
       const fields = (group) => settingControls({ t, names: visibleFields(SETTINGS_LAYOUT[group], draft.backend), draft, setField })
       const recallCount = visibleFields([...SETTINGS_LAYOUT.recallCaptureToggles, ...SETTINGS_LAYOUT.recallCaptureFields], draft.backend).length
       const backendHint = draft.backend === 'platform' ? t('backendPlatformHint') : draft.backend === 'server' ? t('backendServerHint') : draft.backend === 'oss' ? t('backendOssHint') : t('backendAutoHint')
@@ -5404,7 +5414,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h(ConnectionFields, { t, draft, setField, apiKey: connection.apiKey, setApiKey: connection.setApiKey, keyConfigured: connection.keyConfigured, onOpenWizard: backend.openWizard }),
+          h(ConnectionFields, { t, draft, setField, apiKey: connection.apiKey, setApiKey: connection.setApiKey, keyConfigured: connection.keyConfigured, onOpenWizard: backend.openWizard, storePlaceholder }),
           h(
             'div',
             { className: 'mem0-actions' },
@@ -6195,6 +6205,7 @@ window.__ModuleLoader__.load({
             testState,
             testDisabled: saveState === 'saving' || testState === 'testing',
           },
+          storePlaceholder: storePathPlaceholder(initial, status.data),
         })
       } else if (tab === 'maintenance') {
         body = h(MaintenanceTab, {
@@ -6303,6 +6314,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKeys, sortMemories, pageOf, pageContaining, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKeys, sortMemories, pageOf, pageContaining, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
   },
 })
