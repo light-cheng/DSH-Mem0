@@ -26,8 +26,8 @@ window.__ModuleLoader__.load({
     // plugin (sibling files only arrive as async build chunks), which is why
     // the page stays one file without a build step.
     const en = {
-      title: 'Mem0 connection',
-      subtitle: 'Choose where memories are stored. Changes apply immediately after saving.',
+      title: 'Mem0 Memory',
+      storageHint: 'Choose where memories are stored. Changes apply immediately after saving.',
       checkAgain: 'Check again',
       checking: 'Checking connection…',
       statusReady: 'Connected',
@@ -89,12 +89,11 @@ window.__ModuleLoader__.load({
       authToken: 'Token',
       authNone: 'No authentication',
       storePath: 'Memory database file',
-      storePathHint: 'Leave blank for ~/.dsh/mem0/memory.sqlite.',
+      storePathHint: 'Leave blank to use the default path.',
       ossConfigHint: 'The embedding model and the extraction LLM are set with the local setup wizard; it writes the "dsh_mem0" block of ~/.dsh/mem0/oss.json and stores keys in DSH credentials.',
       identityTitle: 'Memory owner',
       userId: 'User ID',
       agentId: 'Agent ID',
-      behaviourTitle: 'Memory behaviour',
       autoRecall: 'Automatic recall',
       autoRecallHint: 'Search relevant memories before each model request.',
       autoCapture: 'Automatic capture',
@@ -103,7 +102,6 @@ window.__ModuleLoader__.load({
       announceToAgentHint: 'Adds a short memory capability note to the system prompt.',
       includeSubagents: 'Include subagents',
       includeSubagentsHint: 'Allow automatic memory for delegated agents too.',
-      maintenanceTitle: 'Memory maintenance',
       maintenanceHint: 'A compact profile is rebuilt from stored facts, and a weekly hygiene pass removes duplicates and keeps the plugin’s own memories within budget (memories from other apps are never deleted). No extra model calls are made.',
       captureFilter: 'Capture filter',
       captureFilterHint: 'Heuristic skips greetings, short acknowledgements and command-only turns.',
@@ -218,7 +216,6 @@ window.__ModuleLoader__.load({
       save: 'Save settings',
       saving: 'Saving…',
       saved: 'Saved. Applying…',
-      reset: 'Discard changes',
       test: 'Test connection',
       testing: 'Testing…',
       testOk: 'Connection successful',
@@ -229,8 +226,6 @@ window.__ModuleLoader__.load({
       saveFailed: 'Could not save settings.',
       invalidNumber: 'Please enter a valid whole number.',
       loadFailed: 'Could not read plugin settings.',
-      backendSection: 'Where should memories live?',
-      connectionSection: 'Connection details',
       whatNext: 'After saving, use the memories tools in chat, or open a new conversation to start automatic recall.',
       activityTitle: 'Memory activity',
       activityCapture: 'Automatic capture',
@@ -293,7 +288,6 @@ window.__ModuleLoader__.load({
       activityReturned: 'returned',
       activityEvent: 'event',
       activityEmpty: 'No automatic memory activity yet. Finish one conversation and capture/recall results will appear here.',
-      activityScopeHint: 'Activity covers automatic capture and recall performed by this plugin process. Recent memories are read directly from the configured backend.',
       dockIdle: 'Mem0 ready',
       dockDisabled: 'Mem0 off',
       dockCaptureSaving: 'Saving memory',
@@ -627,19 +621,10 @@ window.__ModuleLoader__.load({
       scopeChipSaveFailed: 'Could not change the switch; open Mem0 settings to change it there.',
 
       activityAsyncHint: 'Platform extraction runs in the background. Queued memories can take a few seconds before they appear in the list below.',
-      recentTitle: 'Recent memories',
-      recentEmpty: 'No memories yet. Completed turns will appear here after automatic capture.',
-      recentError: 'Could not read recent memories',
       memoryBrowserTitle: 'Memory library',
-      memoryBrowserHint: 'Search and browse every memory stored for this user. The list is read directly from the configured backend.',
-      memoryBrowserOpen: 'View all memories',
-      memoryBrowserClose: 'Hide memory library',
       memorySearchPlaceholder: 'Search memory text or ID…',
-      memorySearch: 'Search',
       memoryLoading: 'Loading memories…',
       memoryEmpty: 'No memories match this search.',
-      memoryCount: '{count} memories',
-      memoryCountFiltered: '{shown} of {total} memories',
       memoryBrowserError: 'Could not read memories',
       memoryDelete: 'Delete',
       memoryPin: 'Pin',
@@ -656,8 +641,6 @@ window.__ModuleLoader__.load({
       tokUnit: 'tok',
       sessionAt: 'Session · {time}',
       memorySource: 'source {source}',
-      memoryTreeTitle: 'Memory page',
-      memoryTreeHint: 'Memories by where they apply: global (everywhere), a project (one repository or folder) or a session. Browse, search, pin and delete; memories cannot be edited here.',
       treeAll: 'All',
       treeProjects: 'Projects',
       treeSessions: 'Sessions without a project',
@@ -678,7 +661,6 @@ window.__ModuleLoader__.load({
       memoryDeleteReason_unproven_owner: 'the backend did not confirm it belongs to the configured Mem0 user',
       profileSourcesChanged: 'A memory this summary was built from was deleted or changed; the summary may contain outdated or deleted content. Edit or reset it.',
       profileStale: 'A memory this summary was built from was deleted or changed; the summary is not injected until it is rebuilt.',
-      recallPreviewTitle: 'Last recalled memories',
       profileSummaryTitle: 'Memory summary',
       profileSummaryHint: 'Editable global memory summary, injected with the current project’s summary during recall. Hygiene has the model rewrite summaries whose memories changed; a delete or an edit stops a summary until it is rebuilt.',
       profileSummaryEmpty: 'No memory summary yet. It is generated after the next maintenance pass.',
@@ -698,13 +680,86 @@ window.__ModuleLoader__.load({
       profileTooLong: 'Memory summary is too long.',
       recallPreviewEmpty: 'The last recall returned no memory text.',
       memoryScore: 'score',
-      refresh: 'Refresh',
       memoryId: 'ID',
+      statusOff: 'Off',
+      statusMemoryCount: '{count} memories',
+      statusStoredAt: 'stored at',
+      masterSwitch: 'Memory on',
+      tabMemories: 'Memories',
+      tabSettings: 'Settings',
+      tabMaintenance: 'Maintenance',
+      bannerNotConnected: 'Not connected to the memory backend: {error}',
+      bannerCircuit: 'Automatic memory is paused after repeated failures.',
+      bannerFailures: 'Memory failures in the last 24 hours: {count}.',
+      bannerWizard: 'Open setup wizard',
+      bannerDiagnostics: 'View diagnostics',
+      bannerSettings: 'Open settings',
+      activityHint: 'Recall and capture of the latest turn. Click a memory to find it in the library below.',
+      activityRefresh: 'Refresh',
+      recallQuery: 'Query: {query}',
+      recallReturnedShown: '{count} returned, first {shown} shown below',
+      recallTimingDetails: 'Timing details',
+      captureTag_ADD: 'New',
+      captureTag_UPDATE: 'Updated',
+      captureTag_DELETE: 'Removed',
+      capturePending: 'Platform is processing this save in the background.',
+      capturePendingEvent: 'Platform is processing this save in the background (event {id}).',
+      captureOssOnlyAdd: 'The local backend only adds memories; merging and cleanup happen in the weekly check.',
+      jumpToLibrary: 'Find in the memory library',
+      jumpNotFound: 'This memory is no longer in the library.',
+      libraryHint: 'Every memory, newest first.',
+      libraryHintPartitioned: 'Every memory, newest first. The local backend keeps memories by project.',
+      libraryServerCap: 'Self-hosted servers show the newest 1,000 memories.',
+      libraryCapped: 'Listing the first {shown} of {total}; search to find older ones.',
+      libraryEmpty: 'No memories yet. With automatic capture on, facts from your chats show up here; the agent can also save one with mem0_add.',
+      filterAll: 'All',
+      filterGlobal: 'Global',
+      filterProject: 'Project',
+      filterAllProjects: 'All projects',
+      filterProjectCount: '{name} ({count})',
+      filterProjectSessions: '{name} ({count}, {sessions} from sessions)',
+      orderNewest: 'Newest first',
+      orderOldest: 'Oldest first',
+      pageLine: 'Page {page} of {pages} · {count} memories',
+      pagePrev: 'Previous',
+      pageNext: 'Next',
+      memoryMore: 'Show more',
+      memoryLess: 'Show less',
+      memoryFromOtherApp: 'From another app',
+      scopeSessionShort: 'session',
+      deleteTitle: 'Delete this memory?',
+      deleteBody: 'This can’t be undone. The memory summary is rebuilt at the next check.',
+      deleteCancel: 'Cancel',
+      summaryMeta: 'Global summary · {items} items · {tokens} tok',
+      summaryProjects: '{count} project summaries',
+      commonTitle: 'Common switches',
+      storageTitle: 'Storage backend',
+      recallCaptureTitle: 'Recall and capture',
+      settingsCount: '{count} settings',
+      advancedMetaOss: 'Timeouts, dedup',
+      advancedMeta: 'Timeouts',
+      hygieneTitle: 'Memory check',
+      hygieneSettingsTitle: 'Check settings',
+      localTitle: 'Local setup and migration',
+      localHint: 'Embedding model, extraction LLM, and moving memories from older versions (Qdrant).',
+      localEmbedder: 'Embedding',
+      localLlm: 'Extraction LLM',
+      localMigration: 'Migration from Qdrant',
+      migrationDone: 'Done',
+      migrationPending: 'Pending',
+      migrationNone: 'Not needed',
+      localStoreFile: 'Memory database file',
+      copyPath: 'Copy path',
+      pathCopied: 'Copied',
+      diagTitle: 'Diagnostics',
+      diagMetaIssue: 'Connection details, store, recent failures',
+      diagMetaOk: 'All good',
+      discard: 'Discard',
     }
 
     const zh = {
-      title: 'Mem0 连接设置',
-      subtitle: '选择记忆的存储位置。保存后立即生效。',
+      title: 'Mem0 长期记忆',
+      storageHint: '选择记忆的存储位置。保存后立即生效。',
       checkAgain: '重新检查',
       checking: '正在检查连接…',
       statusReady: '已连接',
@@ -766,12 +821,11 @@ window.__ModuleLoader__.load({
       authToken: 'Token',
       authNone: '无认证',
       storePath: '记忆数据库文件',
-      storePathHint: '留空即 ~/.dsh/mem0/memory.sqlite。',
+      storePathHint: '留空则使用默认路径。',
       ossConfigHint: 'embedding 模型和抽取 LLM 用本地配置向导设置：向导写入 ~/.dsh/mem0/oss.json 的 "dsh_mem0" 段，key 存进 DSH 凭据库。',
       identityTitle: '记忆归属',
       userId: '用户 ID',
       agentId: 'Agent ID',
-      behaviourTitle: '记忆行为',
       autoRecall: '自动召回',
       autoRecallHint: '每次模型请求前搜索相关记忆。',
       autoCapture: '自动保存',
@@ -780,7 +834,6 @@ window.__ModuleLoader__.load({
       announceToAgentHint: '在系统提示中加入一段记忆能力说明。',
       includeSubagents: '包含子代理',
       includeSubagentsHint: '允许被委派的子代理也使用自动记忆。',
-      maintenanceTitle: '记忆维护',
       maintenanceHint: '从已存事实重建精简画像，并按周清理重复项、把本插件写入的记忆控制在预算内（其他应用的记忆不会被删除）。不会额外调用模型。',
       captureFilter: '保存过滤',
       captureFilterHint: '启发式会跳过问候、简短确认和纯命令回合。',
@@ -895,7 +948,6 @@ window.__ModuleLoader__.load({
       save: '保存设置',
       saving: '正在保存…',
       saved: '已保存，正在应用…',
-      reset: '放弃修改',
       test: '测试连接',
       testing: '正在测试…',
       testOk: '连接成功',
@@ -906,8 +958,6 @@ window.__ModuleLoader__.load({
       saveFailed: '保存设置失败。',
       invalidNumber: '请输入有效的整数。',
       loadFailed: '读取插件设置失败。',
-      backendSection: '记忆存储在哪里？',
-      connectionSection: '连接信息',
       whatNext: '保存后即可在对话中使用记忆工具，或开启新对话体验自动召回。',
       activityTitle: '记忆活动',
       activityCapture: '自动保存',
@@ -970,7 +1020,6 @@ window.__ModuleLoader__.load({
       activityReturned: '条返回',
       activityEvent: '事件',
       activityEmpty: '还没有自动记忆活动。完成一轮对话后，这里会显示自动保存和自动召回的结果。',
-      activityScopeHint: '“记忆活动”只统计本插件进程内发生的自动保存和召回；下面的“最近写入的记忆”直接读取后端实际存储。',
       dockIdle: 'Mem0 待命',
       dockDisabled: 'Mem0 已关闭',
       dockCaptureSaving: '保存记忆中',
@@ -1304,19 +1353,10 @@ window.__ModuleLoader__.load({
       scopeChipSaveFailed: '没能切换开关，请到 Mem0 设置里修改。',
 
       activityAsyncHint: 'Platform 的事实抽取在后台进行；显示“后台抽取中”时，稍等几秒再刷新最近记忆。',
-      recentTitle: '最近写入的记忆',
-      recentEmpty: '还没有记忆。完成的回合会自动保存到这里。',
-      recentError: '读取最近记忆失败',
       memoryBrowserTitle: '记忆库',
-      memoryBrowserHint: '搜索并浏览当前用户存储的全部记忆，列表直接读取配置的后端。',
-      memoryBrowserOpen: '查看全部记忆',
-      memoryBrowserClose: '收起记忆库',
       memorySearchPlaceholder: '搜索记忆内容或 ID…',
-      memorySearch: '搜索',
       memoryLoading: '正在读取记忆…',
       memoryEmpty: '没有匹配的记忆。',
-      memoryCount: '共 {count} 条记忆',
-      memoryCountFiltered: '显示 {shown} / 共 {total} 条',
       memoryBrowserError: '读取记忆失败',
       memoryDelete: '删除',
       memoryPin: '置顶',
@@ -1333,8 +1373,6 @@ window.__ModuleLoader__.load({
       tokUnit: 'token',
       sessionAt: '会话 · {time}',
       memorySource: '来源 {source}',
-      memoryTreeTitle: '记忆页',
-      memoryTreeHint: '按适用范围浏览记忆：全局（处处适用）、项目（一个仓库或文件夹）或会话。可以搜索、置顶和删除，这里不能编辑记忆。',
       treeAll: '全部',
       treeProjects: '项目',
       treeSessions: '不属于项目的会话',
@@ -1355,7 +1393,6 @@ window.__ModuleLoader__.load({
       memoryDeleteReason_unproven_owner: '后端没有确认这条记忆属于当前配置的 Mem0 用户',
       profileSourcesChanged: '生成这份摘要的记忆中有被删除或修改的，摘要可能含已删除或过时的内容，请编辑或重置。',
       profileStale: '生成这份摘要的记忆中有被删除或修改的，摘要重建前不会注入。',
-      recallPreviewTitle: '上次召回的记忆',
       profileSummaryTitle: '记忆摘要',
       profileSummaryHint: '可编辑的全局记忆摘要，召回时和当前项目的摘要一起注入。巡检时由模型重写记忆有变化的摘要；删改记忆后，相关摘要会先停用，等待重建。',
       profileSummaryEmpty: '尚未生成记忆摘要；下次维护后会自动生成。',
@@ -1375,8 +1412,81 @@ window.__ModuleLoader__.load({
       profileTooLong: '记忆摘要内容超出预算。',
       recallPreviewEmpty: '上次召回没有返回可展示的记忆内容。',
       memoryScore: '相关度',
-      refresh: '刷新',
       memoryId: 'ID',
+      statusOff: '已停用',
+      statusMemoryCount: '{count} 条记忆',
+      statusStoredAt: '存储在',
+      masterSwitch: '启用记忆',
+      tabMemories: '记忆',
+      tabSettings: '设置',
+      tabMaintenance: '维护',
+      bannerNotConnected: '还没连上记忆后端：{error}',
+      bannerCircuit: '连续失败后，自动记忆暂时停用。',
+      bannerFailures: '最近 24 小时有 {count} 次记忆失败。',
+      bannerWizard: '打开配置向导',
+      bannerDiagnostics: '查看诊断',
+      bannerSettings: '去设置',
+      activityHint: '最近一轮对话的召回和保存。点一条记忆，会在下面的记忆库里定位到它。',
+      activityRefresh: '刷新',
+      recallQuery: '查询：{query}',
+      recallReturnedShown: '返回 {count} 条，下面显示前 {shown} 条',
+      recallTimingDetails: '耗时明细',
+      captureTag_ADD: '新增',
+      captureTag_UPDATE: '更新',
+      captureTag_DELETE: '删除',
+      capturePending: 'Platform 正在后台处理这次保存。',
+      capturePendingEvent: 'Platform 正在后台处理这次保存（事件 {id}）。',
+      captureOssOnlyAdd: '本地后端只新增记忆；合并和清理在每周巡检里做。',
+      jumpToLibrary: '在记忆库中定位',
+      jumpNotFound: '记忆库里已经没有这条记忆。',
+      libraryHint: '所有记忆都在这里，按写入时间倒序。',
+      libraryHintPartitioned: '所有记忆都在这里，按写入时间倒序。本地后端按项目分区保存。',
+      libraryServerCap: '自建 Server 最多显示最新 1,000 条。',
+      libraryCapped: '只列出前 {shown} 条（共 {total} 条），更早的可以用搜索找到。',
+      libraryEmpty: '还没有记忆。开启自动保存后，对话里的事实会出现在这里；也可以让 Agent 用 mem0_add 记一条。',
+      filterAll: '全部',
+      filterGlobal: '全局',
+      filterProject: '项目',
+      filterAllProjects: '全部项目',
+      filterProjectCount: '{name}（{count}）',
+      filterProjectSessions: '{name}（{count}，含 {sessions} 条会话记忆）',
+      orderNewest: '最新在前',
+      orderOldest: '最早在前',
+      pageLine: '第 {page} / {pages} 页 · 共 {count} 条',
+      pagePrev: '上一页',
+      pageNext: '下一页',
+      memoryMore: '展开',
+      memoryLess: '收起',
+      memoryFromOtherApp: '来自其他应用',
+      scopeSessionShort: '会话',
+      deleteTitle: '删除这条记忆？',
+      deleteBody: '删除后不能恢复。巡检摘要会在下次巡检时重建。',
+      deleteCancel: '取消',
+      summaryMeta: '全局摘要 · {items} 条 · {tokens} tok',
+      summaryProjects: '{count} 个项目摘要',
+      commonTitle: '常用开关',
+      storageTitle: '存储后端',
+      recallCaptureTitle: '召回和保存',
+      settingsCount: '{count} 项',
+      advancedMetaOss: '超时、去重',
+      advancedMeta: '超时',
+      hygieneTitle: '巡检',
+      hygieneSettingsTitle: '巡检设置',
+      localTitle: '本地配置和迁移',
+      localHint: 'embedding 模型、抽取 LLM，以及从旧版本（Qdrant）迁移记忆。',
+      localEmbedder: 'embedding',
+      localLlm: '抽取 LLM',
+      localMigration: '从 Qdrant 迁移',
+      migrationDone: '已完成',
+      migrationPending: '待迁移',
+      migrationNone: '不需要',
+      localStoreFile: '记忆数据库文件',
+      copyPath: '复制路径',
+      pathCopied: '已复制',
+      diagTitle: '诊断',
+      diagMetaIssue: '连接详情、存储状态、最近失败',
+      diagMetaOk: '一切正常',
+      discard: '放弃',
     }
 
     const CSS = `
@@ -1534,6 +1644,87 @@ window.__ModuleLoader__.load({
       .mem0-wz-badge[data-ok=none]{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}
       @media (prefers-color-scheme:dark){.mem0-wz-result[data-ok=true],.mem0-wz-badge[data-ok=true]{color:#6fdc9a}.mem0-wz-result[data-ok=false],.mem0-wz-badge[data-ok=false]{color:#ff8a80}}
       .mem0-wz-untested{grid-column:1/-1;margin:0;padding:8px 12px;border-radius:8px;border:1px solid #d97706;background:rgba(217,119,6,.10);font-size:13px}
+      .mem0-page{--mem0-page-bg:var(--dsw-alias-bg-layer-0,var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1)))}
+      .mem0-head-main{min-width:0}
+      .mem0-statusline{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+      .mem0-statusline .mem0-status-label{color:var(--dsw-alias-label-primary)}
+      .mem0-sep{color:var(--dsw-alias-label-dimmed)}
+      .mem0-code{font:11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:5px;padding:0 5px;color:var(--dsw-alias-label-secondary);max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .mem0-dot.warn{background:var(--dsw-alias-state-warning-primary,#d97706);box-shadow:0 0 0 3px var(--dsw-alias-state-warn-tertiary)}
+      .mem0-head-actions{flex:none}
+      .mem0-master{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer}
+      .mem0-sm{padding:4px 10px;font-size:11px}
+      .mem0-banners{display:flex;flex-direction:column;gap:8px}
+      .mem0-banner{display:flex;align-items:center;gap:10px;border:1px solid var(--dsw-alias-state-warn-primary,#d97706);background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-label-primary);border-radius:10px;padding:8px 12px;font-size:12px}
+      .mem0-banner-text{flex:1;min-width:0;word-break:break-word}
+      .mem0-tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l2);position:sticky;top:0;z-index:5;background:var(--mem0-page-bg)}
+      .mem0-tab{border:0;background:transparent;padding:9px 14px 8px;cursor:pointer;color:var(--dsw-alias-label-tertiary);font:inherit;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;display:inline-flex;align-items:center;gap:5px}
+      .mem0-tab:hover{color:var(--dsw-alias-label-primary)}
+      .mem0-tab[aria-selected="true"]{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary);font-weight:600}
+      .mem0-tab-count{font-size:11px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+      .mem0-tab-dot{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-state-warning-primary,#d97706)}
+      .mem0-tab-body{display:flex;flex-direction:column;gap:14px}
+      .mem0-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+      .mem0-card-head .mem0-section-title{flex:1}
+      .mem0-fold{padding:0}
+      .mem0-fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;user-select:none}
+      .mem0-fold>summary::-webkit-details-marker{display:none}
+      .mem0-fold-title:before{content:'▸';display:inline-block;width:14px;color:var(--dsw-alias-label-tertiary);transition:transform .12s}
+      .mem0-fold[open]>.mem0-fold-title:before,.mem0-fold[open]>summary .mem0-fold-title:before{transform:rotate(90deg)}
+      .mem0-fold>.mem0-section{padding:0 16px 14px}
+      .mem0-warn-text{color:var(--dsw-alias-state-warn-label,var(--dsw-alias-state-warning-primary,#d97706))}
+      .mem0-activity{gap:6px}
+      .mem0-act-list{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}
+      .mem0-act-item{display:flex;gap:8px;align-items:flex-start;padding:7px 10px;border:0;border-top:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:1.45;text-align:left;width:100%}
+      .mem0-act-item:first-child{border-top:0}
+      button.mem0-act-item{cursor:pointer}
+      button.mem0-act-item:hover{background:var(--dsw-alias-interactive-bg-hover)}
+      .mem0-act-note{color:var(--dsw-alias-label-tertiary)}
+      .mem0-act-text{flex:1;min-width:0;display:flex;flex-direction:column}
+      .mem0-act-old{color:var(--dsw-alias-label-tertiary);text-decoration:line-through;font-size:11px}
+      .mem0-clamp2,.mem0-clamp3{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+      .mem0-clamp2{-webkit-line-clamp:2}
+      .mem0-clamp3{-webkit-line-clamp:3}
+      .mem0-mem-body.open .mem0-clamp3{-webkit-line-clamp:unset;display:block}
+      .mem0-tag{font-size:10px;border-radius:4px;padding:0 5px;line-height:17px;flex:none;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+      .mem0-tag-add{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary);background:var(--dsw-alias-state-success-tertiary)}
+      .mem0-tag-update{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-interactive-bg-active)}
+      .mem0-tag-delete{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}
+      .mem0-tag-score{font-variant-numeric:tabular-nums}
+      .mem0-timing summary{cursor:pointer;font-size:11px;color:var(--dsw-alias-label-tertiary)}
+      .mem0-timing p{margin:4px 0 0}
+      .mem0-lib-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+      .mem0-lib-search{flex:1 1 220px;width:auto}
+      .mem0-lib-select{width:auto;max-width:280px}
+      .mem0-filter-chips{display:flex;gap:4px}
+      .mem0-filter-chip{border:1px solid var(--dsw-alias-border-l2);background:transparent;border-radius:999px;padding:4px 11px;font:inherit;font-size:12px;cursor:pointer;color:var(--dsw-alias-label-secondary)}
+      .mem0-filter-chip[aria-pressed="true"]{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary);font-weight:600}
+      .mem0-mem-list{display:flex;flex-direction:column}
+      .mem0-loading{opacity:.6}
+      .mem0-mem{display:flex;gap:12px;padding:10px 2px;border-top:1px solid var(--dsw-alias-border-l1);align-items:flex-start;border-radius:6px}
+      .mem0-mem:first-child{border-top:0}
+      .mem0-flash{animation:mem0-flash 1.8s ease}
+      @keyframes mem0-flash{0%,40%{background:var(--dsw-alias-interactive-bg-active)}100%{background:transparent}}
+      .mem0-mem-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-primary)}
+      .mem0-mem-meta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:11px;color:var(--dsw-alias-label-tertiary)}
+      .mem0-more{border:0;background:none;padding:0;color:var(--dsw-alias-brand-primary);font:inherit;font-size:11px;cursor:pointer;align-self:flex-start}
+      .mem0-mem-actions{display:flex;gap:4px;flex:none;opacity:.6;transition:opacity .1s}
+      .mem0-mem:hover .mem0-mem-actions,.mem0-mem-actions:focus-within{opacity:1}
+      .mem0-icon-btn{border:1px solid var(--dsw-alias-border-l2);background:transparent;border-radius:6px;padding:3px 8px;font:inherit;font-size:11px;cursor:pointer;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+      .mem0-icon-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+      .mem0-icon-btn.mem0-danger:hover:not(:disabled){color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}
+      .mem0-icon-btn:disabled{opacity:.4;cursor:default}
+      .mem0-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--dsw-alias-label-tertiary);border-top:1px solid var(--dsw-alias-border-l1);padding-top:10px}
+      .mem0-pager-btns{display:flex;gap:6px}
+      .mem0-savebar{position:sticky;bottom:12px;z-index:6;align-self:center;display:flex;align-items:center;gap:10px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);box-shadow:0 8px 30px rgba(0,0,0,.16);border-radius:12px;padding:8px 10px 8px 14px;font-size:12px;max-width:100%}
+      .mem0-savebar .mem0-error{margin:0}
+      .mem0-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:1000}
+      .mem0-modal{width:min(460px,92vw);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:18px;display:flex;flex-direction:column;gap:12px;color:var(--dsw-alias-label-primary);font-size:13px}
+      .mem0-modal h3{margin:0;font-size:14px}
+      .mem0-quote{border-left:3px solid var(--dsw-alias-border-l3);padding:6px 10px;background:var(--dsw-alias-bg-layer-2);border-radius:4px;font-size:12px;word-break:break-word;max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+      .mem0-modal-actions{display:flex;justify-content:flex-end;gap:8px}
+      .mem0-danger-btn{border-radius:8px;padding:7px 14px;font:inherit;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--dsw-alias-state-error-primary);background:var(--dsw-alias-state-error-primary);color:#fff}
+      @media (max-width:640px){.mem0-head{flex-direction:column}.mem0-activity-grid{grid-template-columns:1fr}.mem0-mem{flex-direction:column}.mem0-mem-actions{opacity:1}}
       @media (max-width:640px){.mem0-segments{grid-template-columns:1fr 1fr}.mem0-grid{grid-template-columns:1fr}.mem0-status-grid{grid-template-columns:1fr 1fr}}
     `
 
@@ -1926,7 +2117,8 @@ window.__ModuleLoader__.load({
      * Delete one memory from the library: ask the server for its full text
      * (which also checks owner and source), show both in a confirmation,
      * delete only on yes, then reload the list. `request` is fetchJson,
-     * `confirm` window.confirm; injected so tests drive it. Pure otherwise.
+     * `confirm(text, memory)` the page's dialog (true/false, or a promise of
+     * it); injected so tests drive it. Pure otherwise.
      */
     async function deleteMemoryFlow({ t, id, request, confirm, reload }) {
       const path = `${MEMORIES_PATH}?id=${encodeURIComponent(id)}`
@@ -1937,7 +2129,8 @@ window.__ModuleLoader__.load({
         return { outcome: 'error', message: deleteErrorText(t, error) }
       }
       const memory = info?.memory ?? {}
-      if (!confirm(template(t('memoryDeleteConfirm'), { id: memory.id ?? id, memory: memory.memory || '—' }))) {
+      // `confirm` may answer later (the page's dialog) or at once (tests).
+      if (!(await confirm(template(t('memoryDeleteConfirm'), { id: memory.id ?? id, memory: memory.memory || '—' }), { ...memory, id: memory.id ?? id }))) {
         return { outcome: 'cancelled', message: '' }
       }
       try {
@@ -2754,6 +2947,18 @@ window.__ModuleLoader__.load({
       return `${t(`failureComponent_${component}`)}${extra.length ? ` (${extra.join(', ')})` : ''}`
     }
 
+    /**
+     * The failure's message for the dock and the failure list. A gateway's
+     * "cut at its output budget" error (`detail`, its words): the localized
+     * advice replaces Mem0's English message.
+     */
+    function failureMessage(t, failure) {
+      if (failure?.cause === 'extraction' && failure.reason === 'truncated' && failure.detail) {
+        return template(t('failureHintOutputLimit'), { n: failure.extract?.maxTokens ?? '?', detail: failure.detail })
+      }
+      return failure?.message || ''
+    }
+
     /** One-line description of a stored failure: kind · component · cause · message. */
     function failureSummary(t, failure) {
       if (!failure) return ''
@@ -2765,13 +2970,8 @@ window.__ModuleLoader__.load({
         parts.push(template(t('failureExit'), { how: exitHow(t, failure), uptime: formatDuration(failure.uptimeMs) }))
       }
       if (failure.retry === 'failed') parts.push(t('failureRetryFailed'))
-      // A gateway's "cut at its output budget" error (`detail`, its words):
-      // the localized advice replaces Mem0's English message.
-      const outputLimit = failure.cause === 'extraction' && failure.reason === 'truncated' && failure.detail
-        ? template(t('failureHintOutputLimit'), { n: failure.extract?.maxTokens ?? '?', detail: failure.detail })
-        : ''
-      if (outputLimit) parts.push(outputLimit)
-      else if (failure.message) parts.push(failure.message)
+      const message = failureMessage(t, failure)
+      if (message) parts.push(message)
       const hint = unreachableHint(t, failure)
       if (hint) parts.push(hint)
       return parts.join(' · ')
@@ -3232,7 +3432,7 @@ window.__ModuleLoader__.load({
                     h('span', { className: 'mem0-chip' }, failureComponentLabel(t, failure)),
                     h('span', { className: 'mem0-activity-meta' }, meta.filter(Boolean).join(' · ')),
                   ),
-                  failure.message ? h('p', { className: 'mem0-failure-msg' }, failure.message) : null,
+                  failureMessage(t, failure) ? h('p', { className: 'mem0-failure-msg' }, failureMessage(t, failure)) : null,
                 )
               }),
             )
@@ -4199,6 +4399,1139 @@ window.__ModuleLoader__.load({
       return missing
     }
 
+    // ---- settings page pieces (state stays in ConfigPage) -----------------
+
+    const numberValue = (value) => (value === '' ? '' : Number(value))
+
+    /**
+     * How the page edits each draft field except `backend`, `apiKey` and
+     * `baseUrl` (their hints depend on the backend): control kind, label
+     * and hint keys. `oss`: only shown for the local backend.
+     */
+    const FIELD_SPECS = {
+      enabled: { kind: 'toggle', label: 'enabled', hint: 'enabledHint' },
+      autoRecall: { kind: 'toggle', label: 'autoRecall', hint: 'autoRecallHint' },
+      autoCapture: { kind: 'toggle', label: 'autoCapture', hint: 'autoCaptureHint' },
+      projectPartitions: { kind: 'toggle', label: 'projectPartitions', hint: 'projectPartitionsHint' },
+      translateMemories: { kind: 'toggle', label: 'translateMemories', hint: 'translateMemoriesHint' },
+      announceToAgent: { kind: 'toggle', label: 'announceToAgent', hint: 'announceToAgentHint' },
+      includeSubagents: { kind: 'toggle', label: 'includeSubagents', hint: 'includeSubagentsHint' },
+      captureStrataFolds: { kind: 'toggle', label: 'captureStrataFolds', hint: 'captureStrataFoldsHint' },
+      captureFilter: {
+        kind: 'select',
+        label: 'captureFilter',
+        hint: 'captureFilterHint',
+        options: [['heuristic', 'captureFilterHeuristic'], ['off', 'captureFilterOff']],
+      },
+      profileEnabled: { kind: 'toggle', label: 'profileEnabled', hint: 'profileEnabledHint' },
+      hygieneEnabled: { kind: 'toggle', label: 'hygieneEnabled', hint: 'hygieneEnabledHint' },
+      modelHygiene: { kind: 'toggle', label: 'modelHygiene', hint: 'modelHygieneHint' },
+      profileBudgetTokens: { kind: 'number', label: 'profileBudgetTokens', hint: 'profileBudgetTokensHint' },
+      memoryBudgetTokens: { kind: 'number', label: 'memoryBudgetTokens', hint: 'memoryBudgetTokensHint' },
+      storeSafetyLimit: { kind: 'number', label: 'storeSafetyLimit', hint: 'storeSafetyLimitHint' },
+      importanceWeight: { kind: 'number', label: 'importanceWeight', hint: 'importanceWeightHint' },
+      projectRecallBoost: { kind: 'number', label: 'projectRecallBoost', hint: 'projectRecallBoostHint' },
+      hygieneIntervalDays: { kind: 'number', label: 'hygieneIntervalDays', hint: 'hygieneIntervalDaysHint' },
+      captureMaxChars: { kind: 'number', label: 'captureMaxChars', hint: 'captureMaxCharsHint' },
+      recallTopK: { kind: 'number', label: 'recallTopK', hint: 'recallTopKHint' },
+      timeoutMs: { kind: 'number', label: 'timeoutMs', hint: 'timeoutMsHint' },
+      recallTimeoutMs: { kind: 'number', label: 'recallTimeoutMs', hint: 'recallTimeoutMsHint' },
+      addTimeoutMs: { kind: 'number', label: 'addTimeoutMs', hint: 'addTimeoutMsHint' },
+      captureTurnDedupThreshold: { kind: 'number', label: 'captureTurnDedupThreshold', hint: 'captureTurnDedupThresholdHint', oss: true },
+      embedderKeepAlive: { kind: 'text', label: 'embedderKeepAlive', hint: 'embedderKeepAliveHint', trim: true, oss: true },
+      userId: { kind: 'text', label: 'userId' },
+      agentId: { kind: 'text', label: 'agentId' },
+      apiKeyEnv: { kind: 'text', label: 'apiKeyEnv', hint: 'apiKeyEnvHint' },
+      authType: {
+        kind: 'select',
+        label: 'authType',
+        options: [['apiKey', 'authApiKey'], ['bearer', 'authBearer'], ['token', 'authToken'], ['none', 'authNone']],
+      },
+      storePath: { kind: 'text', label: 'storePath', hint: 'storePathHint', placeholder: '~/.dsh/mem0/memory.sqlite', className: 'mem0-grid-single' },
+    }
+
+    /**
+     * Placeholder of the database path field: the path in use when the saved
+     * value is blank (the status reports it), else the built-in default. Only
+     * shown, never saved.
+     */
+    function storePathPlaceholder(saved, data) {
+      if (!String(saved?.storePath ?? '').trim() && data?.store?.path) return data.store.path
+      return FIELD_SPECS.storePath.placeholder
+    }
+
+    /** One draft field as its control (FIELD_SPECS); `placeholder` overrides the spec's. */
+    function SettingControl({ t, name, draft, setField, placeholder }) {
+      const spec = FIELD_SPECS[name]
+      if (!spec) return null
+      const label = t(spec.label)
+      const hint = spec.hint ? t(spec.hint) : undefined
+      const onChange = (value) => setField(name, value)
+      if (spec.kind === 'toggle') return h(ToggleRow, { label, hint, checked: draft[name], onChange })
+      if (spec.kind === 'select') {
+        return h(SelectField, {
+          label,
+          hint,
+          value: draft[name],
+          onChange,
+          options: spec.options.map(([value, key]) => ({ value, label: t(key) })),
+        })
+      }
+      return h(TextField, {
+        label,
+        hint,
+        type: spec.kind === 'number' ? 'number' : 'text',
+        value: draft[name],
+        placeholder: placeholder ?? spec.placeholder,
+        className: spec.className,
+        onChange: (value) => setField(name, spec.kind === 'number' ? numberValue(value) : spec.trim ? value.trim() : value),
+      })
+    }
+
+    /** Controls for the named fields, leaving out local-only ones on other backends. */
+    function settingControls({ t, names, draft, setField }) {
+      return names
+        .filter((name) => !FIELD_SPECS[name]?.oss || draft.backend === 'oss')
+        .map((name) => h(SettingControl, { key: name, t, name, draft, setField }))
+    }
+
+    /** Cells of the full status grid (backend, endpoint, store, models, key). Pure. */
+    function statusItemsFor(t, data) {
+      const items = []
+      if (!data) return items
+      items.push(
+        { key: 'backend', label: t('statusBackend'), value: statusLabel(t, data.backend) },
+        { key: 'collection', label: t('statusCollection'), value: data.collection ?? '—' },
+        { key: 'endpoint', label: t('statusEndpoint'), value: data.endpoint ?? '—' },
+      )
+      const choice = backendChoiceText(t, data)
+      if (choice) items.push({ key: 'backendChoice', label: t('statusBackendChoice'), value: choice })
+      if (data.mem0Reference) items.push({ key: 'mem0', label: t('statusMem0'), value: template(t('statusMem0Native'), { version: data.mem0Reference }) })
+      if (data.store) {
+        items.push({
+          key: 'store',
+          label: t('statusStore'),
+          value: data.store.ok ? `OK (${data.store.kind ?? 'sqlite'})` : data.store.error ?? '—',
+        })
+      } else if (data.qdrant) {
+        items.push({ key: 'qdrant', label: t('statusVectorStore'), value: data.qdrant.ok ? 'OK' : data.qdrant.error ?? '—' })
+      }
+      if (data.embedder) {
+        items.push({
+          key: 'embedder',
+          label: t('statusEmbedder'),
+          value: data.embedder.ok
+            ? `${data.embedder.model ? `${data.embedder.model} · ` : ''}${data.embedder.dimensions ?? '?'} dims`
+            : data.embedder.error ?? '—',
+        })
+      }
+      if (data.llm) {
+        // Following DSH: the label says so; the value is the model id now
+        // (provider in the tooltip), so it fits the cell.
+        const dshName = data.llm.followsDsh ? String(data.llm.model ?? '') : ''
+        items.push({
+          key: 'llm',
+          label: data.llm.followsDsh ? t('statusLlmDshLabel') : t('statusLlm'),
+          value: data.llm.followsDsh
+            ? (dshName ? dshName.slice(dshName.indexOf('/') + 1) : t('statusLlmDshNone'))
+            : data.llm.configured ? data.llm.model ?? 'OK' : data.llm.error ?? t('statusLlmMissing'),
+          ...(dshName ? { title: template(t('statusLlmDsh'), { model: dshName }) } : {}),
+        })
+      }
+      items.push({ key: 'key', label: t('statusKey'), value: data.apiKeyConfigured ? t('keySet') : t('keyUnset') })
+      return items
+    }
+
+    function StatusGrid({ items }) {
+      return h(
+        'div',
+        { className: 'mem0-status-grid' },
+        items.map((item) =>
+          h(
+            'div',
+            { className: 'mem0-stat', key: item.key },
+            h('span', { className: 'mem0-stat-label' }, item.label),
+            h('span', { className: 'mem0-stat-value', title: String(item.title ?? item.value) }, item.value),
+          ),
+        ),
+      )
+    }
+
+    /** "12 items · 380 tok · Edited manually · Updated …" for the summary card. Pure. */
+    function profileMetaFor(t, maintenance) {
+      const meta = []
+      const profile = maintenance?.profile
+      if (!profile) return meta
+      meta.push(`${profile.items ?? 0} ${t('profileSummaryItems')}`)
+      if (profile.tokens !== undefined) meta.push(`${profile.tokens} tok`)
+      if (profile.manual) meta.push(t('profileManual'))
+      if (profile.sourcesChanged) meta.push(t('profileSourcesChanged'))
+      if (profile.stale) meta.push(t('profileStale'))
+      if (profile.updatedAt) meta.push(`${t('profileSummaryUpdated')} ${activityTime(profile.updatedAt)}`)
+      return meta
+    }
+
+    /** Project summaries (partition L0): name, size, whether being rebuilt. Pure. */
+    function projectSummaryLineFor(t, maintenance) {
+      const list = Array.isArray(maintenance?.projectProfiles) ? maintenance.projectProfiles : []
+      if (list.length === 0) return ''
+      return template(t('projectSummaries'), {
+        list: list
+          .map((item) => `${item.name || shortId(item.projectId)} (${item.items ?? 0} · ${item.tokens ?? 0} ${t('tokUnit')}${item.stale ? ` · ${t('projectSummaryStale')}` : ''})`)
+          .join(', '),
+      })
+    }
+
+    /** "Last run … · Next run … · N pending · Profile …" for the hygiene card. Pure. */
+    function maintenanceMetaFor(t, maintenance) {
+      const meta = []
+      meta.push(`${t('hygieneLastRun')} ${maintenance?.lastRunAt ? activityTime(maintenance.lastRunAt) : t('hygieneNever')}`)
+      if (maintenance?.nextRunAt) meta.push(`${t('hygieneNextRun')} ${activityTime(maintenance.nextRunAt)}`)
+      else if (maintenance?.due) meta.push(`${t('hygieneNextRun')} ${t('hygieneDue')}`)
+      if (maintenance?.pending > 0) {
+        meta.push(template(t(maintenance.catchUp ? 'hygienePending' : 'hygienePendingSlow'), { count: maintenance.pending }))
+      }
+      if (maintenance?.profile) meta.push(`${t('hygieneProfile')} ${maintenance.profile.items ?? 0} · ${maintenance.profile.tokens ?? 0} tok`)
+      return meta
+    }
+
+    function ProfilePreview({ value }) {
+      const lines = String(value ?? '').split('\n')
+      return h(
+        'div',
+        { className: 'mem0-profile-preview' },
+        lines.map((line, index) => {
+          const text = line.trim()
+          if (!text) return null
+          if (/^#{1,6}\s+/.test(text)) return h('h4', { key: index, className: 'mem0-profile-heading' }, text.replace(/^#{1,6}\s+/, ''))
+          if (/^[-*]\s+/.test(text)) return h('div', { key: index, className: 'mem0-profile-item' }, text.replace(/^[-*]\s+/, ''))
+          return h('p', { key: index, className: 'mem0-profile-paragraph' }, text)
+        }),
+      )
+    }
+
+    /** The memory summary body: preview or editor, and its buttons. */
+    function ProfileEditor({ t, enabled, profileText, profile }) {
+      const { draft, editing, state, message, setDraft, edit, save, cancel, reset } = profile
+      const shown = draft ?? profileText
+      return h(
+        React.Fragment,
+        null,
+        editing
+          ? h('textarea', {
+              className: 'mem0-profile-edit',
+              value: draft ?? '',
+              placeholder: enabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled'),
+              disabled: !enabled || state === 'saving',
+              rows: 8,
+              onChange: (event) => setDraft(event.target.value),
+            })
+          : String(shown ?? '').trim()
+            ? h(ProfilePreview, { value: shown })
+            : h('p', { className: 'mem0-hint' }, enabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled')),
+        editing ? h('p', { className: 'mem0-hint' }, t('profileEditHint')) : null,
+        h(
+          'div',
+          { className: 'mem0-profile-actions' },
+          editing
+            ? h(
+                'button',
+                { type: 'button', className: 'mem0-primary', disabled: !enabled || state === 'saving' || !String(draft ?? '').trim(), onClick: save },
+                state === 'saving' ? t('profileSaving') : t('profileSave'),
+              )
+            : h('button', { type: 'button', className: 'mem0-primary', disabled: !enabled || state === 'saving', onClick: edit }, t('profileEdit')),
+          editing
+            ? h('button', { type: 'button', className: 'mem0-secondary', disabled: state === 'saving', onClick: cancel }, t('profileCancel'))
+            : h('button', { type: 'button', className: 'mem0-secondary', disabled: !enabled || state === 'saving', onClick: reset }, t('profileReset')),
+          message ? h('span', { className: state === 'error' ? 'mem0-error' : 'mem0-hint' }, message) : null,
+        ),
+        h('p', { className: 'mem0-hint' }, t('profileResetHint')),
+      )
+    }
+
+    /** The last hygiene report: one summary line and the expandable details. */
+    function HygieneReport({ t, report, texts }) {
+      if (!report) return null
+      return h(
+        React.Fragment,
+        null,
+        h(
+          'p',
+          { className: 'mem0-activity-meta' },
+          `${t('hygieneLastReport')} · ${hygieneReason(t, report.reason)}${report.finishedAt ? ` · ${activityTime(report.finishedAt)}` : ''} · ${formatHygieneReport(t, report)}`,
+        ),
+        h(
+          'details',
+          { className: 'mem0-details mem0-report-details' },
+          h('summary', null, t('hygieneDetails')),
+          h(
+            'div',
+            { className: 'mem0-report-grid' },
+            h('span', null, `${t('hygieneReportWindow')}: ${activityTime(report.startedAt)} → ${activityTime(report.finishedAt)}`),
+            h('span', null, `${t('hygieneReportDuration')}: ${report.durationMs ?? '—'} ms`),
+            h('span', null, `${t('hygieneReportStore')}: ${report.storeBefore ?? report.scanned ?? 0} → ${report.storeCount ?? 0}`),
+            h('span', null, `${t('hygieneReportStoreTokens')}: ${report.storeTokensBefore ?? 0} → ${report.storeTokens ?? 0}`),
+            h('span', null, `${t('hygieneReportProfile')}: ${report.profileItems ?? 0} · ${report.profileTokens ?? 0} tok`),
+          ),
+          ['duplicateDetails', 'mergedDetails', 'deletedDetails', 'failedDetails', 'prunedDetails'].some((key) => Array.isArray(report[key]))
+            ? h(
+                'div',
+                { className: 'mem0-report-details-list' },
+                report.dryRun
+                  ? reportDetail(t, `${t('hygienePlannedDetails')} (${report.planned ?? 0})`, report.plannedDetails, (item) => reportItem(t, item))
+                  : null,
+                reportDetail(t, t('hygieneDuplicateDetails'), report.duplicateDetails, (item) => reportItem(t, item)),
+                Array.isArray(report.prunedDetails) ? reportDetail(t, t('hygienePrunedDetails'), report.prunedDetails, (item) => reportItem(t, item)) : null,
+                reportDetail(t, t('hygieneMergeDetails'), report.dryRun ? report.mergePlan : report.mergedDetails, (item) => mergeLine(t, texts, item)),
+                reportDetail(t, t('hygieneImportanceDetails'), report.reviewDetails, (item) => importanceLine(t, texts, item)),
+                reportDetail(t, t('hygieneDeletedDetails'), report.deletedDetails, (item) => reportItem(t, item)),
+                reportDetail(t, t('hygieneFailedDetails'), report.failedDetails, (item) => `${item.id}: ${item.error}`),
+              )
+            : h('p', { className: 'mem0-hint' }, t('hygieneLegacyDetails')),
+        ),
+      )
+    }
+
+    /** Connection fields of the chosen backend (key, env, URL, auth / local file and wizard). */
+    function ConnectionFields({ t, draft, setField, apiKey, setApiKey, keyConfigured, onOpenWizard, storePlaceholder }) {
+      const fields = []
+      const control = (name) => h(SettingControl, { key: name, t, name, draft, setField })
+      if (draft.backend === 'auto' || draft.backend === 'platform' || draft.backend === 'server') {
+        fields.push(
+          h(TextField, {
+            key: 'apiKey',
+            label: t('apiKey'),
+            hint: keyConfigured ? t('apiKeySet') : t('apiKeyHint'),
+            type: 'password',
+            value: apiKey,
+            autoComplete: 'off',
+            placeholder: keyConfigured ? '••••••••' : t('apiKeyUnset'),
+            onChange: setApiKey,
+          }),
+          control('apiKeyEnv'),
+        )
+      }
+      if (draft.backend === 'auto' || draft.backend === 'platform') {
+        fields.push(
+          h(TextField, {
+            key: 'baseUrl',
+            label: t('baseUrl'),
+            hint: draft.backend === 'platform' ? t('baseUrlPlatformHint') : undefined,
+            value: draft.baseUrl,
+            placeholder: 'https://api.mem0.ai',
+            onChange: (value) => setField('baseUrl', value),
+          }),
+        )
+      }
+      if (draft.backend === 'server') {
+        fields.push(
+          h(TextField, {
+            key: 'baseUrl',
+            label: t('baseUrl'),
+            hint: t('baseUrlServerHint'),
+            value: draft.baseUrl,
+            placeholder: 'http://127.0.0.1:8888',
+            onChange: (value) => setField('baseUrl', value),
+          }),
+          control('authType'),
+        )
+      }
+      if (draft.backend === 'oss') {
+        fields.push(
+          h(SettingControl, { key: 'storePath', t, name: 'storePath', draft, setField, placeholder: storePlaceholder }),
+          h('p', { key: 'ossConfigHint', className: 'mem0-hint mem0-grid-single' }, t('ossConfigHint')),
+          h('div', { key: 'wizard', className: 'mem0-wz-row mem0-grid-single' },
+            h('button', { type: 'button', className: 'mem0-secondary', onClick: onOpenWizard }, t('wzOpen')),
+          ),
+        )
+      }
+      return h('div', { className: 'mem0-grid' }, fields)
+    }
+
+    // ---- page layout: header, tabs and their cards -------------------------
+
+    const TABS = ['memories', 'settings', 'maintenance']
+    const LIBRARY_PAGE_SIZE = 20
+
+    /**
+     * Where every draft field lives on the page (test/client-layout.test.js
+     * checks that each FIELD_ORDER key appears exactly once).
+     * `partitioned`: hidden for the REST backends, which have no partitions.
+     */
+    const SETTINGS_LAYOUT = {
+      header: ['enabled'],
+      common: ['autoRecall', 'autoCapture', 'projectPartitions', 'translateMemories'],
+      storage: ['backend', 'apiKey', 'apiKeyEnv', 'baseUrl', 'authType', 'storePath'],
+      identity: ['userId', 'agentId'],
+      recallCaptureToggles: ['announceToAgent', 'includeSubagents', 'captureStrataFolds'],
+      recallCaptureFields: ['captureFilter', 'recallTopK', 'memoryBudgetTokens', 'importanceWeight', 'projectRecallBoost', 'captureMaxChars'],
+      advanced: ['timeoutMs', 'recallTimeoutMs', 'addTimeoutMs', 'captureTurnDedupThreshold', 'embedderKeepAlive'],
+      hygieneToggles: ['hygieneEnabled', 'modelHygiene', 'profileEnabled'],
+      hygieneFields: ['profileBudgetTokens', 'storeSafetyLimit', 'hygieneIntervalDays'],
+    }
+    const PARTITION_FIELDS = new Set(['projectPartitions', 'projectRecallBoost'])
+
+    /** Field names of a layout group the chosen backend shows. Pure. */
+    function visibleFields(names, backend) {
+      return names.filter((name) => {
+        if (FIELD_SPECS[name]?.oss && backend !== 'oss') return false
+        if (PARTITION_FIELDS.has(name) && (backend === 'platform' || backend === 'server')) return false
+        return true
+      })
+    }
+
+    /**
+     * The header's one status line: state (connected / not connected / off),
+     * backend, memory count, where memories are stored. Pure.
+     */
+    function headerStatusView(t, { phase, data, enabled, memoryCount }) {
+      const state = !enabled ? 'off' : phase === 'loading' && !data ? 'checking' : phase === 'ready' && data?.ok ? 'ok' : 'error'
+      const label = { off: t('statusOff'), checking: t('checking'), ok: t('statusReady'), error: t('statusDegraded') }[state]
+      const parts = []
+      if (data?.backend) parts.push(statusLabel(t, data.backend))
+      if (Number.isFinite(memoryCount)) parts.push(template(t('statusMemoryCount'), { count: memoryCount.toLocaleString() }))
+      let where = null
+      if (data?.backend === 'oss') {
+        const path = data.store?.path || data.collection
+        if (path) where = { prefix: t('statusStoredAt'), code: path }
+      } else if (data?.endpoint) {
+        where = { prefix: '', code: data.endpoint }
+      }
+      return { state, label, parts, where }
+    }
+
+    /**
+     * Problems that need the user, newest-first priority, each with where to
+     * fix it ('wizard', 'diagnostics' or 'settings'). Nothing when all is well. Pure.
+     */
+    function bannerItems(t, data, { phase, message, enabled = true, now = Date.now() } = {}) {
+      const items = []
+      if (data?.configWarning?.missing?.length) {
+        items.push({
+          code: 'configWarning',
+          text: `${template(t('configWarning'), { fields: data.configWarning.missing.join(', ') })} ${t('configWarningFix')}`,
+          action: 'settings',
+        })
+      }
+      const notices = Array.isArray(data?.upgradeNotices) ? data.upgradeNotices : []
+      for (const notice of notices) {
+        if (notice?.code === 'legacyQdrant') {
+          items.push({ code: 'legacyQdrant', text: template(t('upgradeLegacyQdrant'), { endpoint: String(notice.endpoint ?? ''), collection: String(notice.collection ?? '') }), action: 'wizard' })
+        } else if (notice?.code === 'noLocalConfig') {
+          items.push({ code: 'noLocalConfig', text: t('upgradeNoLocalConfig'), action: 'wizard' })
+        }
+      }
+      if (enabled && (phase === 'error' || data?.ok === false) && !items.some((item) => item.action === 'wizard')) {
+        items.push({
+          code: 'notConnected',
+          text: template(t('bannerNotConnected'), { error: data?.error ?? message ?? '' }),
+          action: data?.backend === 'oss' ? 'wizard' : 'settings',
+        })
+      }
+      const activity = data?.activity ?? {}
+      if (enabled && [activity.capture, activity.recall].some((record) => record?.status === 'skipped' && record.reason === 'circuit-open')) {
+        items.push({ code: 'circuit', text: t('bannerCircuit'), action: 'diagnostics' })
+      }
+      const recent = (Array.isArray(data?.failures) ? data.failures : []).filter((failure) => {
+        const at = Date.parse(failure?.at)
+        return Number.isFinite(at) && now - at < 24 * 3600 * 1000
+      })
+      if (recent.length > 0 && !items.some((item) => item.code === 'circuit')) {
+        items.push({ code: 'failures', text: template(t('bannerFailures'), { count: recent.length }), action: 'diagnostics' })
+      }
+      return items
+    }
+
+    /**
+     * What the capture card shows (PR1/PR2 contract): `preview` rows with a
+     * New/Updated/Removed tag; `pending` for a Platform save still being
+     * processed; neither → only the existing one-line stats. `ossNote`: the
+     * local backend never updates, say so. Pure.
+     */
+    function captureView(capture, backend) {
+      const items = (Array.isArray(capture?.preview) ? capture.preview : []).slice(0, 5).map((item, index) => {
+        const event = ['ADD', 'UPDATE', 'DELETE'].includes(String(item?.event ?? '').toUpperCase()) ? String(item.event).toUpperCase() : null
+        return {
+          key: item?.id ?? `capture-${index}`,
+          id: item?.id ?? null,
+          memory: String(item?.memory ?? ''),
+          previous: event === 'UPDATE' && item?.previous ? String(item.previous) : '',
+          event,
+          // A removed memory is gone from the library: nothing to jump to.
+          jumpable: Boolean(item?.id) && event !== 'DELETE',
+        }
+      })
+      const pending = capture?.pending && typeof capture.pending === 'object'
+        ? { eventId: capture.pending.eventId ? String(capture.pending.eventId) : '' }
+        : null
+      return { items, pending, ossNote: Boolean(capture) && backend === 'oss' }
+    }
+
+    /** The existing one-line capture stats: messages · written · event · time. Pure. */
+    function captureMetaLine(t, capture) {
+      const meta = []
+      if (capture?.messages) meta.push(`${capture.messages} ${t('activityMessages')}`)
+      if (capture?.status === 'saved') meta.push(`${capture.count ?? 0} ${t('activityWritten')}`)
+      if (capture?.eventId) meta.push(`${t('activityEvent')} ${String(capture.eventId).slice(0, 12)}`)
+      if (capture?.at) meta.push(activityTime(capture.at))
+      return meta.join(' · ')
+    }
+
+    /** "N returned, first K shown · ms · budget · time". Pure. */
+    function recallMetaLine(t, recall) {
+      const meta = []
+      const shown = Array.isArray(recall?.preview) ? recall.preview.length : 0
+      if (recall?.count !== undefined) {
+        meta.push(shown > 0 && shown < recall.count
+          ? template(t('recallReturnedShown'), { count: recall.count, shown })
+          : `${recall.count} ${t('activityReturned')}`)
+      }
+      if (recall?.latencyMs !== undefined) meta.push(`${recall.latencyMs} ms`)
+      // Present only when dsh-strata's budget service took part (interop §2).
+      if (Number.isFinite(recall?.budget?.allowance) && Number.isFinite(recall?.budget?.wanted)) {
+        meta.push(`${t('activityBudget')} ${recall.budget.allowance} / ${recall.budget.wanted}${recall.budget.stage ? ` (strata: ${recall.budget.stage})` : ''}`)
+      }
+      if (recall?.at) meta.push(activityTime(recall.at))
+      return meta.join(' · ')
+    }
+
+    /** The project filter's options: name, count, memories from its sessions. Pure. */
+    function projectOptions(t, tree) {
+      if (!tree?.partitioned) return []
+      return (Array.isArray(tree.projects) ? tree.projects : []).map((project) => {
+        const sessions = (Array.isArray(project.sessions) ? project.sessions : []).reduce((sum, session) => sum + (session.count ?? 0), 0)
+        const count = (project.count ?? 0) + sessions
+        const name = projectName(t, project)
+        return {
+          id: project.id,
+          // Session memories belong to their project (user decision 8).
+          keys: [project.key, ...(Array.isArray(project.sessions) ? project.sessions : []).map((session) => session.key)].filter(Boolean),
+          label: sessions > 0 ? template(t('filterProjectSessions'), { name, count, sessions }) : template(t('filterProjectCount'), { name, count }),
+        }
+      })
+    }
+
+    /**
+     * Partition keys one library load asks for: [''] for everything,
+     * ['global'], or a project with its sessions (every project when none is
+     * picked). Pure.
+     */
+    function libraryPartitionKeys(filter, project, options) {
+      if (filter === 'global') return ['global']
+      if (filter !== 'project') return ['']
+      const chosen = project ? options.filter((option) => option.id === project) : options
+      const keys = chosen.flatMap((option) => option.keys)
+      return keys.length > 0 ? keys : ['global:none']
+    }
+
+    /** Memories newest or oldest first (no time keeps the backend's order). Pure. */
+    function sortMemories(memories, order) {
+      const list = (Array.isArray(memories) ? memories : []).map((memory, index) => ({ memory, index, at: Date.parse(memory?.createdAt) }))
+      list.sort((a, b) => {
+        const known = Number.isFinite(a.at) && Number.isFinite(b.at)
+        const diff = known ? b.at - a.at : 0
+        return diff !== 0 ? (order === 'oldest' ? -diff : diff) : order === 'oldest' ? b.index - a.index : a.index - b.index
+      })
+      return list.map((entry) => entry.memory)
+    }
+
+    /** One page of the list, the page clamped to what exists. Pure. */
+    function pageOf(list, page, size = LIBRARY_PAGE_SIZE) {
+      const total = Array.isArray(list) ? list.length : 0
+      const pages = Math.max(1, Math.ceil(total / size))
+      const current = Math.min(Math.max(1, Number(page) || 1), pages)
+      return { items: (list ?? []).slice((current - 1) * size, current * size), page: current, pages, total }
+    }
+
+    /** The page a memory is on in the list, or 0. Pure. */
+    function pageContaining(list, id, size = LIBRARY_PAGE_SIZE) {
+      const index = (Array.isArray(list) ? list : []).findIndex((memory) => memory?.id === id)
+      return index < 0 ? 0 : Math.floor(index / size) + 1
+    }
+
+    /** The partition chip of a library row: global, a project, or "project › session". Pure. */
+    function memoryScopeTag(t, memory, tree) {
+      if (memory?.scope === 'session') {
+        const project = (tree?.projects ?? []).find((item) => item.id === memory.projectId)
+        return project ? `${projectName(t, project)} › ${t('scopeSessionShort')}` : template(t('scopeSession'), { id: shortId(memory.sessionId) })
+      }
+      if (memory?.scope === 'project') {
+        const project = (tree?.projects ?? []).find((item) => item.id === memory.projectId)
+        return project ? projectName(t, project) : shortId(memory.projectId)
+      }
+      return t('scopeGlobal')
+    }
+
+    /** Migration from Qdrant as one word: done, pending or not needed. Pure. */
+    function migrationState(data) {
+      const notices = Array.isArray(data?.upgradeNotices) ? data.upgradeNotices : []
+      if (notices.some((notice) => notice?.code === 'legacyQdrant')) return 'pending'
+      if (notices.some((notice) => notice?.code === 'qdrantMigrated') || data?.store?.migration) return 'done'
+      return 'none'
+    }
+
+    function Card({ title, meta, actions, hint, children, id, className }) {
+      return h(
+        'section',
+        { className: ['mem0-card mem0-section', className].filter(Boolean).join(' '), id },
+        title || actions
+          ? h('div', { className: 'mem0-card-head' }, h('h3', { className: 'mem0-section-title' }, title), meta ? h('span', { className: 'mem0-hint' }, meta) : null, actions ?? null)
+          : null,
+        hint ? h('p', { className: 'mem0-section-hint' }, hint) : null,
+        children,
+      )
+    }
+
+    /** A collapsible card: the summary row shows title and a short meta line. */
+    function FoldCard({ title, meta, metaWarn, open, id, children }) {
+      return h(
+        'details',
+        { className: 'mem0-card mem0-fold', id, open: open ? true : undefined },
+        h(
+          'summary',
+          null,
+          h('span', { className: 'mem0-section-title mem0-fold-title' }, title),
+          meta ? h('span', { className: metaWarn ? 'mem0-hint mem0-warn-text' : 'mem0-hint' }, meta) : null,
+        ),
+        h('div', { className: 'mem0-section' }, children),
+      )
+    }
+
+    function PageHeader({ t, view, enabled, onToggleEnabled, onCheck, checking }) {
+      return h(
+        'div',
+        { className: 'mem0-head' },
+        h(
+          'div',
+          { className: 'mem0-head-main' },
+          h('h2', { className: 'mem0-title' }, t('title')),
+          h(
+            'div',
+            { className: 'mem0-statusline' },
+            h('span', { className: `mem0-dot${view.state === 'ok' ? ' ok' : view.state === 'error' ? ' error' : ''}` }),
+            h('b', { className: 'mem0-status-label' }, view.label),
+            ...view.parts.flatMap((part, index) => [h('span', { key: `s${index}`, className: 'mem0-sep' }, '·'), h('span', { key: `p${index}` }, part)]),
+            view.where ? h('span', { className: 'mem0-sep' }, '·') : null,
+            view.where?.prefix ? h('span', null, view.where.prefix) : null,
+            view.where ? h('code', { className: 'mem0-code', title: view.where.code }, view.where.code) : null,
+          ),
+        ),
+        h(
+          'div',
+          { className: 'mem0-head-actions' },
+          h(
+            'label',
+            { className: 'mem0-master' },
+            h('span', null, t('masterSwitch')),
+            h(
+              'button',
+              { type: 'button', className: 'mem0-toggle', role: 'switch', 'data-on': enabled ? 'true' : 'false', 'aria-checked': enabled, 'aria-label': t('masterSwitch'), onClick: () => onToggleEnabled(!enabled) },
+              h('span', { 'aria-hidden': true }),
+            ),
+          ),
+          h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: onCheck, disabled: checking }, t('checkAgain')),
+        ),
+      )
+    }
+
+    function Banners({ t, items, onAction }) {
+      if (items.length === 0) return null
+      const label = { wizard: 'bannerWizard', diagnostics: 'bannerDiagnostics', settings: 'bannerSettings' }
+      return h(
+        'div',
+        { className: 'mem0-banners' },
+        items.map((item) =>
+          h(
+            'div',
+            { key: item.code, className: 'mem0-banner', role: 'alert' },
+            h('span', { 'aria-hidden': true }, '⚠'),
+            h('span', { className: 'mem0-banner-text' }, item.text),
+            h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: () => onAction(item.action) }, t(label[item.action])),
+          ),
+        ),
+      )
+    }
+
+    function TabBar({ t, tab, onSelect, memoryCount, maintenanceIssue }) {
+      const labels = { memories: 'tabMemories', settings: 'tabSettings', maintenance: 'tabMaintenance' }
+      return h(
+        'div',
+        { className: 'mem0-tabs', role: 'tablist' },
+        TABS.map((id) =>
+          h(
+            'button',
+            { key: id, type: 'button', role: 'tab', className: 'mem0-tab', 'aria-selected': tab === id ? 'true' : 'false', onClick: () => onSelect(id) },
+            t(labels[id]),
+            id === 'memories' && Number.isFinite(memoryCount) ? h('span', { className: 'mem0-tab-count' }, memoryCount.toLocaleString()) : null,
+            id === 'maintenance' && maintenanceIssue ? h('span', { className: 'mem0-tab-dot', 'aria-hidden': true }) : null,
+          ),
+        ),
+      )
+    }
+
+    function ActivityItem({ t, tag, tagClass, text, previous, onJump }) {
+      const body = h(
+        'span',
+        { className: 'mem0-act-text' },
+        previous ? h('span', { className: 'mem0-act-old' }, previous) : null,
+        h('span', { className: 'mem0-clamp2', title: text }, text || '—'),
+      )
+      const content = [tag ? h('span', { key: 'tag', className: `mem0-tag ${tagClass ?? ''}` }, tag) : null, h(React.Fragment, { key: 'body' }, body)]
+      return onJump
+        ? h('button', { type: 'button', className: 'mem0-act-item', title: t('jumpToLibrary'), onClick: onJump }, ...content)
+        : h('div', { className: 'mem0-act-item' }, ...content)
+    }
+
+    function RecallPanel({ t, recall, onJump }) {
+      const timing = recallTimingLine(t, recall?.timings)
+      const details = activityDetails(t, recall).filter((line) => line !== timing)
+      const meta = recallMetaLine(t, recall)
+      const preview = Array.isArray(recall?.preview) ? recall.preview : []
+      return h(
+        'div',
+        { className: 'mem0-activity' },
+        h('div', { className: 'mem0-activity-head' }, h('span', { className: 'mem0-activity-title' }, t('activityRecall')), recall ? activityChip(t, recall) : null),
+        !recall ? h('p', { className: 'mem0-activity-meta' }, t('activityNever')) : null,
+        recall?.error ? h('p', { className: 'mem0-error' }, recall.error) : null,
+        recall?.query ? h('p', { className: 'mem0-activity-meta' }, template(t('recallQuery'), { query: recall.query })) : null,
+        meta ? h('p', { className: 'mem0-activity-meta' }, meta) : null,
+        ...details.map((line, index) => h('p', { className: 'mem0-activity-meta', key: `rd${index}` }, line)),
+        timing ? h('details', { className: 'mem0-timing' }, h('summary', null, t('recallTimingDetails')), h('p', { className: 'mem0-activity-meta' }, timing)) : null,
+        preview.length > 0
+          ? h(
+              'div',
+              { className: 'mem0-act-list' },
+              preview.map((item, index) =>
+                h(ActivityItem, {
+                  key: item.id ?? index,
+                  t,
+                  tag: typeof item.score === 'number' ? item.score.toFixed(2) : null,
+                  tagClass: 'mem0-tag-score',
+                  text: item.memory,
+                  onJump: item.id ? () => onJump(item.id) : null,
+                }),
+              ),
+            )
+          : null,
+      )
+    }
+
+    function CapturePanel({ t, capture, backend, onJump }) {
+      const view = captureView(capture, backend)
+      const meta = captureMetaLine(t, capture)
+      const tagClass = { ADD: 'mem0-tag-add', UPDATE: 'mem0-tag-update', DELETE: 'mem0-tag-delete' }
+      return h(
+        'div',
+        { className: 'mem0-activity' },
+        h('div', { className: 'mem0-activity-head' }, h('span', { className: 'mem0-activity-title' }, t('activityCapture')), capture ? activityChip(t, capture) : null),
+        !capture ? h('p', { className: 'mem0-activity-meta' }, t('activityNever')) : null,
+        capture?.error ? h('p', { className: 'mem0-error' }, capture.error) : null,
+        ...activityDetails(t, capture).map((line, index) => h('p', { className: 'mem0-activity-meta', key: `cd${index}` }, line)),
+        meta ? h('p', { className: 'mem0-activity-meta' }, meta) : null,
+        view.items.length > 0
+          ? h(
+              'div',
+              { className: 'mem0-act-list' },
+              view.items.map((item) =>
+                h(ActivityItem, {
+                  key: item.key,
+                  t,
+                  tag: item.event ? t(`captureTag_${item.event}`) : null,
+                  tagClass: item.event ? tagClass[item.event] : '',
+                  text: item.memory,
+                  previous: item.previous,
+                  onJump: item.jumpable ? () => onJump(item.id) : null,
+                }),
+              ),
+            )
+          : null,
+        view.pending
+          ? h('div', { className: 'mem0-act-list' }, h('div', { className: 'mem0-act-item mem0-act-note' }, view.pending.eventId ? template(t('capturePendingEvent'), { id: view.pending.eventId }) : t('capturePending')))
+          : capture?.status === 'extracting' || capture?.status === 'queued'
+            ? h('p', { className: 'mem0-hint' }, t('activityAsyncHint'))
+            : null,
+        view.ossNote ? h('p', { className: 'mem0-hint' }, t('captureOssOnlyAdd')) : null,
+      )
+    }
+
+    function ActivityCard({ t, data, onRefresh, refreshing, onJump }) {
+      const capture = data?.activity?.capture ?? null
+      const recall = data?.activity?.recall ?? null
+      return h(
+        Card,
+        {
+          title: t('activityTitle'),
+          hint: t('activityHint'),
+          actions: h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: onRefresh, disabled: refreshing, title: t('activityRefresh'), 'aria-label': t('activityRefresh') }, '↻'),
+        },
+        !capture && !recall
+          ? h('p', { className: 'mem0-empty' }, t('activityEmpty'))
+          : h(
+              'div',
+              { className: 'mem0-activity-grid' },
+              // Recall first: a turn recalls before it saves (user decision 5).
+              h(RecallPanel, { t, recall, onJump }),
+              h(CapturePanel, { t, capture, backend: data?.backend, onJump }),
+            ),
+      )
+    }
+
+    function MemoryRow({ t, memory, tree, expanded, flash, busy, onExpand, onPin, onMakeGlobal, onDelete }) {
+      const text = memory.memory || '—'
+      const long = text.length > 140
+      return h(
+        'div',
+        { className: `mem0-mem${flash ? ' mem0-flash' : ''}`, id: `mem0-m-${memory.id}` },
+        h(
+          'div',
+          { className: `mem0-mem-body${expanded ? ' open' : ''}` },
+          h('div', { className: 'mem0-clamp3' }, text),
+          long ? h('button', { type: 'button', className: 'mem0-more', onClick: onExpand }, expanded ? t('memoryLess') : t('memoryMore')) : null,
+          h(
+            'div',
+            { className: 'mem0-mem-meta' },
+            tree?.partitioned ? h('span', { className: 'mem0-tag' }, memoryScopeTag(t, memory, tree)) : null,
+            memory.pinned ? h('span', { className: 'mem0-tag mem0-tag-update' }, t('memoryPinnedTag')) : null,
+            memory.createdAt ? h('span', null, activityTime(memory.createdAt)) : null,
+            memory.id ? h('span', { title: memory.id }, `${t('memoryId')} ${shortId(memory.id)}`) : null,
+            Number.isInteger(memory.importance) ? h('span', null, template(t('memoryImportance'), { level: memory.importance })) : null,
+            typeof memory.score === 'number' ? h('span', null, `${t('memoryScore')} ${memory.score.toFixed(3)}`) : null,
+            // This plugin's own memories need no source; others say where they came from.
+            memory.deletable ? null : h('span', { title: memory.source ? template(t('memorySource'), { source: memory.source }) : undefined }, t('memoryFromOtherApp')),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'mem0-mem-actions' },
+          memory.id && memory.pinnable
+            ? h('button', { type: 'button', className: 'mem0-icon-btn', onClick: onPin }, memory.pinned ? t('memoryUnpin') : t('memoryPin'))
+            : null,
+          memory.id && memory.globalizable ? h('button', { type: 'button', className: 'mem0-icon-btn', onClick: onMakeGlobal }, t('memoryMakeGlobal')) : null,
+          // Only memories this plugin wrote; the server checks again.
+          memory.id
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'mem0-icon-btn mem0-danger',
+                  disabled: !memory.deletable || busy,
+                  title: memory.deletable ? undefined : t('memoryDeleteReason_foreign_source'),
+                  onClick: onDelete,
+                },
+                busy ? t('memoryDeleting') : t('memoryDelete'),
+              )
+            : null,
+        ),
+      )
+    }
+
+    function MemoryLibrary({ t, backend, tree, library, actions }) {
+      const { query, filter, project, order, page, state, list, expanded, flash, notice, deleting } = library
+      const options = projectOptions(t, tree)
+      const view = pageOf(list, page)
+      const data = state.data
+      const notes = []
+      if (backend === 'server') notes.push(t('libraryServerCap'))
+      const capped = data?.ok !== false && Number.isFinite(data?.total) && data.total > (data.memories?.length ?? 0)
+      const filtered = Boolean(query.trim()) || filter !== 'all'
+      return h(
+        Card,
+        { id: 'mem0-library', title: t('memoryBrowserTitle'), meta: notes.join(' '), hint: tree?.partitioned ? t('libraryHintPartitioned') : t('libraryHint') },
+        h(
+          'div',
+          { className: 'mem0-lib-bar' },
+          h('input', {
+            className: 'mem0-input mem0-lib-search',
+            type: 'search',
+            value: query,
+            placeholder: t('memorySearchPlaceholder'),
+            'aria-label': t('memorySearchPlaceholder'),
+            onChange: (event) => actions.setQuery(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                actions.searchNow()
+              }
+            },
+          }),
+          tree?.partitioned
+            ? h(
+                'div',
+                { className: 'mem0-filter-chips', role: 'group' },
+                [['all', 'filterAll', null], ['global', 'filterGlobal', tree.global], ['project', 'filterProject', null]].map(([id, key, count]) =>
+                  h(
+                    'button',
+                    { key: id, type: 'button', className: 'mem0-filter-chip', 'aria-pressed': filter === id ? 'true' : 'false', onClick: () => actions.setFilter(id) },
+                    t(key),
+                    Number.isFinite(count) ? h('span', { className: 'mem0-hint' }, ` ${count}`) : null,
+                  ),
+                ),
+              )
+            : null,
+          tree?.partitioned && filter === 'project'
+            ? h(
+                'select',
+                { className: 'mem0-select mem0-lib-select', value: project, 'aria-label': t('filterProject'), onChange: (event) => actions.setProject(event.target.value) },
+                h('option', { value: '' }, t('filterAllProjects')),
+                options.map((option) => h('option', { key: option.id, value: option.id }, option.label)),
+              )
+            : null,
+          h(
+            'select',
+            { className: 'mem0-select mem0-lib-select', value: order, onChange: (event) => actions.setOrder(event.target.value) },
+            h('option', { value: 'newest' }, t('orderNewest')),
+            h('option', { value: 'oldest' }, t('orderOldest')),
+          ),
+        ),
+        notice ? h('p', { className: notice.error ? 'mem0-error' : 'mem0-saved', role: 'status' }, notice.text) : null,
+        state.phase === 'error' || data?.ok === false
+          ? h('p', { className: 'mem0-error' }, `${t('memoryBrowserError')}: ${state.phase === 'error' ? state.message : data.error}`)
+          : null,
+        state.phase === 'loading' && !data ? h('p', { className: 'mem0-hint' }, t('memoryLoading')) : null,
+        data && data.ok !== false
+          ? view.items.length > 0
+            ? h(
+                'div',
+                { className: `mem0-mem-list${state.phase === 'loading' ? ' mem0-loading' : ''}` },
+                view.items.map((memory, index) =>
+                  h(MemoryRow, {
+                    key: memory.id ?? index,
+                    t,
+                    memory,
+                    tree,
+                    expanded: expanded === memory.id,
+                    flash: flash === memory.id,
+                    busy: deleting === memory.id,
+                    onExpand: () => actions.expand(memory.id),
+                    onPin: () => actions.pin(memory.id, !memory.pinned),
+                    onMakeGlobal: () => actions.makeGlobal(memory.id),
+                    onDelete: () => actions.remove(memory.id),
+                  }),
+                ),
+              )
+            : h('p', { className: 'mem0-empty' }, filtered ? t('memoryEmpty') : t('libraryEmpty'))
+          : null,
+        capped ? h('p', { className: 'mem0-hint' }, template(t('libraryCapped'), { shown: data.memories.length, total: data.total })) : null,
+        view.total > 0
+          ? h(
+              'div',
+              { className: 'mem0-pager' },
+              h('span', null, template(t('pageLine'), { page: view.page, pages: view.pages, count: view.total.toLocaleString() })),
+              h(
+                'span',
+                { className: 'mem0-pager-btns' },
+                h('button', { type: 'button', className: 'mem0-secondary mem0-sm', disabled: view.page <= 1, onClick: () => actions.setPage(view.page - 1) }, t('pagePrev')),
+                h('button', { type: 'button', className: 'mem0-secondary mem0-sm', disabled: view.page >= view.pages, onClick: () => actions.setPage(view.page + 1) }, t('pageNext')),
+              ),
+            )
+          : null,
+      )
+    }
+
+    function SummaryCard({ t, maintenance, enabled, profileText, profile }) {
+      const meta = []
+      if (maintenance?.profile) meta.push(template(t('summaryMeta'), { items: maintenance.profile.items ?? 0, tokens: maintenance.profile.tokens ?? 0 }))
+      const projects = Array.isArray(maintenance?.projectProfiles) ? maintenance.projectProfiles.length : 0
+      if (projects > 0) meta.push(template(t('summaryProjects'), { count: projects }))
+      const warn = Boolean(maintenance?.profile?.stale || maintenance?.profile?.sourcesChanged)
+      const details = profileMetaFor(t, maintenance)
+      const projectLine = projectSummaryLineFor(t, maintenance)
+      return h(
+        FoldCard,
+        { title: t('profileSummaryTitle'), meta: meta.join(' · '), metaWarn: warn, open: profile.editing },
+        h('p', { className: 'mem0-section-hint' }, t('profileSummaryHint')),
+        details.length > 0 ? h('p', { className: warn ? 'mem0-hint mem0-warn-text' : 'mem0-hint' }, details.join(' · ')) : null,
+        projectLine ? h('p', { className: 'mem0-hint' }, projectLine) : null,
+        h(ProfileEditor, { t, enabled, profileText, profile }),
+      )
+    }
+
+    function DeleteDialog({ t, dialog, onCancel, onConfirm }) {
+      useEffect(() => {
+        if (!dialog || typeof document === 'undefined') return undefined
+        const onKey = (event) => {
+          if (event.key === 'Escape') onCancel()
+        }
+        document.addEventListener('keydown', onKey)
+        return () => document.removeEventListener('keydown', onKey)
+      }, [dialog])
+      if (!dialog) return null
+      const memory = dialog.memory ?? {}
+      return h(
+        'div',
+        { className: 'mem0-modal-bg', onClick: (event) => { if (event.target === event.currentTarget) onCancel() } },
+        h(
+          'div',
+          { className: 'mem0-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'mem0-delete-title' },
+          h('h3', { id: 'mem0-delete-title' }, t('deleteTitle')),
+          h(
+            'div',
+            { className: 'mem0-quote' },
+            h('div', null, memory.memory || '—'),
+            h('div', { className: 'mem0-hint' }, [`${t('memoryId')} ${memory.id ?? ''}`, memory.createdAt ? activityTime(memory.createdAt) : ''].filter(Boolean).join(' · ')),
+          ),
+          h('p', { className: 'mem0-section-hint' }, t('deleteBody')),
+          h(
+            'div',
+            { className: 'mem0-modal-actions' },
+            h('button', { type: 'button', className: 'mem0-secondary', onClick: onCancel }, t('deleteCancel')),
+            h('button', { type: 'button', className: 'mem0-danger-btn', onClick: onConfirm, autoFocus: true }, t('memoryDelete')),
+          ),
+        ),
+      )
+    }
+
+    /** The settings tab: common switches, storage backend, identity, recall and capture, advanced. */
+    function SettingsTab({ t, draft, setField, backend, connection, storePlaceholder }) {
+      const fields = (group) => settingControls({ t, names: visibleFields(SETTINGS_LAYOUT[group], draft.backend), draft, setField })
+      const recallCount = visibleFields([...SETTINGS_LAYOUT.recallCaptureToggles, ...SETTINGS_LAYOUT.recallCaptureFields], draft.backend).length
+      const backendHint = draft.backend === 'platform' ? t('backendPlatformHint') : draft.backend === 'server' ? t('backendServerHint') : draft.backend === 'oss' ? t('backendOssHint') : t('backendAutoHint')
+      return h(
+        React.Fragment,
+        null,
+        h(Card, { title: t('commonTitle') }, h('div', { className: 'mem0-toggles' }, fields('common'))),
+        h(
+          Card,
+          { id: 'mem0-storage', title: t('storageTitle'), hint: t('storageHint') },
+          h(
+            'div',
+            { className: 'mem0-segments' },
+            [['auto', 'backendAuto'], ['platform', 'backendPlatform'], ['server', 'backendServer'], ['oss', 'backendOss']].map(([id, key]) =>
+              h('button', { key: id, type: 'button', className: 'mem0-segment', 'data-active': draft.backend === id ? 'true' : 'false', onClick: () => backend.choose(id) }, t(key)),
+            ),
+          ),
+          h('p', { className: 'mem0-hint' }, backendHint),
+          backend.switchPrompt
+            ? h(
+                'div',
+                { className: 'mem0-wz-prompt' },
+                h('p', { className: 'mem0-error' }, template(t('wzSwitchMissing'), { missing: backend.switchPrompt.missing.map((item) => t(item === 'llm' ? 'wzMissingLlm' : 'wzMissingEmbedder')).join(', ') })),
+                h(
+                  'div',
+                  { className: 'mem0-wz-row' },
+                  h('button', { type: 'button', className: 'mem0-primary', onClick: backend.openWizard }, t('wzSwitchOpen')),
+                  h('button', { type: 'button', className: 'mem0-secondary', onClick: backend.switchAnyway }, t('wzSwitchAnyway')),
+                ),
+              )
+            : null,
+          h(ConnectionFields, { t, draft, setField, apiKey: connection.apiKey, setApiKey: connection.setApiKey, keyConfigured: connection.keyConfigured, onOpenWizard: backend.openWizard, storePlaceholder }),
+          h(
+            'div',
+            { className: 'mem0-actions' },
+            h('button', { type: 'button', className: 'mem0-secondary', onClick: connection.test, disabled: connection.testDisabled }, connection.testState === 'testing' ? t('testing') : t('test')),
+            connection.testState === 'ok' ? h('span', { className: 'mem0-saved' }, t('testOk')) : null,
+            connection.testState === 'error' ? h('span', { className: 'mem0-error' }, t('testFailed')) : null,
+          ),
+        ),
+        h(Card, { title: t('identityTitle') }, h('div', { className: 'mem0-grid' }, fields('identity'))),
+        h(
+          FoldCard,
+          { title: t('recallCaptureTitle'), meta: template(t('settingsCount'), { count: recallCount }) },
+          h('div', { className: 'mem0-toggles' }, fields('recallCaptureToggles')),
+          h('div', { className: 'mem0-grid' }, fields('recallCaptureFields')),
+        ),
+        h(
+          FoldCard,
+          { title: t('advanced'), meta: draft.backend === 'oss' ? t('advancedMetaOss') : t('advancedMeta') },
+          h('div', { className: 'mem0-grid' }, fields('advanced')),
+        ),
+        h('p', { className: 'mem0-sub' }, t('whatNext')),
+      )
+    }
+
+    /** The maintenance tab: memory check, its settings, local setup and migration, diagnostics. */
+    function MaintenanceTab({ t, draft, setField, data, status, hygiene, reportTexts, local, diagnostics }) {
+      const maintenance = data?.maintenance ?? null
+      const fields = (group) => settingControls({ t, names: visibleFields(SETTINGS_LAYOUT[group], draft.backend), draft, setField })
+      const migration = migrationState(data)
+      const path = data?.store?.path || (data?.backend === 'oss' ? data?.collection : '') || draft.storePath || '~/.dsh/mem0/memory.sqlite'
+      const showLocal = draft.backend === 'oss' || draft.backend === 'auto' || data?.backend === 'oss'
+      const settingsMeta = [draft.hygieneEnabled ? t('hygieneEnabled') : null, draft.modelHygiene ? t('modelHygiene') : null].filter(Boolean).join(' · ')
+      return h(
+        React.Fragment,
+        null,
+        h(
+          Card,
+          {
+            title: t('hygieneTitle'),
+            actions: h(
+              'button',
+              {
+                type: 'button',
+                className: 'mem0-primary mem0-sm',
+                onClick: hygiene.run,
+                // Also while a scheduled pass runs: a manual preview would not
+                // get its own plan (the plugin answers busy).
+                disabled: hygiene.state === 'running' || hygiene.state === 'previewing' || !data || maintenance?.running === true,
+              },
+              hygiene.state === 'running' ? t('hygieneRunning') : hygiene.state === 'previewing' ? t('hygienePreviewing') : t('hygieneRun'),
+            ),
+          },
+          h('p', { className: 'mem0-activity-meta' }, maintenanceMetaFor(t, maintenance).join(' · ')),
+          h('p', { className: 'mem0-section-hint' }, t('maintenanceHint')),
+          h(HygieneReport, { t, report: maintenance?.lastReport ?? null, texts: reportTexts }),
+          maintenance?.lastError ? h('p', { className: 'mem0-error' }, `${t('hygieneFailed')}: ${maintenance.lastError}`) : null,
+          hygiene.message
+            ? h(
+                'p',
+                { className: hygiene.state === 'error' ? 'mem0-error' : 'mem0-hint' },
+                hygiene.state === 'error' ? `${t('hygieneFailed')}: ${hygiene.message}` : hygiene.state === 'cancelled' ? hygiene.message : `${t('hygieneOk')}: ${hygiene.message}`,
+              )
+            : null,
+        ),
+        h(
+          FoldCard,
+          { title: t('hygieneSettingsTitle'), meta: settingsMeta },
+          h('div', { className: 'mem0-toggles' }, fields('hygieneToggles')),
+          h('div', { className: 'mem0-grid' }, fields('hygieneFields')),
+        ),
+        showLocal
+          ? h(
+              Card,
+              { id: 'mem0-local', title: t('localTitle'), hint: t('localHint') },
+              h(StatusGrid, {
+                items: [
+                  { key: 'embedder', label: t('localEmbedder'), value: data?.embedder ? (data.embedder.ok ? data.embedder.model || 'OK' : data.embedder.error ?? '—') : '—' },
+                  { key: 'llm', label: t('localLlm'), value: data?.llm ? (data.llm.followsDsh ? t('statusLlmDshLabel') : data.llm.configured ? data.llm.model ?? 'OK' : t('statusLlmMissing')) : '—' },
+                  { key: 'migration', label: t('localMigration'), value: t(migration === 'pending' ? 'migrationPending' : migration === 'done' ? 'migrationDone' : 'migrationNone') },
+                  { key: 'file', label: t('localStoreFile'), value: path, title: path },
+                ],
+              }),
+              migration === 'done' ? h('p', { className: 'mem0-hint' }, t('upgradeQdrantMigrated')) : null,
+              h(
+                'div',
+                { className: 'mem0-actions' },
+                local.wizardOpen ? null : h('button', { type: 'button', className: 'mem0-primary mem0-sm', onClick: local.openWizard }, t('wzOpen')),
+                h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: () => local.copyPath(path) }, local.copied ? t('pathCopied') : t('copyPath')),
+              ),
+            )
+          : null,
+        local.wizard,
+        h(
+          FoldCard,
+          { id: 'mem0-diagnostics', title: t('diagTitle'), meta: diagnostics.issue ? t('diagMetaIssue') : t('diagMetaOk'), metaWarn: diagnostics.issue, open: diagnostics.open },
+          h(StatusGrid, { items: statusItemsFor(t, data) }),
+          status.phase === 'error' || data?.ok === false ? h('p', { className: 'mem0-error' }, data?.error ?? status.message) : null,
+          data?.store ? h(StoreStatus, { t, store: data.store }) : null,
+          h(FailureList, { t, failures: data?.failures }),
+        ),
+      )
+    }
+
+    function SaveBar({ t, dirty, saveState, saveMessage, onSave, onDiscard, writable }) {
+      if (!dirty && saveState !== 'saved' && saveState !== 'error') return null
+      return h(
+        'div',
+        { className: 'mem0-savebar', role: 'status' },
+        h('span', { className: `mem0-dot${dirty ? ' warn' : saveState === 'error' ? ' error' : ' ok'}` }),
+        h('span', { className: saveState === 'error' ? 'mem0-error mem0-savebar-text' : 'mem0-savebar-text' }, saveState === 'error' ? saveMessage || t('saveFailed') : dirty ? t('unsaved') : t('saved')),
+        dirty ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: onDiscard }, t('discard')) : null,
+        dirty
+          ? h('button', { type: 'button', className: 'mem0-primary mem0-sm', onClick: onSave, disabled: !writable || saveState === 'saving' }, saveState === 'saving' ? t('saving') : t('save'))
+          : null,
+      )
+    }
+
     function ConfigPage({ t, ctx }) {
       const form = ctx.configForms.get(ENTRY_ID)
       const mirror = ctx.configForms.describe()
@@ -4214,15 +5547,24 @@ window.__ModuleLoader__.load({
       const [testState, setTestState] = useState('idle')
       const [hygieneState, setHygieneState] = useState('idle')
       const [hygieneMessage, setHygieneMessage] = useState('')
-      const [browserOpen, setBrowserOpen] = useState(false)
+      // The open tab. Drafts live here, so switching tabs keeps them.
+      const [tab, setTab] = useState('memories')
+      // Memory library: search, filter (all / global / project), order, page.
       const [memoryQuery, setMemoryQuery] = useState('')
-      // The memory page's tree and the partition it shows ('' = all).
+      const [libraryFilter, setLibraryFilter] = useState('all')
+      const [libraryProject, setLibraryProject] = useState('')
+      const [libraryOrder, setLibraryOrder] = useState('newest')
+      const [libraryPage, setLibraryPage] = useState(1)
+      const [expandedMemory, setExpandedMemory] = useState(null)
+      const [flashMemory, setFlashMemory] = useState(null)
+      const [libraryNotice, setLibraryNotice] = useState(null)
       const [memoryTree, setMemoryTree] = useState(null)
-      const [memoryPartition, setMemoryPartition] = useState('')
       // Current text of the memories the last hygiene report names, by id.
       const [reportTexts, setReportTexts] = useState(null)
       const [memoryState, setMemoryState] = useState({ phase: 'idle', data: null, message: '' })
       const [deleteState, setDeleteState] = useState({ id: null, outcome: 'idle', message: '' })
+      // The in-page delete confirmation: { memory, resolve }.
+      const [deleteDialog, setDeleteDialog] = useState(null)
       const [profileDraft, setProfileDraft] = useState(null)
       const [profileEditing, setProfileEditing] = useState(false)
       const [profileState, setProfileState] = useState('idle')
@@ -4231,6 +5573,10 @@ window.__ModuleLoader__.load({
       // backend while it is not set up yet.
       const [wizardOpen, setWizardOpen] = useState(false)
       const [switchPrompt, setSwitchPrompt] = useState(null)
+      const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+      const [pathCopied, setPathCopied] = useState(false)
+      // Where to scroll after the next render (banner buttons, jumps).
+      const [scrollTarget, setScrollTarget] = useState(null)
 
       useEffect(() => {
         const unsubscribe = form.subscribe(() => setSnapshot(form.getSnapshot()))
@@ -4301,42 +5647,147 @@ window.__ModuleLoader__.load({
 
       const loadTree = useCallback(async () => {
         try {
-          setMemoryTree(await fetchJson(`${MEMORIES_PATH}?tree=1`))
+          const tree = await fetchJson(`${MEMORIES_PATH}?tree=1`)
+          setMemoryTree(tree)
+          return tree
         } catch {
           setMemoryTree(null)
+          return null
         }
       }, [])
 
-      // Only the latest request's answer is shown (quick clicks on the tree).
+      // Only the latest request's answer is shown (quick typing and clicks).
+      // Several partition keys (a project and its sessions) are read at once
+      // and merged; the page sorts and pages the result.
       const memoryRequest = useRef(0)
-      const loadMemories = useCallback(async (query, partition = '') => {
+      const loadMemories = useCallback(async (query, keys = ['']) => {
         const q = String(query ?? '').trim()
         const request = ++memoryRequest.current
         setMemoryState((current) => ({ phase: 'loading', data: current.data, message: '' }))
         try {
-          const data = await fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(ctx)}&partition=${encodeURIComponent(partition)}`)
-          if (request !== memoryRequest.current) return
+          const answers = await Promise.all(
+            keys.map((key) => fetchJson(`${MEMORIES_PATH}?q=${encodeURIComponent(q)}&limit=500&lang=${pageLanguage(ctx)}&partition=${encodeURIComponent(key)}`)),
+          )
+          if (request !== memoryRequest.current) return null
+          const failed = answers.find((answer) => answer?.ok === false)
+          const seen = new Set()
+          const memories = []
+          for (const answer of answers) {
+            for (const memory of Array.isArray(answer?.memories) ? answer.memories : []) {
+              if (memory?.id && seen.has(memory.id)) continue
+              if (memory?.id) seen.add(memory.id)
+              memories.push(memory)
+            }
+          }
+          const data = failed
+            ? { ok: false, error: failed.error, memories: [], total: 0 }
+            : { ok: true, memories, total: answers.reduce((sum, answer) => sum + (Number(answer?.total) || 0), 0) }
           setMemoryState({ phase: 'ready', data, message: '' })
+          return data
         } catch (error) {
-          if (request !== memoryRequest.current) return
+          if (request !== memoryRequest.current) return null
           setMemoryState({ phase: 'error', data: null, message: error.message })
+          return null
         }
       }, [])
 
+      const libraryKeys = (filter = libraryFilter, project = libraryProject, tree = memoryTree) =>
+        libraryPartitionKeys(tree?.partitioned ? filter : 'all', project, projectOptions(t, tree))
+      const reloadLibrary = () => loadMemories(memoryQuery, libraryKeys())
+
+      // First load: the tree (for counts and filters) and every memory.
+      useEffect(() => {
+        void loadTree()
+        void loadMemories('', [''])
+      }, [loadTree, loadMemories])
+
+      // Search as the user types (Enter searches at once).
+      const searchTimer = useRef(null)
+      useEffect(() => () => clearTimeout(searchTimer.current), [])
+      const setQuery = (value) => {
+        setMemoryQuery(value)
+        setLibraryPage(1)
+        clearTimeout(searchTimer.current)
+        searchTimer.current = setTimeout(() => void loadMemories(value, libraryKeys()), 300)
+      }
+
+      // Scroll to a jump target or a section after the render that shows it.
+      useEffect(() => {
+        if (!scrollTarget || typeof document === 'undefined') return undefined
+        const node = document.getElementById(scrollTarget)
+        if (node) node.scrollIntoView({ block: scrollTarget.startsWith('mem0-m-') ? 'center' : 'start', behavior: 'smooth' })
+        setScrollTarget(null)
+        return undefined
+      }, [scrollTarget, tab, libraryPage, memoryState])
+
+      useEffect(() => {
+        if (!flashMemory) return undefined
+        const timer = setTimeout(() => setFlashMemory(null), 1800)
+        return () => clearTimeout(timer)
+      }, [flashMemory])
+
+      const sortedMemories = useMemo(
+        () => sortMemories(memoryState.data?.ok === false ? [] : memoryState.data?.memories, libraryOrder),
+        [memoryState, libraryOrder],
+      )
+
+      // A memory from the activity card: show it in the library. Not in the
+      // current list → all memories; still not there → search by its id.
+      const jumpToMemory = async (id) => {
+        setTab('memories')
+        setLibraryNotice(null)
+        let list = sortedMemories
+        let page = pageContaining(list, id)
+        if (!page) {
+          setMemoryQuery('')
+          setLibraryFilter('all')
+          setLibraryProject('')
+          list = sortMemories((await loadMemories('', ['']))?.memories, libraryOrder)
+          page = pageContaining(list, id)
+          if (!page) {
+            setMemoryQuery(id)
+            list = sortMemories((await loadMemories(id, ['']))?.memories, libraryOrder)
+            page = pageContaining(list, id)
+          }
+        }
+        if (!page) {
+          // Leave the library as a plain list, not an empty id search.
+          if (list.length === 0) {
+            setMemoryQuery('')
+            void loadMemories('', [''])
+          }
+          setLibraryNotice({ error: true, text: t('jumpNotFound') })
+          setScrollTarget('mem0-library')
+          return
+        }
+        setLibraryPage(page)
+        setFlashMemory(id)
+        setScrollTarget(`mem0-m-${id}`)
+      }
+
       const deleteMemory = async (id) => {
-        setDeleteState({ id, outcome: 'deleting', message: '' })
+        setDeleteState({ id, outcome: 'reading', message: '' })
+        setLibraryNotice(null)
         const result = await deleteMemoryFlow({
           t,
           id,
           request: fetchJson,
-          confirm: (text) => window.confirm(text),
+          // The in-page dialog answers; Escape, the backdrop and Cancel say no.
+          confirm: (_text, memory) => new Promise((resolve) => setDeleteDialog({ memory, resolve })),
           reload: async () => {
-            await loadMemories(memoryQuery, memoryPartition)
+            await reloadLibrary()
             void loadTree()
             void refreshStatus({ translate: false })
           },
         })
         setDeleteState({ id: null, outcome: result.outcome, message: result.message })
+        if (result.message) setLibraryNotice({ error: result.outcome === 'error', text: result.message })
+      }
+
+      const answerDelete = (yes) => {
+        deleteDialog?.resolve(yes)
+        setDeleteDialog(null)
+        if (yes) setDeleteState((current) => ({ ...current, outcome: 'deleting' }))
       }
 
       // Pin or unpin (local backend): pinned memories are never deleted or merged by hygiene.
@@ -4349,9 +5800,9 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ id, pinned }),
           })
           if (!outcome?.ok) throw new Error(outcome?.error || t('memoryPinError'))
-          await loadMemories(memoryQuery, memoryPartition)
+          await reloadLibrary()
         } catch (error) {
-          setDeleteState({ id: null, outcome: 'error', message: `${t('memoryPinError')}: ${error.message}` })
+          setLibraryNotice({ error: true, text: `${t('memoryPinError')}: ${error.message}` })
         }
       }
 
@@ -4365,23 +5816,41 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ id, scope: 'global' }),
           })
           if (!outcome?.ok) throw Object.assign(new Error(outcome?.error || t('memoryMakeGlobalError')), { reason: outcome?.reason })
-          await Promise.all([loadMemories(memoryQuery, memoryPartition), loadTree()])
+          await Promise.all([reloadLibrary(), loadTree()])
         } catch (error) {
-          setDeleteState({ id: null, outcome: 'error', message: `${t('memoryMakeGlobalError')}: ${makeGlobalReason(t, error)}` })
+          setLibraryNotice({ error: true, text: `${t('memoryMakeGlobalError')}: ${makeGlobalReason(t, error)}` })
         }
       }
 
-      const selectPartition = (key) => {
-        setMemoryPartition(key)
-        void loadMemories(memoryQuery, key)
-      }
-
-      const toggleBrowser = () => {
-        if (!browserOpen) {
-          void loadMemories(memoryQuery, memoryPartition)
-          void loadTree()
-        }
-        setBrowserOpen((open) => !open)
+      const libraryActions = {
+        setQuery,
+        searchNow: () => {
+          clearTimeout(searchTimer.current)
+          void reloadLibrary()
+        },
+        setFilter: (filter) => {
+          setLibraryFilter(filter)
+          setLibraryProject('')
+          setLibraryPage(1)
+          void loadMemories(memoryQuery, libraryKeys(filter, ''))
+        },
+        setProject: (project) => {
+          setLibraryProject(project)
+          setLibraryPage(1)
+          void loadMemories(memoryQuery, libraryKeys('project', project))
+        },
+        setOrder: (order) => {
+          setLibraryOrder(order)
+          setLibraryPage(1)
+        },
+        setPage: (page) => {
+          setLibraryPage(page)
+          setScrollTarget('mem0-library')
+        },
+        expand: (id) => setExpandedMemory((current) => (current === id ? null : id)),
+        pin: (id, pinned) => void pinMemory(id, pinned),
+        makeGlobal: (id) => void makeGlobal(id),
+        remove: (id) => void deleteMemory(id),
       }
 
       const dirty = useMemo(
@@ -4393,6 +5862,14 @@ window.__ModuleLoader__.load({
         setDraft((current) => (current ? { ...current, [key]: value } : current))
         setSaveState('idle')
         setSaveMessage('')
+      }
+
+      // Opens the one setup wizard, on the maintenance tab.
+      const openWizard = () => {
+        setSwitchPrompt(null)
+        setWizardOpen(true)
+        setTab('maintenance')
+        setScrollTarget('mem0-wizard')
       }
 
       // Switching to the local backend: look first. Set up → switch; missing
@@ -4461,6 +5938,8 @@ window.__ModuleLoader__.load({
           applySaved(next)
           await delay(450)
           await refreshStatus()
+          // The backend or user may have changed: read the library again.
+          void loadTree().then((tree) => loadMemories(memoryQuery, libraryKeys(libraryFilter, libraryProject, tree)))
           return true
         } catch (error) {
           setSaveState('error')
@@ -4485,6 +5964,25 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const applyProfileResponse = (response) => {
+        setProfileDraft(response.profileText ?? '')
+        setStatus((current) =>
+          current.data
+            ? {
+                ...current,
+                data: {
+                  ...current.data,
+                  profileText: response.profileText ?? '',
+                  maintenance: response.maintenance ?? current.data.maintenance,
+                },
+              }
+            : current,
+        )
+        setProfileEditing(false)
+        setProfileState('saved')
+        setProfileMessage(t('profileSaved'))
+      }
+
       const saveProfile = async () => {
         if (!draft?.profileEnabled) return
         setProfileState('saving')
@@ -4496,22 +5994,7 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ text: profileDraft ?? '' }),
           })
           if (!response?.ok) throw new Error(response?.error || t('saveFailed'))
-          setProfileDraft(response.profileText ?? '')
-          setStatus((current) =>
-            current.data
-              ? {
-                  ...current,
-                  data: {
-                    ...current.data,
-                    profileText: response.profileText ?? '',
-                    maintenance: response.maintenance ?? current.data.maintenance,
-                  },
-                }
-              : current,
-          )
-          setProfileEditing(false)
-          setProfileState('saved')
-          setProfileMessage(t('profileSaved'))
+          applyProfileResponse(response)
         } catch (error) {
           setProfileState('error')
           setProfileMessage(error.message || t('profileTooLong'))
@@ -4529,22 +6012,7 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ reset: true }),
           })
           if (!response?.ok) throw new Error(response?.error || t('saveFailed'))
-          setProfileDraft(response.profileText ?? '')
-          setStatus((current) =>
-            current.data
-              ? {
-                  ...current,
-                  data: {
-                    ...current.data,
-                    profileText: response.profileText ?? '',
-                    maintenance: response.maintenance ?? current.data.maintenance,
-                  },
-                }
-              : current,
-          )
-          setProfileEditing(false)
-          setProfileState('saved')
-          setProfileMessage(t('profileSaved'))
+          applyProfileResponse(response)
         } catch (error) {
           setProfileState('error')
           setProfileMessage(error.message || t('saveFailed'))
@@ -4606,6 +6074,8 @@ window.__ModuleLoader__.load({
             planned > 0 ? formatHygieneReport(t, report) : `${t('hygieneNothingToDelete')} ${formatHygieneReport(t, report)}`,
           )
           await refreshStatus()
+          void loadTree()
+          void reloadLibrary()
         } catch (error) {
           setHygieneState('error')
           setHygieneMessage(error.reason === 'busy' ? t('hygieneBusy') : error.reason === 'model-starting' ? t('hygieneModelStarting') : error.message || t('hygieneFailed'))
@@ -4617,24 +6087,16 @@ window.__ModuleLoader__.load({
         setApiKey('')
         setSaveState('idle')
         setSaveMessage('')
+        setSwitchPrompt(null)
       }
 
-      const clearKey = async () => {
-        if (!snapshot.writable) return
-        setSaveState('saving')
+      const copyPath = async (path) => {
         try {
-          const accepted = await form.unset('apiKey')
-          if (!accepted) {
-            setSaveState('error')
-            setSaveMessage(t('saveFailed'))
-            return
-          }
-          setApiKeySet(false)
-          applySaved({ ...(draft ?? initial), apiKey: '' })
-          await refreshStatus()
-        } catch (error) {
-          setSaveState('error')
-          setSaveMessage(error.message || t('saveFailed'))
+          await navigator.clipboard.writeText(path)
+          setPathCopied(true)
+          setTimeout(() => setPathCopied(false), 1600)
+        } catch {
+          setPathCopied(false)
         }
       }
 
@@ -4666,758 +6128,49 @@ window.__ModuleLoader__.load({
 
       const data = status.data
       const keyConfigured = data ? Boolean(data.apiKeyConfigured) : apiKeySet
-      const statusOk = status.phase === 'ready' && data?.ok
-      const statusItems = []
-      if (data) {
-        statusItems.push(
-          { key: 'backend', label: t('statusBackend'), value: statusLabel(t, data.backend) },
-          { key: 'collection', label: t('statusCollection'), value: data.collection ?? '—' },
-          { key: 'endpoint', label: t('statusEndpoint'), value: data.endpoint ?? '—' },
-        )
-        const choice = backendChoiceText(t, data)
-        if (choice) statusItems.push({ key: 'backendChoice', label: t('statusBackendChoice'), value: choice })
-        if (data.mem0Reference) statusItems.push({ key: 'mem0', label: t('statusMem0'), value: template(t('statusMem0Native'), { version: data.mem0Reference }) })
-        if (data.store) {
-          statusItems.push({
-            key: 'store',
-            label: t('statusStore'),
-            value: data.store.ok ? `OK (${data.store.kind ?? 'sqlite'})` : data.store.error ?? '—',
-          })
-        } else if (data.qdrant) {
-          statusItems.push({
-            key: 'qdrant',
-            label: t('statusVectorStore'),
-            value: data.qdrant.ok ? 'OK' : data.qdrant.error ?? '—',
-          })
-        }
-        if (data.embedder) {
-          statusItems.push({
-            key: 'embedder',
-            label: t('statusEmbedder'),
-            value: data.embedder.ok
-              ? `${data.embedder.model ? `${data.embedder.model} · ` : ''}${data.embedder.dimensions ?? '?'} dims`
-              : data.embedder.error ?? '—',
-          })
-        }
-        if (data.llm) {
-          // Following DSH: the label says so; the value is the model id now
-          // (provider in the tooltip), so it fits the cell.
-          const dshName = data.llm.followsDsh ? String(data.llm.model ?? '') : ''
-          statusItems.push({
-            key: 'llm',
-            label: data.llm.followsDsh ? t('statusLlmDshLabel') : t('statusLlm'),
-            value: data.llm.followsDsh
-              ? (dshName ? dshName.slice(dshName.indexOf('/') + 1) : t('statusLlmDshNone'))
-              : data.llm.configured ? data.llm.model ?? 'OK' : data.llm.error ?? t('statusLlmMissing'),
-            ...(dshName ? { title: template(t('statusLlmDsh'), { model: dshName }) } : {}),
-          })
-        }
-        statusItems.push({
-          key: 'key',
-          label: t('statusKey'),
-          value: data.apiKeyConfigured ? t('keySet') : t('keyUnset'),
-        })
-      }
-
-      const capture = data?.activity?.capture ?? null
-      const recall = data?.activity?.recall ?? null
-      const maintenance = data?.maintenance ?? null
-      const lastReport = maintenance?.lastReport ?? null
-      const recentMemories = Array.isArray(data?.recentMemories) ? data.recentMemories : []
       const profileText = typeof data?.profileText === 'string' ? data.profileText.trim() : ''
-      const profileMeta = []
-      if (maintenance?.profile) {
-        profileMeta.push(`${maintenance.profile.items ?? 0} ${t('profileSummaryItems')}`)
-        if (maintenance.profile.tokens !== undefined) profileMeta.push(`${maintenance.profile.tokens} tok`)
-        if (maintenance.profile.manual) profileMeta.push(t('profileManual'))
-        if (maintenance.profile.sourcesChanged) profileMeta.push(t('profileSourcesChanged'))
-        if (maintenance.profile.stale) profileMeta.push(t('profileStale'))
-        if (maintenance.profile.updatedAt) {
-          profileMeta.push(`${t('profileSummaryUpdated')} ${activityTime(maintenance.profile.updatedAt)}`)
+      const memoryCount = Number.isFinite(memoryTree?.total) ? memoryTree.total : undefined
+      // The header shows what is saved; the switch shows the draft.
+      const headerView = headerStatusView(t, { phase: status.phase, data, enabled: initial?.enabled !== false, memoryCount })
+      const banners = bannerItems(t, data, { phase: status.phase, message: status.message, enabled: initial?.enabled !== false })
+      const maintenanceIssue = banners.some((item) => item.action === 'wizard' || item.action === 'diagnostics')
+      const diagnosticsIssue = banners.some((item) => item.action === 'diagnostics') || status.phase === 'error' || data?.ok === false
+      const profile = {
+        draft: profileDraft,
+        editing: profileEditing,
+        state: profileState,
+        message: profileMessage,
+        setDraft: (value) => {
+          setProfileDraft(value)
+          setProfileState('editing')
+          setProfileMessage('')
+        },
+        edit: () => {
+          setProfileEditing(true)
+          setProfileState('editing')
+          setProfileMessage('')
+        },
+        save: saveProfile,
+        cancel: cancelProfileEdit,
+        reset: resetProfile,
+      }
+      const onBannerAction = (action) => {
+        if (action === 'wizard') return openWizard()
+        if (action === 'diagnostics') {
+          setTab('maintenance')
+          setDiagnosticsOpen(true)
+          setScrollTarget('mem0-diagnostics')
+          return undefined
         }
+        setTab('settings')
+        setScrollTarget('mem0-storage')
+        return undefined
       }
-      // Project summaries (partition L0): name, size, whether being rebuilt.
-      const projectSummaryLine = Array.isArray(maintenance?.projectProfiles) && maintenance.projectProfiles.length > 0
-        ? template(t('projectSummaries'), {
-            list: maintenance.projectProfiles
-              .map((item) => `${item.name || shortId(item.projectId)} (${item.items ?? 0} · ${item.tokens ?? 0} ${t('tokUnit')}${item.stale ? ` · ${t('projectSummaryStale')}` : ''})`)
-              .join(', '),
-          })
-        : ''
-      const maintenanceMeta = []
-      if (maintenance?.lastRunAt) {
-        maintenanceMeta.push(`${t('hygieneLastRun')} ${activityTime(maintenance.lastRunAt)}`)
-      } else {
-        maintenanceMeta.push(`${t('hygieneLastRun')} ${t('hygieneNever')}`)
-      }
-      if (maintenance?.nextRunAt) {
-        maintenanceMeta.push(`${t('hygieneNextRun')} ${activityTime(maintenance.nextRunAt)}`)
-      } else if (maintenance?.due) {
-        maintenanceMeta.push(`${t('hygieneNextRun')} ${t('hygieneDue')}`)
-      }
-      if (maintenance?.pending > 0) {
-        maintenanceMeta.push(template(t(maintenance.catchUp ? 'hygienePending' : 'hygienePendingSlow'), { count: maintenance.pending }))
-      }
-      if (maintenance?.profile) {
-        maintenanceMeta.push(
-          `${t('hygieneProfile')} ${maintenance.profile.items ?? 0} · ${maintenance.profile.tokens ?? 0} tok`,
-        )
-      }
-      const captureMeta = []
-      if (capture?.messages) captureMeta.push(`${capture.messages} ${t('activityMessages')}`)
-      if (capture?.status === 'saved') captureMeta.push(`${capture.count ?? 0} ${t('activityWritten')}`)
-      if (capture?.eventId) captureMeta.push(`${t('activityEvent')} ${String(capture.eventId).slice(0, 12)}`)
-      if (capture?.at) captureMeta.push(activityTime(capture.at))
-      const recallMeta = []
-      if (recall?.count !== undefined) recallMeta.push(`${recall.count} ${t('activityReturned')}`)
-      if (recall?.latencyMs !== undefined) recallMeta.push(`${recall.latencyMs} ms`)
-      // Present only when dsh-strata's budget service took part (interop §2).
-      if (Number.isFinite(recall?.budget?.allowance) && Number.isFinite(recall?.budget?.wanted)) {
-        recallMeta.push(
-          `${t('activityBudget')} ${recall.budget.allowance} / ${recall.budget.wanted}${recall.budget.stage ? ` (strata: ${recall.budget.stage})` : ''}`,
-        )
-      }
-      if (recall?.at) recallMeta.push(activityTime(recall.at))
-
-      const backendOptions = [
-        { id: 'auto', label: t('backendAuto') },
-        { id: 'platform', label: t('backendPlatform') },
-        { id: 'server', label: t('backendServer') },
-        { id: 'oss', label: t('backendOss') },
-      ]
-      const backendHint =
-        draft.backend === 'platform'
-          ? t('backendPlatformHint')
-          : draft.backend === 'server'
-            ? t('backendServerHint')
-            : draft.backend === 'oss'
-              ? t('backendOssHint')
-              : t('backendAutoHint')
-
-      const connectionFields = []
-      if (draft.backend === 'auto' || draft.backend === 'platform' || draft.backend === 'server') {
-        connectionFields.push(
-          h(TextField, {
-            key: 'apiKey',
-            label: t('apiKey'),
-            hint: keyConfigured ? t('apiKeySet') : t('apiKeyHint'),
-            type: 'password',
-            value: apiKey,
-            autoComplete: 'off',
-            placeholder: keyConfigured ? '••••••••' : t('apiKeyUnset'),
-            onChange: setApiKey,
-          }),
-          h(TextField, {
-            key: 'apiKeyEnv',
-            label: t('apiKeyEnv'),
-            hint: t('apiKeyEnvHint'),
-            value: draft.apiKeyEnv,
-            onChange: (value) => setField('apiKeyEnv', value),
-          }),
-        )
-      }
-      if (draft.backend === 'auto' || draft.backend === 'platform') {
-        connectionFields.push(
-          h(TextField, {
-            key: 'baseUrl',
-            label: t('baseUrl'),
-            hint: draft.backend === 'platform' ? t('baseUrlPlatformHint') : undefined,
-            value: draft.baseUrl,
-            placeholder: 'https://api.mem0.ai',
-            onChange: (value) => setField('baseUrl', value),
-          }),
-        )
-      }
-      if (draft.backend === 'server') {
-        connectionFields.push(
-          h(TextField, {
-            key: 'baseUrl',
-            label: t('baseUrl'),
-            hint: t('baseUrlServerHint'),
-            value: draft.baseUrl,
-            placeholder: 'http://127.0.0.1:8888',
-            onChange: (value) => setField('baseUrl', value),
-          }),
-          h(SelectField, {
-            key: 'authType',
-            label: t('authType'),
-            value: draft.authType,
-            onChange: (value) => setField('authType', value),
-            options: [
-              { value: 'apiKey', label: t('authApiKey') },
-              { value: 'bearer', label: t('authBearer') },
-              { value: 'token', label: t('authToken') },
-              { value: 'none', label: t('authNone') },
-            ],
-          }),
-        )
-      }
-      if (draft.backend === 'oss') {
-        connectionFields.push(
-          h(TextField, {
-            key: 'storePath',
-            label: t('storePath'),
-            hint: t('storePathHint'),
-            value: draft.storePath,
-            placeholder: '~/.dsh/mem0/memory.sqlite',
-            className: 'mem0-grid-single',
-            onChange: (value) => setField('storePath', value),
-          }),
-          h('p', { key: 'ossConfigHint', className: 'mem0-hint mem0-grid-single' }, t('ossConfigHint')),
-          h('div', { key: 'wizard', className: 'mem0-wz-row mem0-grid-single' },
-            h('button', { type: 'button', className: 'mem0-secondary', onClick: () => setWizardOpen(true) }, t('wzOpen')),
-          ),
-        )
-      }
-
-      const renderProfilePreview = (value) => {
-        const lines = String(value ?? '').split('\n')
-        return h(
-          'div',
-          { className: 'mem0-profile-preview' },
-          lines.map((line, index) => {
-            const text = line.trim()
-            if (!text) return null
-            if (/^#{1,6}\s+/.test(text)) {
-              return h('h4', { key: index, className: 'mem0-profile-heading' }, text.replace(/^#{1,6}\s+/, ''))
-            }
-            if (/^[-*]\s+/.test(text)) {
-              return h('div', { key: index, className: 'mem0-profile-item' }, text.replace(/^[-*]\s+/, ''))
-            }
-            return h('p', { key: index, className: 'mem0-profile-paragraph' }, text)
-          }),
-        )
-      }
-
-      return h(
-        'div',
-        { className: 'mem0-page' },
-        h(
-          'div',
-          { className: 'mem0-head' },
-          h(
+      const wizard = wizardOpen
+        ? h(
             'div',
-            null,
-            h('h2', { className: 'mem0-title' }, t('title')),
-            h('p', { className: 'mem0-sub' }, t('subtitle')),
-          ),
-          h(
-            'div',
-            { className: 'mem0-head-actions' },
-            dirty
-              ? h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-primary',
-                    onClick: () => void save(),
-                    disabled: saveState === 'saving',
-                  },
-                  saveState === 'saving' ? t('saving') : t('save'),
-                )
-              : null,
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'mem0-secondary',
-                onClick: () => void refreshStatus(),
-                disabled: status.phase === 'loading',
-              },
-              t('checkAgain'),
-            ),
-          ),
-        ),
-        h(
-          'div',
-          { className: 'mem0-card' },
-          h(
-            'div',
-            { className: 'mem0-status' },
-            h(
-              'div',
-              { className: 'mem0-status-main' },
-              h('span', { className: `mem0-dot${statusOk ? ' ok' : status.phase === 'error' ? ' error' : ''}` }),
-              h(
-                'span',
-                { className: 'mem0-status-label' },
-                status.phase === 'loading'
-                  ? t('checking')
-                  : statusOk
-                    ? t('statusReady')
-                    : t('statusDegraded'),
-              ),
-              testState === 'ok' ? h('span', { className: 'mem0-chip mem0-chip-ok' }, t('testOk')) : null,
-            ),
-            h(
-              'div',
-              { className: 'mem0-status-grid' },
-              statusItems.map((item) =>
-                h(
-                  'div',
-                  { className: 'mem0-stat', key: item.key },
-                  h('span', { className: 'mem0-stat-label' }, item.label),
-                  h('span', { className: 'mem0-stat-value', title: String(item.title ?? item.value) }, item.value),
-                ),
-              ),
-            ),
-          ),
-          status.phase === 'error' || (data && data.ok === false)
-            ? h('p', { className: 'mem0-error' }, data?.error ?? status.message)
-            : null,
-        ),
-        h(
-          'div',
-          { className: 'mem0-card mem0-section' },
-          h(
-            'div',
-            { className: 'mem0-section-head' },
-            h('h3', { className: 'mem0-section-title' }, t('profileSummaryTitle')),
-            profileMeta.length > 0 ? h('span', { className: 'mem0-hint' }, profileMeta.join(' · ')) : null,
-          ),
-          h('p', { className: 'mem0-section-hint' }, t('profileSummaryHint')),
-          projectSummaryLine ? h('p', { className: 'mem0-hint' }, projectSummaryLine) : null,
-          profileEditing
-            ? h('textarea', {
-                className: 'mem0-profile-edit',
-                value: profileDraft ?? '',
-                placeholder: draft.profileEnabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled'),
-                disabled: !draft.profileEnabled || profileState === 'saving',
-                rows: 8,
-                onChange: (event) => {
-                  setProfileDraft(event.target.value)
-                  setProfileState('editing')
-                  setProfileMessage('')
-                },
-              })
-            : (profileDraft ?? profileText).trim()
-              ? renderProfilePreview(profileDraft ?? profileText)
-              : h('p', { className: 'mem0-hint' }, draft.profileEnabled ? t('profileSummaryEmpty') : t('profileSummaryDisabled')),
-          profileEditing ? h('p', { className: 'mem0-hint' }, t('profileEditHint')) : null,
-          h(
-            'div',
-            { className: 'mem0-profile-actions' },
-            profileEditing
-              ? h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-primary',
-                    disabled: !draft.profileEnabled || profileState === 'saving' || !String(profileDraft ?? '').trim(),
-                    onClick: saveProfile,
-                  },
-                  profileState === 'saving' ? t('profileSaving') : t('profileSave'),
-                )
-              : h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-primary',
-                    disabled: !draft.profileEnabled || profileState === 'saving',
-                    onClick: () => {
-                      setProfileEditing(true)
-                      setProfileState('editing')
-                      setProfileMessage('')
-                    },
-                  },
-                  t('profileEdit'),
-                ),
-            profileEditing
-              ? h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-secondary',
-                    disabled: profileState === 'saving',
-                    onClick: cancelProfileEdit,
-                  },
-                  t('profileCancel'),
-                )
-              : h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-secondary',
-                    disabled: !draft.profileEnabled || profileState === 'saving',
-                    onClick: resetProfile,
-                  },
-                  t('profileReset'),
-                ),
-            profileMessage
-              ? h(
-                  'span',
-                  { className: profileState === 'error' ? 'mem0-error' : 'mem0-hint' },
-                  profileMessage,
-                )
-              : null,
-          ),
-          h('p', { className: 'mem0-hint' }, t('profileResetHint')),
-        ),
-        h(
-          'div',
-          { className: 'mem0-card mem0-section' },
-          h('h3', { className: 'mem0-section-title' }, t('activityTitle')),
-          h(
-            'div',
-            { className: 'mem0-activity-grid' },
-            h(
-              'div',
-              { className: 'mem0-activity' },
-              h(
-                'div',
-                { className: 'mem0-activity-head' },
-                h('span', { className: 'mem0-activity-title' }, t('activityCapture')),
-                capture ? activityChip(t, capture) : null,
-              ),
-              h(
-                'p',
-                { className: 'mem0-activity-main' },
-                capture ? t('activityCapture') : t('activityNever'),
-              ),
-              capture?.error ? h('p', { className: 'mem0-error' }, capture.error) : null,
-              ...activityDetails(t, capture).map((line, index) => h('p', { className: 'mem0-activity-meta', key: `cd${index}` }, line)),
-              captureMeta.length > 0 ? h('p', { className: 'mem0-activity-meta' }, captureMeta.join(' · ')) : null,
-            ),
-            h(
-              'div',
-              { className: 'mem0-activity' },
-              h(
-                'div',
-                { className: 'mem0-activity-head' },
-                h('span', { className: 'mem0-activity-title' }, t('activityRecall')),
-                recall ? activityChip(t, recall) : null,
-              ),
-              h(
-                'p',
-                { className: 'mem0-activity-main' },
-                recall ? t('activityRecall') : t('activityNever'),
-              ),
-              recall?.error ? h('p', { className: 'mem0-error' }, recall.error) : null,
-              ...activityDetails(t, recall).map((line, index) => h('p', { className: 'mem0-activity-meta', key: `rd${index}` }, line)),
-              recall?.query ? h('p', { className: 'mem0-activity-meta' }, recall.query) : null,
-              recallMeta.length > 0 ? h('p', { className: 'mem0-activity-meta' }, recallMeta.join(' · ')) : null,
-              recall?.preview?.length
-                ? h(
-                    'div',
-                    { className: 'mem0-recall-preview' },
-                    h('div', { className: 'mem0-activity-meta' }, t('recallPreviewTitle')),
-                    recall.preview.map((item, index) =>
-                      h(
-                        'div',
-                        { className: 'mem0-recall-item', key: item.id ?? index },
-                        h('div', { className: 'mem0-recall-text' }, item.memory || '—'),
-                        item.id
-                          ? h('div', { className: 'mem0-recall-meta' }, `${t('memoryId')} ${item.id}`)
-                          : null,
-                      ),
-                    ),
-                  )
-                : null,
-            ),
-          ),
-          capture?.status === 'extracting' || capture?.status === 'queued'
-            ? h('p', { className: 'mem0-hint' }, t('activityAsyncHint'))
-            : null,
-          !capture && !recall
-            ? h(
-                'p',
-                { className: 'mem0-hint' },
-                recentMemories.length > 0 ? t('activityScopeHint') : t('activityEmpty'),
-              )
-            : null,
-          ...(Array.isArray(data?.upgradeNotices) ? data.upgradeNotices : []).map((notice) =>
-            notice?.code === 'legacyQdrant' || notice?.code === 'noLocalConfig' || notice?.code === 'qdrantMigrated'
-              ? h(
-                  'div',
-                  { className: 'mem0-wz-notice', key: `upgrade-${notice.code}` },
-                  h('p', { className: 'mem0-hint' },
-                    notice.code === 'legacyQdrant'
-                      ? template(t('upgradeLegacyQdrant'), { endpoint: String(notice.endpoint ?? ''), collection: String(notice.collection ?? '') })
-                      : notice.code === 'qdrantMigrated'
-                        ? t('upgradeQdrantMigrated')
-                        : t('upgradeNoLocalConfig')),
-                  notice.code !== 'qdrantMigrated' && !wizardOpen
-                    ? h('button', { type: 'button', className: 'mem0-secondary', onClick: () => setWizardOpen(true) }, t('wzOpen'))
-                    : null,
-                )
-              : null,
-          ),
-          data?.configWarning?.missing?.length
-            ? h(
-                'div',
-                { className: 'mem0-error' },
-                h('p', null, template(t('configWarning'), { fields: data.configWarning.missing.join(', ') })),
-                h('p', null, t('configWarningFix')),
-              )
-            : null,
-          data?.store ? h(StoreStatus, { t, store: data.store }) : null,
-          h(FailureList, { t, failures: data?.failures }),
-        ),
-        h(
-          'div',
-          { className: 'mem0-card mem0-section' },
-          h(
-            'div',
-            { className: 'mem0-section-head' },
-            h('h3', { className: 'mem0-section-title' }, t('recentTitle')),
-            h(
-              'div',
-              { className: 'mem0-section-actions' },
-              h(
-                'button',
-                {
-                  type: 'button',
-                  className: 'mem0-secondary',
-                  onClick: () => void refreshStatus(),
-                  disabled: status.phase === 'loading',
-                },
-                t('refresh'),
-              ),
-              h(
-                'button',
-                {
-                  type: 'button',
-                  className: 'mem0-secondary',
-                  onClick: toggleBrowser,
-                },
-                browserOpen ? t('memoryBrowserClose') : t('memoryBrowserOpen'),
-              ),
-            ),
-          ),
-          data?.recentMemoriesError
-            ? h('p', { className: 'mem0-error' }, `${t('recentError')}: ${data.recentMemoriesError}`)
-            : null,
-          recentMemories.length > 0
-            ? h(
-                'div',
-                { className: 'mem0-memory-list' },
-                recentMemories.map((memory, index) =>
-                  h(
-                    'div',
-                    { className: 'mem0-memory', key: memory.id ?? index },
-                    h('div', { className: 'mem0-memory-text' }, memory.memory || '—'),
-                    h(
-                      'div',
-                      { className: 'mem0-memory-meta' },
-                      memory.id
-                        ? h('span', { className: 'mem0-chip' }, `${t('memoryId')} ${memory.id}`)
-                        : null,
-                      memory.createdAt
-                        ? h('span', { className: 'mem0-hint' }, activityTime(memory.createdAt))
-                        : null,
-                      typeof memory.score === 'number'
-                        ? h('span', { className: 'mem0-hint' }, `${t('memoryScore')} ${memory.score.toFixed(3)}`)
-                        : null,
-                    ),
-                  ),
-                ),
-              )
-            : h('p', { className: 'mem0-empty' }, t('recentEmpty')),
-        ),
-        browserOpen
-          ? h(
-              'div',
-              { className: 'mem0-card mem0-section' },
-              h(
-                'div',
-                { className: 'mem0-section-head' },
-                h('h3', { className: 'mem0-section-title' }, memoryTree?.partitioned ? t('memoryTreeTitle') : t('memoryBrowserTitle')),
-                h(
-                  'button',
-                  { type: 'button', className: 'mem0-secondary', onClick: toggleBrowser },
-                  t('memoryBrowserClose'),
-                ),
-              ),
-              h('p', { className: 'mem0-section-hint' }, memoryTree?.partitioned ? t('memoryTreeHint') : t('memoryBrowserHint')),
-              h(
-                'div',
-                { className: memoryTree?.partitioned ? 'mem0-explorer' : 'mem0-explorer mem0-explorer-flat' },
-                memoryTree?.partitioned
-                  ? h(
-                      'nav',
-                      { className: 'mem0-tree', 'aria-label': t('memoryTreeTitle') },
-                      treeEntries(t, memoryTree).map((row, index) =>
-                        row.header
-                          ? h('div', { key: `head-${index}`, className: 'mem0-tree-head' }, row.label)
-                          : h(
-                              'button',
-                              {
-                                key: row.key || 'all',
-                                type: 'button',
-                                className: 'mem0-tree-row',
-                                style: { paddingLeft: `${8 + row.depth * 12}px` },
-                                'aria-current': memoryPartition === row.key ? 'true' : 'false',
-                                onClick: () => selectPartition(row.key),
-                              },
-                              h('span', null, row.label),
-                              h('span', { className: 'mem0-tree-count' }, String(row.count ?? 0)),
-                            ),
-                      ),
-                    )
-                  : null,
-              h(
-                'div',
-                null,
-              h(
-                'div',
-                { className: 'mem0-search-row' },
-                h('input', {
-                  className: 'mem0-input',
-                  type: 'search',
-                  value: memoryQuery,
-                  placeholder: t('memorySearchPlaceholder'),
-                  onChange: (event) => setMemoryQuery(event.target.value),
-                  onKeyDown: (event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      void loadMemories(memoryQuery, memoryPartition)
-                    }
-                  },
-                }),
-                h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'mem0-primary',
-                    onClick: () => void loadMemories(memoryQuery, memoryPartition),
-                    disabled: memoryState.phase === 'loading',
-                  },
-                  t('memorySearch'),
-                ),
-              ),
-              deleteState.message
-                ? h(
-                    'p',
-                    { className: deleteState.outcome === 'error' ? 'mem0-error' : 'mem0-saved', role: 'status' },
-                    deleteState.message,
-                  )
-                : null,
-              memoryState.phase === 'loading'
-                ? h('p', { className: 'mem0-hint' }, t('memoryLoading'))
-                : memoryState.phase === 'error'
-                  ? h('p', { className: 'mem0-error' }, `${t('memoryBrowserError')}: ${memoryState.message}`)
-                  : memoryState.data?.ok === false
-                    ? h('p', { className: 'mem0-error' }, `${t('memoryBrowserError')}: ${memoryState.data.error}`)
-                    : memoryState.data
-                      ? h(
-                          'div',
-                          null,
-                          h(
-                            'p',
-                            { className: 'mem0-hint' },
-                            memoryQuery.trim()
-                              ? template(t('memoryCountFiltered'), {
-                                  shown: memoryState.data.memories?.length ?? 0,
-                                  total: memoryState.data.total ?? 0,
-                                })
-                              : template(t('memoryCount'), { count: memoryState.data.total ?? 0 }),
-                          ),
-                          (memoryState.data.memories ?? []).length > 0
-                            ? h(
-                                'div',
-                                { className: 'mem0-memory-list' },
-                                memoryState.data.memories.map((memory, index) =>
-                                  h(
-                                    'div',
-                                    { className: 'mem0-memory', key: memory.id ?? index },
-                                    h('div', { className: 'mem0-memory-text' }, memory.memory || '—'),
-                                    h(
-                                      'div',
-                                      { className: 'mem0-memory-meta' },
-                                      memory.id
-                                        ? h('span', { className: 'mem0-chip' }, `${t('memoryId')} ${memory.id}`)
-                                        : null,
-                                      memory.createdAt
-                                        ? h('span', { className: 'mem0-hint' }, activityTime(memory.createdAt))
-                                        : null,
-                                      typeof memory.score === 'number'
-                                        ? h('span', { className: 'mem0-hint' }, `${t('memoryScore')} ${memory.score.toFixed(3)}`)
-                                        : null,
-                                      memoryTree?.partitioned ? h('span', { className: 'mem0-chip' }, scopeLabel(t, memory, memoryTree)) : null,
-                                      memory.pinned ? h('span', { className: 'mem0-chip' }, t('memoryPinnedTag')) : null,
-                                      Number.isInteger(memory.importance)
-                                        ? h('span', { className: 'mem0-hint' }, template(t('memoryImportance'), { level: memory.importance }))
-                                        : null,
-                                      memory.source ? h('span', { className: 'mem0-hint' }, template(t('memorySource'), { source: memory.source })) : null,
-                                      memory.id && memory.globalizable
-                                        ? h(
-                                            'button',
-                                            { type: 'button', className: 'mem0-secondary', onClick: () => void makeGlobal(memory.id) },
-                                            t('memoryMakeGlobal'),
-                                          )
-                                        : null,
-                                      memory.id && memory.pinnable
-                                        ? h(
-                                            'button',
-                                            { type: 'button', className: 'mem0-secondary', onClick: () => void pinMemory(memory.id, !memory.pinned) },
-                                            memory.pinned ? t('memoryUnpin') : t('memoryPin'),
-                                          )
-                                        : null,
-                                      // Only memories this plugin wrote; the server checks again.
-                                      memory.id && memory.deletable
-                                        ? h(
-                                            'button',
-                                            {
-                                              type: 'button',
-                                              className: 'mem0-secondary mem0-memory-delete',
-                                              disabled: deleteState.outcome === 'deleting',
-                                              onClick: () => void deleteMemory(memory.id),
-                                            },
-                                            deleteState.outcome === 'deleting' && deleteState.id === memory.id
-                                              ? t('memoryDeleting')
-                                              : t('memoryDelete'),
-                                          )
-                                        : null,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : h('p', { className: 'mem0-empty' }, t('memoryEmpty')),
-                        )
-                      : h('p', { className: 'mem0-hint' }, t('memoryBrowserHint')),
-              ),
-              ),
-            )
-          : null,
-        h(
-          'div',
-          { className: 'mem0-section' },
-          h(
-            'div',
-            { className: 'mem0-section-head' },
-            h('h3', { className: 'mem0-section-title' }, t('backendSection')),
-            dirty ? h('span', { className: 'mem0-chip mem0-chip-warn' }, t('unsaved')) : null,
-          ),
-          h(
-            'div',
-            { className: 'mem0-segments' },
-            backendOptions.map((option) =>
-              h(
-                'button',
-                {
-                  key: option.id,
-                  type: 'button',
-                  className: 'mem0-segment',
-                  'data-active': draft.backend === option.id ? 'true' : 'false',
-                  onClick: () => void chooseBackend(option.id),
-                },
-                option.label,
-              ),
-            ),
-          ),
-          h('p', { className: 'mem0-section-hint' }, backendHint),
-          switchPrompt
-            ? h('div', { className: 'mem0-wz-prompt' },
-                h('p', { className: 'mem0-error' }, template(t('wzSwitchMissing'), { missing: switchPrompt.missing.map((item) => t(item === 'llm' ? 'wzMissingLlm' : 'wzMissingEmbedder')).join(', ') })),
-                h('div', { className: 'mem0-wz-row' },
-                  h('button', { type: 'button', className: 'mem0-primary', onClick: () => { setSwitchPrompt(null); setWizardOpen(true) } }, t('wzSwitchOpen')),
-                  h('button', { type: 'button', className: 'mem0-secondary', onClick: () => { setSwitchPrompt(null); setField('backend', 'oss') } }, t('wzSwitchAnyway')),
-                ),
-              )
-            : null,
-        ),
-        wizardOpen
-          ? h(SetupWizard, {
+            { id: 'mem0-wizard' },
+            h(SetupWizard, {
               t,
               backend: initial?.backend,
               onClose: () => {
@@ -5425,346 +6178,92 @@ window.__ModuleLoader__.load({
                 void refreshStatus({ translate: false })
               },
               onEnable: enableLocal,
-            })
-          : null,
-        h(
-          'div',
-          { className: 'mem0-card mem0-section' },
-          h('h3', { className: 'mem0-section-title' }, t('connectionSection')),
-          h('div', { className: 'mem0-grid' }, connectionFields),
-        ),
-        h(
-          'div',
-          { className: 'mem0-card mem0-section' },
-          h('h3', { className: 'mem0-section-title' }, t('identityTitle')),
-          h(
-            'div',
-            { className: 'mem0-grid' },
-            h(TextField, {
-              label: t('userId'),
-              value: draft.userId,
-              onChange: (value) => setField('userId', value),
             }),
-            h(TextField, {
-              label: t('agentId'),
-              value: draft.agentId,
-              onChange: (value) => setField('agentId', value),
-            }),
-          ),
-        ),
-        h(
-          'div',
-          { className: 'mem0-card mem0-section' },
-          h('h3', { className: 'mem0-section-title' }, t('behaviourTitle')),
-          h(
-            'div',
-            { className: 'mem0-toggles' },
-            h(ToggleRow, {
-              label: t('autoRecall'),
-              hint: t('autoRecallHint'),
-              checked: draft.autoRecall,
-              onChange: (value) => setField('autoRecall', value),
-            }),
-            h(ToggleRow, {
-              label: t('autoCapture'),
-              hint: t('autoCaptureHint'),
-              checked: draft.autoCapture,
-              onChange: (value) => setField('autoCapture', value),
-            }),
-            h(ToggleRow, {
-              label: t('announceToAgent'),
-              hint: t('announceToAgentHint'),
-              checked: draft.announceToAgent,
-              onChange: (value) => setField('announceToAgent', value),
-            }),
-            h(ToggleRow, {
-              label: t('includeSubagents'),
-              hint: t('includeSubagentsHint'),
-              checked: draft.includeSubagents,
-              onChange: (value) => setField('includeSubagents', value),
-            }),
-            h(ToggleRow, {
-              label: t('translateMemories'),
-              hint: t('translateMemoriesHint'),
-              checked: draft.translateMemories,
-              onChange: (value) => setField('translateMemories', value),
-            }),
-            h(ToggleRow, {
-              label: t('captureStrataFolds'),
-              hint: t('captureStrataFoldsHint'),
-              checked: draft.captureStrataFolds,
-              onChange: (value) => setField('captureStrataFolds', value),
-            }),
-            h(SelectField, {
-              label: t('captureFilter'),
-              hint: t('captureFilterHint'),
-              value: draft.captureFilter,
-              onChange: (value) => setField('captureFilter', value),
-              options: [
-                { value: 'heuristic', label: t('captureFilterHeuristic') },
-                { value: 'off', label: t('captureFilterOff') },
-              ],
-            }),
-            h(ToggleRow, {
-              label: t('enabled'),
-              hint: t('enabledHint'),
-              checked: draft.enabled,
-              onChange: (value) => setField('enabled', value),
-            }),
-          ),
-        ),
-        h(
-          'div',
-          { className: 'mem0-card mem0-section' },
-          h(
-            'div',
-            { className: 'mem0-section-head' },
-            h('h3', { className: 'mem0-section-title' }, t('maintenanceTitle')),
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'mem0-secondary',
-                onClick: () => void runHygiene(),
-                // Also while a scheduled pass runs: a manual preview would not
-                // get its own plan (the plugin answers busy).
-                disabled: hygieneState === 'running' || hygieneState === 'previewing' || !data || data?.maintenance?.running === true,
-              },
-              hygieneState === 'running'
-                ? t('hygieneRunning')
-                : hygieneState === 'previewing'
-                  ? t('hygienePreviewing')
-                  : t('hygieneRun'),
-            ),
-          ),
-          h('p', { className: 'mem0-section-hint' }, t('maintenanceHint')),
-          h(
-            'div',
-            { className: 'mem0-toggles' },
-            h(ToggleRow, {
-              label: t('profileEnabled'),
-              hint: t('profileEnabledHint'),
-              checked: draft.profileEnabled,
-              onChange: (value) => setField('profileEnabled', value),
-            }),
-            h(ToggleRow, {
-              label: t('hygieneEnabled'),
-              hint: t('hygieneEnabledHint'),
-              checked: draft.hygieneEnabled,
-              onChange: (value) => setField('hygieneEnabled', value),
-            }),
-            h(ToggleRow, {
-              label: t('modelHygiene'),
-              hint: t('modelHygieneHint'),
-              checked: draft.modelHygiene,
-              onChange: (value) => setField('modelHygiene', value),
-            }),
-            h(ToggleRow, {
-              label: t('projectPartitions'),
-              hint: t('projectPartitionsHint'),
-              checked: draft.projectPartitions,
-              onChange: (value) => setField('projectPartitions', value),
-            }),
-          ),
-          h(
-            'div',
-            { className: 'mem0-grid' },
-            h(TextField, {
-              label: t('profileBudgetTokens'),
-              hint: t('profileBudgetTokensHint'),
-              type: 'number',
-              value: draft.profileBudgetTokens,
-              onChange: (value) => setField('profileBudgetTokens', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('memoryBudgetTokens'),
-              hint: t('memoryBudgetTokensHint'),
-              type: 'number',
-              value: draft.memoryBudgetTokens,
-              onChange: (value) => setField('memoryBudgetTokens', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('storeSafetyLimit'),
-              hint: t('storeSafetyLimitHint'),
-              type: 'number',
-              value: draft.storeSafetyLimit,
-              onChange: (value) => setField('storeSafetyLimit', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('importanceWeight'),
-              hint: t('importanceWeightHint'),
-              type: 'number',
-              value: draft.importanceWeight,
-              onChange: (value) => setField('importanceWeight', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('projectRecallBoost'),
-              hint: t('projectRecallBoostHint'),
-              type: 'number',
-              value: draft.projectRecallBoost,
-              onChange: (value) => setField('projectRecallBoost', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('hygieneIntervalDays'),
-              hint: t('hygieneIntervalDaysHint'),
-              type: 'number',
-              value: draft.hygieneIntervalDays,
-              onChange: (value) => setField('hygieneIntervalDays', value === '' ? '' : Number(value)),
-            }),
-          ),
-          maintenanceMeta.length > 0
-            ? h('p', { className: 'mem0-activity-meta' }, maintenanceMeta.join(' · '))
-            : null,
-          lastReport
-            ? h(
-                'p',
-                { className: 'mem0-activity-meta' },
-                `${t('hygieneLastReport')} · ${hygieneReason(t, lastReport.reason)}${
-                  lastReport.finishedAt ? ` · ${activityTime(lastReport.finishedAt)}` : ''
-                } · ${formatHygieneReport(t, lastReport)}`,
-              )
-            : null,
-          lastReport
-            ? h(
-                'details',
-                { className: 'mem0-details mem0-report-details' },
-                h('summary', null, t('hygieneDetails')),
-                h(
-                  'div',
-                  { className: 'mem0-report-grid' },
-                  h('span', null, `${t('hygieneReportWindow')}: ${activityTime(lastReport.startedAt)} → ${activityTime(lastReport.finishedAt)}`),
-                  h('span', null, `${t('hygieneReportDuration')}: ${lastReport.durationMs ?? '—'} ms`),
-                  h('span', null, `${t('hygieneReportStore')}: ${lastReport.storeBefore ?? lastReport.scanned ?? 0} → ${lastReport.storeCount ?? 0}`),
-                  h('span', null, `${t('hygieneReportStoreTokens')}: ${lastReport.storeTokensBefore ?? 0} → ${lastReport.storeTokens ?? 0}`),
-                  h('span', null, `${t('hygieneReportProfile')}: ${lastReport.profileItems ?? 0} · ${lastReport.profileTokens ?? 0} tok`),
-                ),
-                ['duplicateDetails', 'mergedDetails', 'deletedDetails', 'failedDetails', 'prunedDetails'].some((key) => Array.isArray(lastReport[key]))
-                  ? h(
-                      'div',
-                      { className: 'mem0-report-details-list' },
-                      lastReport.dryRun
-                        ? reportDetail(t, `${t('hygienePlannedDetails')} (${lastReport.planned ?? 0})`, lastReport.plannedDetails, (item) => reportItem(t, item))
-                        : null,
-                      reportDetail(t, t('hygieneDuplicateDetails'), lastReport.duplicateDetails, (item) => reportItem(t, item)),
-                      Array.isArray(lastReport.prunedDetails) ? reportDetail(t, t('hygienePrunedDetails'), lastReport.prunedDetails, (item) => reportItem(t, item)) : null,
-                      reportDetail(t, t('hygieneMergeDetails'), lastReport.dryRun ? lastReport.mergePlan : lastReport.mergedDetails, (item) => mergeLine(t, reportTexts, item)),
-                      reportDetail(t, t('hygieneImportanceDetails'), lastReport.reviewDetails, (item) => importanceLine(t, reportTexts, item)),
-                      reportDetail(t, t('hygieneDeletedDetails'), lastReport.deletedDetails, (item) => reportItem(t, item)),
-                      reportDetail(t, t('hygieneFailedDetails'), lastReport.failedDetails, (item) => `${item.id}: ${item.error}`),
-                    )
-                  : h('p', { className: 'mem0-hint' }, t('hygieneLegacyDetails')),
-              )
-            : null,
-          maintenance?.lastError
-            ? h('p', { className: 'mem0-error' }, `${t('hygieneFailed')}: ${maintenance.lastError}`)
-            : null,
-          hygieneMessage
-            ? h(
-                'p',
-                { className: hygieneState === 'error' ? 'mem0-error' : 'mem0-hint' },
-                hygieneState === 'error'
-                  ? `${t('hygieneFailed')}: ${hygieneMessage}`
-                  : hygieneState === 'cancelled'
-                    ? hygieneMessage
-                    : `${t('hygieneOk')}: ${hygieneMessage}`,
-              )
-            : null,
-        ),
-        h(
-          'details',
-          { className: 'mem0-details' },
-          h('summary', null, t('advanced')),
-          h(
-            'div',
-            { className: 'mem0-grid' },
-            h(TextField, {
-              label: t('captureMaxChars'),
-              hint: t('captureMaxCharsHint'),
-              type: 'number',
-              value: draft.captureMaxChars,
-              onChange: (value) => setField('captureMaxChars', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('recallTopK'),
-              hint: t('recallTopKHint'),
-              type: 'number',
-              value: draft.recallTopK,
-              onChange: (value) => setField('recallTopK', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('timeoutMs'),
-              hint: t('timeoutMsHint'),
-              type: 'number',
-              value: draft.timeoutMs,
-              onChange: (value) => setField('timeoutMs', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('recallTimeoutMs'),
-              hint: t('recallTimeoutMsHint'),
-              type: 'number',
-              value: draft.recallTimeoutMs,
-              onChange: (value) => setField('recallTimeoutMs', value === '' ? '' : Number(value)),
-            }),
-            h(TextField, {
-              label: t('addTimeoutMs'),
-              hint: t('addTimeoutMsHint'),
-              type: 'number',
-              value: draft.addTimeoutMs,
-              onChange: (value) => setField('addTimeoutMs', value === '' ? '' : Number(value)),
-            }),
-            draft.backend === 'oss'
-              ? h(TextField, {
-                  label: t('captureTurnDedupThreshold'),
-                  hint: t('captureTurnDedupThresholdHint'),
-                  type: 'number',
-                  value: draft.captureTurnDedupThreshold,
-                  onChange: (value) => setField('captureTurnDedupThreshold', value === '' ? '' : Number(value)),
-                })
-              : null,
-            draft.backend === 'oss'
-              ? h(TextField, {
-                  label: t('embedderKeepAlive'),
-                  hint: t('embedderKeepAliveHint'),
-                  value: draft.embedderKeepAlive,
-                  onChange: (value) => setField('embedderKeepAlive', value.trim()),
-                })
-              : null,
-          ),
-        ),
-        h(
-          'div',
-          { className: 'mem0-actions' },
-          h(
-            'button',
-            {
-              type: 'button',
-              className: 'mem0-primary',
-              onClick: () => void save(),
-              disabled: !snapshot.writable || saveState === 'saving' || !dirty,
+          )
+        : null
+
+      let body
+      if (tab === 'settings') {
+        body = h(SettingsTab, {
+          t,
+          draft,
+          setField,
+          backend: {
+            choose: (id) => void chooseBackend(id),
+            switchPrompt,
+            openWizard,
+            switchAnyway: () => {
+              setSwitchPrompt(null)
+              setField('backend', 'oss')
             },
-            saveState === 'saving' ? t('saving') : t('save'),
-          ),
-          h(
-            'button',
-            {
-              type: 'button',
-              className: 'mem0-secondary',
-              onClick: () => void test(),
-              disabled: saveState === 'saving' || testState === 'testing',
+          },
+          connection: {
+            apiKey,
+            setApiKey,
+            keyConfigured,
+            test: () => void test(),
+            testState,
+            testDisabled: saveState === 'saving' || testState === 'testing',
+          },
+          storePlaceholder: storePathPlaceholder(initial, status.data),
+        })
+      } else if (tab === 'maintenance') {
+        body = h(MaintenanceTab, {
+          t,
+          draft,
+          setField,
+          data,
+          status,
+          hygiene: { run: () => void runHygiene(), state: hygieneState, message: hygieneMessage },
+          reportTexts,
+          local: { openWizard, wizardOpen, wizard, copyPath: (path) => void copyPath(path), copied: pathCopied },
+          diagnostics: { issue: diagnosticsIssue, open: diagnosticsOpen || diagnosticsIssue },
+        })
+      } else {
+        body = h(
+          React.Fragment,
+          null,
+          h(ActivityCard, { t, data, onRefresh: () => void refreshStatus(), refreshing: status.phase === 'loading', onJump: (id) => void jumpToMemory(id) }),
+          h(MemoryLibrary, {
+            t,
+            backend: data?.backend,
+            tree: memoryTree,
+            library: {
+              query: memoryQuery,
+              filter: libraryFilter,
+              project: libraryProject,
+              order: libraryOrder,
+              page: libraryPage,
+              state: memoryState,
+              list: sortedMemories,
+              expanded: expandedMemory,
+              flash: flashMemory,
+              notice: libraryNotice,
+              deleting: deleteState.outcome === 'deleting' ? deleteState.id : null,
             },
-            testState === 'testing' ? t('testing') : t('test'),
-          ),
-          dirty
-            ? h('button', { type: 'button', className: 'mem0-secondary', onClick: discard }, t('reset'))
-            : null,
-          dirty ? h('span', { className: 'mem0-actions-note' }, t('unsaved')) : null,
-          saveState === 'saved' ? h('span', { className: 'mem0-saved' }, t('saved')) : null,
-          saveState === 'error' ? h('span', { className: 'mem0-error' }, saveMessage) : null,
-          testState === 'ok' ? h('span', { className: 'mem0-saved' }, t('testOk')) : null,
-          testState === 'error' ? h('span', { className: 'mem0-error' }, t('testFailed')) : null,
-        ),
-        h('p', { className: 'mem0-sub' }, t('whatNext')),
+            actions: libraryActions,
+          }),
+          h(SummaryCard, { t, maintenance: data?.maintenance ?? null, enabled: draft.profileEnabled, profileText, profile }),
+        )
+      }
+
+      return h(
+        'div',
+        { className: 'mem0-page' },
+        h(PageHeader, {
+          t,
+          view: headerView,
+          enabled: draft.enabled,
+          onToggleEnabled: (value) => setField('enabled', value),
+          onCheck: () => void refreshStatus(),
+          checking: status.phase === 'loading',
+        }),
+        h(Banners, { t, items: banners, onAction: onBannerAction }),
+        h(TabBar, { t, tab, onSelect: setTab, memoryCount, maintenanceIssue }),
         !snapshot.writable ? h('p', { className: 'mem0-error' }, t('readOnly')) : null,
+        h('div', { className: 'mem0-tab-body', role: 'tabpanel' }, body),
+        h(SaveBar, { t, dirty, saveState, saveMessage, onSave: () => void save(), onDiscard: discard, writable: snapshot.writable }),
+        h(DeleteDialog, { t, dialog: deleteDialog, onCancel: () => answerDelete(false), onConfirm: () => answerDelete(true) }),
       )
     }
 
@@ -5815,6 +6314,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKeys, sortMemories, pageOf, pageContaining, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
   },
 })
