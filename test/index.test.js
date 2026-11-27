@@ -109,8 +109,8 @@ test('the default config registers tools, guidance, summary section, recall and 
   t.after(() => ctx.close())
   await apply(ctx, PLATFORM)
   assert.deepEqual([...ctx.tools.registered].sort(), [
-    'mem0_add', 'mem0_delete', 'mem0_get', 'mem0_profile_get', 'mem0_profile_reset',
-    'mem0_profile_update', 'mem0_search', 'mem0_status', 'mem0_update',
+    'mem0_add', 'mem0_check', 'mem0_delete', 'mem0_get', 'mem0_profile_get', 'mem0_profile_reset',
+    'mem0_profile_update', 'mem0_search', 'mem0_setting_set', 'mem0_status', 'mem0_update',
   ])
   assert.deepEqual(ctx.sections.map((section) => section.name), ['plugin:dsh-mem0', PROFILE_SECTION_NAME])
   assert.equal(ctx.listeners.get('system-prompt/assemble')?.length, 1)

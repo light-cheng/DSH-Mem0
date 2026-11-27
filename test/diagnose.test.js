@@ -480,8 +480,15 @@ test('prepare: both prompts from the stored entry, fingerprint, existing session
   assert.equal(first.status, 200)
   for (const text of [first.body.texts.each, first.body.texts.skip]) {
     assert.match(text, /stored copy api_key=\[REDACTED\]/)
-    assert.ok(text.includes(path.join(dir, 'dsh-mem0', 'failures.json')))
+    // Checked with mem0_check in the session: no file path to read.
+    assert.ok(!text.includes(path.join(dir, 'dsh-mem0', 'failures.json')))
+    assert.match(text, /查用 mem0_check（和设置页同一套检测，已脱敏）/)
+    assert.match(text, /配置类问题[^\n]*mem0_setting_set[\s\S]*数据类问题[\s\S]*外部类问题/)
   }
+  assert.match(first.body.texts.skip, /但 mem0_delete、mem0_profile_reset、mem0_setting_set 仍会弹确认/)
+  // Copied text, pasted where the tools do not exist, keeps the plain checks.
+  assert.doesNotMatch(first.body.copyText, /mem0_check|mem0_setting_set/)
+  assert.match(first.body.copyText, /mem0_status/)
   assert.notEqual(first.body.texts.each, first.body.texts.skip)
   assert.doesNotMatch(first.body.texts.each + first.body.texts.skip + first.body.copyText, /green tea|abcdefghijklmnop/)
   assert.equal(first.body.sessionId, null)
@@ -522,7 +529,11 @@ test('the default model is remembered and saved back; without DSH\'s model servi
 
 test('confirmation each time: every memory-writing tool asks; with "no confirmation" only delete and summary reset ask', async () => {
   assert.deepEqual([...DIAGNOSE_WRITE_TOOLS].sort(), ['mem0_add', 'mem0_delete', 'mem0_pin', 'mem0_profile_reset', 'mem0_profile_update', 'mem0_update'])
-  assert.deepEqual([...DIAGNOSE_ALWAYS_CONFIRM], ['mem0_delete', 'mem0_profile_reset'])
+  assert.deepEqual([...DIAGNOSE_ALWAYS_CONFIRM], ['mem0_delete', 'mem0_profile_reset', 'mem0_setting_set'])
+  // The setting tool asks whatever was ticked; the check tool never does.
+  assert.equal(diagnoseToolDecision('mem0_setting_set'), 'ask')
+  assert.equal(diagnoseToolDecision('mem0_setting_set', { skipConfirm: true }), 'ask')
+  assert.equal(diagnoseToolDecision('mem0_check', { skipConfirm: true }), null)
   for (const name of DIAGNOSE_WRITE_TOOLS) assert.equal(diagnoseToolDecision(name), 'ask', name)
   for (const name of ['mem0_update', 'mem0_pin', 'mem0_add', 'mem0_profile_update']) assert.equal(diagnoseToolDecision(name, { skipConfirm: true }), null, name)
   for (const name of ['mem0_delete', 'mem0_profile_reset']) assert.equal(diagnoseToolDecision(name, { skipConfirm: true }), 'ask', name)
