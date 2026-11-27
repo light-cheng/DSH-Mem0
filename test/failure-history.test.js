@@ -22,6 +22,7 @@ import { Mem0RestClient, Mem0RestError } from '../lib/rest-client.js'
 import { ProviderError, postJson } from '../lib/providers.js'
 import { storeError } from '../lib/store-sqlite.js'
 import { failureAttribution } from '../lib/http.js'
+import { handleFailuresAcknowledged } from '../lib/settings-routes.js'
 
 function tempFile() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-failures-'))
@@ -317,6 +318,9 @@ test('a later success does not erase the failure history', async () => {
   assert.equal(list[0].cause, 'auth')
   assert.equal(list[0].status, 401)
   assert.ok(Number.isFinite(list[0].durationMs))
+  // Kept, but marked recovered by the later successful recall.
+  assert.equal(list[0].recovered, true)
+  assert.ok(Date.parse(list[0].recoveredAt) >= Date.parse(list[0].at))
 })
 
 test('capture failures and circuit-breaker skips are recorded', async () => {
@@ -651,4 +655,187 @@ test('extraction stats (finish_reason, token counts) reach the error and the sto
   const [first, second] = new FailureHistory({ filePath: file }).list()
   assert.deepEqual(first.extract, { finishReason: 'length', maxTokens: 2000 })
   assert.equal('extract' in second, false)
+})
+
+// --- recovery: a later success of the same kind -----------------------------
+
+function clockedHistory(options = {}) {
+  let clock = Date.parse('2026-11-25T05:00:00Z')
+  const tick = (ms = 1000) => (clock += ms)
+  const history = new FailureHistory({ now: () => new Date(clock), ...options })
+  return { history, tick }
+}
+
+test('recovery: a later success of the same kind recovers the failure; another kind does not', () => {
+  const { history, tick } = clockedHistory()
+  history.record({ kind: 'recall', error: withCode('connect ECONNREFUSED 127.0.0.1:8000', 'ECONNREFUSED') })
+  assert.equal(history.list()[0].recovered, false)
+  assert.equal('recoveredAt' in history.list()[0], false)
+  tick()
+  assert.equal(history.recordSuccess('capture'), false, 'another kind recovers nothing')
+  assert.equal(history.list()[0].recovered, false)
+  tick()
+  assert.equal(history.recordSuccess('recall'), true)
+  const [entry] = history.list()
+  assert.equal(entry.recovered, true)
+  assert.equal(entry.recoveredAt, '2026-11-25T05:00:02.000Z')
+  assert.equal(history.recordSuccess('skipped'), false, 'unknown kinds are ignored')
+})
+
+test('recovery: a failure after the success has not recovered', () => {
+  const { history, tick } = clockedHistory()
+  history.recordSuccess('capture')
+  tick()
+  history.record({ kind: 'capture', error: new Error('HTTP 500 boom') })
+  assert.equal(history.list()[0].recovered, false)
+  tick()
+  history.recordSuccess('capture')
+  assert.equal(history.list()[0].recovered, true)
+})
+
+test('recovery: a process exit recovers on any later success; circuit and config entries by their kind', () => {
+  const { history, tick } = clockedHistory({ backend: 'oss' })
+  history.record({ kind: 'capture', error: Object.assign(new Error('fetch failed'), { code: 'NETWORK_ERROR', signal: 'SIGKILL', uptimeMs: 300 }) })
+  tick()
+  history.record({ kind: 'recall', circuit: true, message: 'skipped: circuit breaker open', durationMs: 0 })
+  tick()
+  history.record({ kind: 'maintenance', error: Object.assign(new Error('no embedder configured'), { configError: true }) })
+  tick()
+  history.recordSuccess('summary')
+  const byCause = (list) => Object.fromEntries(list.map((entry) => [entry.cause, entry.recovered]))
+  const before = history.list()
+  assert.equal(before.find((entry) => entry.signal === 'SIGKILL').recovered, true, 'any success after an exit')
+  assert.equal(byCause(before).circuit, false)
+  assert.equal(byCause(before).config, false)
+  tick()
+  history.recordSuccess('recall')
+  assert.equal(byCause(history.list()).circuit, true)
+  assert.equal(byCause(history.list()).config, false)
+  tick()
+  history.recordSuccess('maintenance')
+  assert.equal(byCause(history.list()).config, true)
+})
+
+test('recovery: stored on disk and kept across a restart', () => {
+  const file = tempFile()
+  let clock = Date.parse('2026-11-25T05:00:00Z')
+  const now = () => new Date(clock)
+  const first = new FailureHistory({ filePath: file, now })
+  first.record({ kind: 'recall', error: new Error('HTTP 500 boom') })
+  clock += 1000
+  first.recordSuccess('recall')
+  const stored = JSON.parse(fs.readFileSync(file, 'utf8'))
+  assert.equal(stored.version, 1)
+  assert.deepEqual(stored.lastOk, { recall: '2026-11-25T05:00:01.000Z' })
+  const reloaded = new FailureHistory({ filePath: file, now })
+  assert.equal(reloaded.list()[0].recovered, true)
+  assert.equal(reloaded.list()[0].recoveredAt, '2026-11-25T05:00:01.000Z')
+})
+
+test('recovery: a file without lastOk (earlier versions) reads as no success', () => {
+  const file = tempFile()
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [{ at: '2026-11-25T05:00:00Z', kind: 'capture', cause: 'timeout', message: 'old' }] }))
+  const history = new FailureHistory({ filePath: file })
+  assert.deepEqual(history.lastOk, {})
+  assert.equal(history.acknowledgedAt, null)
+  assert.equal(history.list()[0].recovered, false)
+  // Junk in lastOk is dropped.
+  fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [], lastOk: { recall: 'nope', capture: '2026-11-25T06:00:00Z', other: '2026-11-25T06:00:00Z' } }))
+  assert.deepEqual(new FailureHistory({ filePath: file }).lastOk, { capture: '2026-11-25T06:00:00.000Z' })
+})
+
+test('recovery: a success that recovers nothing is not written to disk', () => {
+  const file = tempFile()
+  let clock = Date.parse('2026-11-25T05:00:00Z')
+  const history = new FailureHistory({ filePath: file, now: () => new Date(clock) })
+  history.recordSuccess('recall')
+  assert.equal(fs.existsSync(file), false, 'no entries: nothing to write')
+  clock += 1000
+  history.record({ kind: 'capture', error: new Error('HTTP 500 boom') })
+  const written = fs.readFileSync(file, 'utf8')
+  clock += 1000
+  history.recordSuccess('recall')
+  assert.equal(fs.readFileSync(file, 'utf8'), written, 'another kind: the file is unchanged')
+  clock += 1000
+  history.recordSuccess('capture')
+  assert.notEqual(fs.readFileSync(file, 'utf8'), written)
+  const again = fs.readFileSync(file, 'utf8')
+  clock += 1000
+  history.recordSuccess('capture')
+  assert.equal(fs.readFileSync(file, 'utf8'), again, 'already recovered: no second write')
+  // The in-memory time still moves on.
+  assert.equal(history.lastOk.capture, '2026-11-25T05:00:04.000Z')
+})
+
+test('acknowledge: stored as acknowledgedAt and kept across a restart', () => {
+  const file = tempFile()
+  const history = new FailureHistory({ filePath: file })
+  history.record({ kind: 'recall', error: new Error('HTTP 500 boom') })
+  const at = history.list()[0].at
+  assert.equal(history.acknowledge('not a time'), null)
+  assert.equal(history.acknowledge(at), at)
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).acknowledgedAt, at)
+  assert.equal(new FailureHistory({ filePath: file }).acknowledgedAt, at)
+})
+
+test('successful capture, maintenance and summary calls recover their failures; skips do not', async () => {
+  const failures = new FailureHistory({ backend: 'server' })
+  let fail = true
+  const client = {
+    async add() {
+      if (fail) throw new Mem0RestError('Mem0 POST /add failed: HTTP 500', { code: 'BACKEND_ERROR', status: 500 })
+      return { results: [{ id: 'm1', memory: 'Prefers oolong tea', event: 'ADD' }] }
+    },
+    async search() {
+      return { results: [] }
+    },
+    async list() {
+      if (fail) throw new Mem0RestError('Mem0 GET /memories aborted', { code: 'ABORTED', cause: new Error('request timed out after 30000ms') })
+      return { results: [] }
+    },
+  }
+  const { lifecycle } = lifecycleWith(client, failures)
+  const s = session([])
+  const turn = (text) => {
+    lifecycle.onSessionEvent(s, { type: 'turn/start' })
+    lifecycle.onSessionEvent(s, { type: 'user/message', data: { role: 'user', content: text, source: { kind: 'user' } } })
+    lifecycle.onSessionEvent(s, { type: 'assistant/message', data: { message: { content: 'Noted, I will remember that you prefer oolong tea.' } } })
+    lifecycle.onSessionEvent(s, { type: 'turn/end', data: { reason: { kind: 'completed' } } })
+  }
+  const maintenance = new MemoryMaintenance({
+    client,
+    config: { userId: 'dsh-mem0-failure-test-user', hygieneEnabled: true, profileEnabled: true, profileBudgetTokens: 400 },
+    activity: {},
+    logger: { warn() {}, debug() {} },
+    failures,
+  })
+  turn('Please remember that I prefer oolong tea over coffee.')
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  await assert.rejects(maintenance.run('manual'))
+  await assert.rejects(maintenance.run('startup', { profileOnly: true }))
+  const recovered = () => Object.fromEntries(failures.list().map((entry) => [entry.kind, entry.recovered]))
+  assert.deepEqual(recovered(), { summary: false, maintenance: false, capture: false })
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  fail = false
+  // A too-short turn is skipped, not a success.
+  turn('ok')
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(recovered().capture, false)
+  turn('Also remember that I live in the UTC+8 time zone, please.')
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(recovered().capture, true)
+  await maintenance.run('manual')
+  assert.deepEqual(recovered(), { summary: false, maintenance: true, capture: true })
+  await maintenance.run('startup', { profileOnly: true })
+  assert.deepEqual(recovered(), { summary: true, maintenance: true, capture: true })
+})
+
+test('the acknowledge route stores the time the page sent, and refuses a bad one', () => {
+  const failures = new FailureHistory({})
+  assert.equal(handleFailuresAcknowledged({}, { at: '2026-11-25T05:00:00Z' }).status, 404)
+  assert.equal(handleFailuresAcknowledged({ failures }, { at: 'soon' }).status, 400)
+  const outcome = handleFailuresAcknowledged({ failures }, { action: 'acknowledge', at: '2026-11-25T05:00:00Z' })
+  assert.deepEqual(outcome, { status: 200, body: { ok: true, acknowledgedAt: '2026-11-25T05:00:00.000Z' } })
+  assert.equal(failures.acknowledgedAt, '2026-11-25T05:00:00.000Z')
 })

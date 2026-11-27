@@ -19,6 +19,7 @@ window.__ModuleLoader__.load({
     const PROFILE_PATH = 'dsh-mem0/gui/profile'
     const SETUP_PATH = 'dsh-mem0/gui/setup'
     const PROFILE_PATCH_PATH = 'dsh-mem0/gui/profile-patch'
+    const FAILURES_PATH = 'dsh-mem0/gui/failures'
 
     // The settings page's UI strings live only here (en + zh, same keys;
     // test/client.test.js checks parity). locale/*.json carry just the package
@@ -305,7 +306,8 @@ window.__ModuleLoader__.load({
       dockLatestFailure: 'Latest memory failure',
       dockNoFailureDetail: 'No failure details recorded.',
       failuresTitle: 'Recent failures',
-      failuresHint: 'The last 20 failures, newest first. Kept across restarts; a later success does not clear them.',
+      failuresHint: 'The last 20 failures, newest first. Kept across restarts; once the same kind of call succeeds, a failure is marked recovered and its record stays.',
+      failureRecovered: 'Recovered · {time}',
       failuresEmpty: 'No memory failures recorded.',
       failureKind_capture: 'Capture',
       failureKind_recall: 'Recall',
@@ -730,7 +732,9 @@ window.__ModuleLoader__.load({
       tabMaintenance: 'Maintenance',
       bannerNotConnected: 'Not connected to the memory backend: {error}',
       bannerCircuit: 'Automatic memory is paused after repeated failures.',
-      bannerFailures: 'Memory failures in the last 24 hours: {count}.',
+      bannerFailuresOne: '{count} memory problem not recovered yet.',
+      bannerFailuresMany: '{count} memory problems not recovered yet.',
+      bannerAcknowledge: 'Got it',
       bannerWizard: 'Open setup wizard',
       bannerDiagnostics: 'View diagnostics',
       bannerSettings: 'Open settings',
@@ -795,6 +799,8 @@ window.__ModuleLoader__.load({
       diagTitle: 'Diagnostics',
       diagMetaIssue: 'Connection details, store, recent failures',
       diagMetaOk: 'All good',
+      diagMetaRecoveredOne: 'All good · {count} recovered failure',
+      diagMetaRecoveredMany: 'All good · {count} recovered failures',
       discard: 'Discard',
     }
 
@@ -1077,7 +1083,8 @@ window.__ModuleLoader__.load({
       dockLatestFailure: '最近一次记忆失败',
       dockNoFailureDetail: '没有记录到失败详情。',
       failuresTitle: '最近失败',
-      failuresHint: '最近 20 次失败，最新的在前。重启后仍保留，之后的成功不会清掉它们。',
+      failuresHint: '最近 20 次失败，最新的在前。重启后仍保留；之后同类操作成功会标为已恢复，记录本身不删。',
+      failureRecovered: '已恢复 · {time}',
       failuresEmpty: '没有记忆失败记录。',
       failureKind_capture: '自动保存',
       failureKind_recall: '自动召回',
@@ -1502,7 +1509,9 @@ window.__ModuleLoader__.load({
       tabMaintenance: '维护',
       bannerNotConnected: '还没连上记忆后端：{error}',
       bannerCircuit: '连续失败后，自动记忆暂时停用。',
-      bannerFailures: '最近 24 小时有 {count} 次记忆失败。',
+      bannerFailuresOne: '有 {count} 个记忆问题还没恢复。',
+      bannerFailuresMany: '有 {count} 个记忆问题还没恢复。',
+      bannerAcknowledge: '知道了',
       bannerWizard: '打开配置向导',
       bannerDiagnostics: '查看诊断',
       bannerSettings: '去设置',
@@ -1567,6 +1576,8 @@ window.__ModuleLoader__.load({
       diagTitle: '诊断',
       diagMetaIssue: '连接详情、存储状态、最近失败',
       diagMetaOk: '一切正常',
+      diagMetaRecoveredOne: '一切正常 · {count} 条已恢复的失败记录',
+      diagMetaRecoveredMany: '一切正常 · {count} 条已恢复的失败记录',
       discard: '放弃',
     }
 
@@ -1719,6 +1730,8 @@ window.__ModuleLoader__.load({
       .mem0-failure{border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
       .mem0-failure-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-primary)}
       .mem0-failure-msg{font-size:12px;color:var(--dsw-alias-label-secondary);word-break:break-word;margin:0}
+      .mem0-failure-recovered .mem0-failure-head{color:var(--dsw-alias-label-secondary)}
+      .mem0-failure-recovered-tag{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary)}
       .mem0-wz{display:flex;flex-direction:column;gap:10px}
       .mem0-wz-steps{display:flex;flex-wrap:wrap;gap:6px}
       .mem0-wz-step{border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:transparent;padding:4px 10px;font:inherit;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer}
@@ -3931,16 +3944,19 @@ window.__ModuleLoader__.load({
                   meta.push(template(t('failureExit'), { how: exitHow(t, failure), uptime: formatDuration(failure.uptimeMs) }))
                 }
                 if (failure.retry === 'failed') meta.push(t('failureRetryFailed'))
+                // Kept in the list after a later success, dimmed and marked.
+                const recovered = failure.recovered === true
                 return h(
                   'div',
-                  { className: 'mem0-failure', key: `${failure.at}-${index}` },
+                  { className: recovered ? 'mem0-failure mem0-failure-recovered' : 'mem0-failure', key: `${failure.at}-${index}` },
                   h(
                     'div',
                     { className: 'mem0-failure-head' },
-                    h('span', { className: 'mem0-chip mem0-state-error' }, failureCauseLabel(t, failure)),
+                    h('span', { className: recovered ? 'mem0-chip' : 'mem0-chip mem0-state-error' }, failureCauseLabel(t, failure)),
                     h('strong', null, t(`failureKind_${failure.kind}`)),
                     h('span', { className: 'mem0-chip' }, failureComponentLabel(t, failure)),
                     h('span', { className: 'mem0-activity-meta' }, meta.filter(Boolean).join(' · ')),
+                    recovered ? h('span', { className: 'mem0-failure-recovered-tag' }, template(t('failureRecovered'), { time: activityTime(failure.recoveredAt) })) : null,
                   ),
                   failureMessage(t, failure) ? h('p', { className: 'mem0-failure-msg' }, failureMessage(t, failure)) : null,
                 )
@@ -5352,7 +5368,7 @@ window.__ModuleLoader__.load({
      * Problems that need the user, newest-first priority, each with where to
      * fix it ('wizard', 'diagnostics' or 'settings'). Nothing when all is well. Pure.
      */
-    function bannerItems(t, data, { phase, message, enabled = true, now = Date.now() } = {}) {
+    function bannerItems(t, data, { phase, message, enabled = true } = {}) {
       const items = []
       const warning = data?.configWarning
       if (warning?.missing?.length || warning?.backup) {
@@ -5388,14 +5404,45 @@ window.__ModuleLoader__.load({
       if (enabled && [activity.capture, activity.recall].some((record) => record?.status === 'skipped' && record.reason === 'circuit-open')) {
         items.push({ code: 'circuit', text: t('bannerCircuit'), action: 'diagnostics' })
       }
-      const recent = (Array.isArray(data?.failures) ? data.failures : []).filter((failure) => {
-        const at = Date.parse(failure?.at)
-        return Number.isFinite(at) && now - at < 24 * 3600 * 1000
-      })
-      if (recent.length > 0 && !items.some((item) => item.code === 'circuit')) {
-        items.push({ code: 'failures', text: template(t('bannerFailures'), { count: recent.length }), action: 'diagnostics' })
+      // Entries, not occurrences: 16 folded failures are one problem.
+      const open = openFailures(data)
+      if (open.length > 0 && !items.some((item) => item.code === 'circuit')) {
+        items.push({
+          code: 'failures',
+          text: template(t(open.length === 1 ? 'bannerFailuresOne' : 'bannerFailuresMany'), { count: open.length }),
+          action: 'diagnostics',
+          secondary: 'acknowledge',
+          // "Got it" stores the newest unrecovered failure: only newer ones bring the banner back.
+          at: open.reduce((latest, failure) => (Date.parse(failure.at) > Date.parse(latest) ? failure.at : latest), open[0].at),
+        })
       }
       return items
+    }
+
+    /**
+     * Failures that have not recovered (no later success of their kind) and
+     * are newer than the one the user acknowledged with "Got it". Pure.
+     */
+    function openFailures(data) {
+      const acknowledged = Date.parse(data?.failuresAcknowledgedAt ?? '')
+      return (Array.isArray(data?.failures) ? data.failures : []).filter((failure) => {
+        const at = Date.parse(failure?.at)
+        if (!Number.isFinite(at) || failure.recovered === true) return false
+        return !Number.isFinite(acknowledged) || at > acknowledged
+      })
+    }
+
+    /**
+     * The diagnostics card's meta line: orange only while a banner points to
+     * diagnostics or the connection failed; else "All good", with the number
+     * of recovered failures still listed. Pure.
+     */
+    function diagnosticsMeta(t, { data, banners = [], phase } = {}) {
+      const issue = banners.some((item) => item.action === 'diagnostics') || phase === 'error' || data?.ok === false
+      if (issue) return { issue: true, text: t('diagMetaIssue') }
+      const recovered = (Array.isArray(data?.failures) ? data.failures : []).filter((failure) => failure?.recovered === true).length
+      if (recovered > 0) return { issue: false, text: template(t(recovered === 1 ? 'diagMetaRecoveredOne' : 'diagMetaRecoveredMany'), { count: recovered }) }
+      return { issue: false, text: t('diagMetaOk') }
     }
 
     /**
@@ -5596,7 +5643,7 @@ window.__ModuleLoader__.load({
 
     function Banners({ t, items, onAction }) {
       if (items.length === 0) return null
-      const label = { wizard: 'bannerWizard', diagnostics: 'bannerDiagnostics', settings: 'bannerSettings', restore: 'bannerRestore', dismiss: 'bannerDismiss' }
+      const label = { wizard: 'bannerWizard', diagnostics: 'bannerDiagnostics', settings: 'bannerSettings', restore: 'bannerRestore', dismiss: 'bannerDismiss', acknowledge: 'bannerAcknowledge' }
       return h(
         'div',
         { className: 'mem0-banners' },
@@ -6079,7 +6126,7 @@ window.__ModuleLoader__.load({
         local.wizard,
         h(
           FoldCard,
-          { id: 'mem0-diagnostics', title: t('diagTitle'), meta: diagnostics.issue ? t('diagMetaIssue') : t('diagMetaOk'), metaWarn: diagnostics.issue, open: diagnostics.open },
+          { id: 'mem0-diagnostics', title: t('diagTitle'), meta: diagnostics.meta ?? (diagnostics.issue ? t('diagMetaIssue') : t('diagMetaOk')), metaWarn: diagnostics.issue, open: diagnostics.open },
           h(StatusGrid, { items: statusItemsFor(t, data) }),
           status.phase === 'error' || data?.ok === false ? h('p', { className: 'mem0-error' }, data?.error ?? status.message) : null,
           data?.store ? h(StoreStatus, { t, store: data.store }) : null,
@@ -6534,6 +6581,21 @@ window.__ModuleLoader__.load({
         await refreshStatus()
       }
 
+      // "Got it" on the failure banner: the plugin stores the newest
+      // unrecovered failure; only a newer one shows the banner again.
+      const acknowledgeFailures = async (at) => {
+        try {
+          await fetchJson(FAILURES_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'acknowledge', at }),
+          })
+        } catch {
+          // the banner stays; nothing else depends on it
+        }
+        await refreshStatus()
+      }
+
       const applySaved = (next) => {
         setInitial(next)
         setDraft(next)
@@ -6770,7 +6832,8 @@ window.__ModuleLoader__.load({
       const headerView = headerStatusView(t, { phase: status.phase, data, enabled: initial?.enabled !== false, memoryCount })
       const banners = bannerItems(t, data, { phase: status.phase, message: status.message, enabled: initial?.enabled !== false })
       const maintenanceIssue = banners.some((item) => item.action === 'wizard' || item.action === 'diagnostics')
-      const diagnosticsIssue = banners.some((item) => item.action === 'diagnostics') || status.phase === 'error' || data?.ok === false
+      const diagnosticsView = diagnosticsMeta(t, { data, banners, phase: status.phase })
+      const diagnosticsIssue = diagnosticsView.issue
       const profile = {
         draft: profileDraft,
         editing: profileEditing,
@@ -6794,6 +6857,7 @@ window.__ModuleLoader__.load({
         if (action === 'wizard') return openWizard()
         if (action === 'restore') return void restoreFromBackup(item?.file ?? '')
         if (action === 'dismiss') return void dismissBackup(item?.file ?? '')
+        if (action === 'acknowledge') return void acknowledgeFailures(item?.at ?? '')
         if (action === 'diagnostics') {
           setTab('maintenance')
           setDiagnosticsOpen(true)
@@ -6855,7 +6919,7 @@ window.__ModuleLoader__.load({
           hygiene: { run: () => void runHygiene(), state: hygieneState, message: hygieneMessage },
           reportTexts,
           local: { openWizard, wizardOpen, wizard, copyPath: (path) => void copyPath(path), copied: pathCopied },
-          diagnostics: { issue: diagnosticsIssue, open: diagnosticsOpen || diagnosticsIssue },
+          diagnostics: { issue: diagnosticsIssue, meta: diagnosticsView.text, open: diagnosticsOpen || diagnosticsIssue },
         })
       } else {
         body = h(
@@ -6950,6 +7014,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
   },
 })
