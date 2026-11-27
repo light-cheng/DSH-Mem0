@@ -313,7 +313,7 @@ export async function apply(ctx, rawConfig) {
   // DSH's permission presets do not cover plugin tools: in diagnosis
   // sessions the plugin asks before its write tools (delete and summary
   // reset always) and refuses credential reads and cordis.patch.yml edits.
-  ctx.on('tools/pre-execute', createDiagnoseGate(diagnoseSessions, { lookup: lookupSession }))
+  ctx.on('tools/pre-execute', createDiagnoseGate(diagnoseSessions, { lookup: lookupSession, lang: () => runtime.diagnoseSkill?.lang }))
 
   if (config.autoRecall) {
     // The memory summary is a system-prompt section, not a runtime context:

@@ -215,17 +215,28 @@ test('without the host services (DSH 0.2.1) the page offers only Copy diagnosis'
   assert.ok(diagnoseServices({ get: (name) => all[name] }))
   assert.equal(diagnoseServices({ get: (name) => (name === 'workspaces' ? undefined : all[name]) }), null)
   const t = (key) => key
+  // Every row: [hint | buttons on the right], then the status line.
+  const parts = (tree) => {
+    const [row] = tree.children.filter(Boolean)
+    const [hint, actions] = row.children
+    assert.equal(row.props.className, 'mem0-failure-advice-row')
+    return { hint: hint.children.filter(Boolean)[0] ?? null, buttons: actions ? actions.children.map((button) => button.children[0]) : [] }
+  }
   const tree = FailureAdvice({ t, failure: { cause: 'other', component: 'llm' }, rowKey: 'k', diagnose: { canOpen: false, state: {}, ask() {}, copy() {} } })
-  const labels = tree.children.filter(Boolean).map((child) => child.children?.[0])
-  assert.ok(labels.includes('diagnoseCopy'))
-  assert.ok(!labels.includes('diagnoseAsk'))
+  assert.deepEqual(plain(parts(tree)), { hint: null, buttons: ['diagnoseCopy'] })
   assert.equal(DiagnoseEntry({ t, diagnose: { canOpen: false } }), null)
   const full = FailureAdvice({ t, failure: { cause: 'other', component: 'llm' }, rowKey: 'k', diagnose: { canOpen: true, state: {}, ask() {}, copy() {} } })
-  assert.ok(full.children.filter(Boolean).map((child) => child.children?.[0]).includes('diagnoseAsk'))
+  assert.deepEqual(plain(parts(full).buttons), ['diagnoseAsk', 'diagnoseCopy'])
+  // A hint with a jump and diagnosis: the diagnosis buttons stay last, so they line up with rows without a jump.
+  const withJump = FailureAdvice({ t, failure: { cause: 'startup', component: 'vector_store', backend: 'oss' }, rowKey: 'k', diagnose: { canOpen: true, state: {}, ask() {}, copy() {}, onAction() {} } })
+  assert.deepEqual(plain(parts(withJump)), { hint: 'adviceStartup', buttons: ['bannerWizard', 'diagnoseAsk', 'diagnoseCopy'] })
   // A known cause: hint and jump, no diagnosis buttons.
   const known = FailureAdvice({ t, failure: { cause: 'auth', status: 401, component: 'mem0_api' }, rowKey: 'k', diagnose: { canOpen: true, state: {}, ask() {}, copy() {}, onAction() {} } })
-  const knownLabels = known.children.filter(Boolean).map((child) => child.children?.[0])
-  assert.deepEqual(plain(knownLabels), ['adviceAuthKey', 'bannerSettings'])
+  assert.deepEqual(plain(parts(known)), { hint: 'adviceAuthKey', buttons: ['bannerSettings'] })
+  // The status line sits below the row, never between hint and buttons.
+  const failed = FailureAdvice({ t, failure: { cause: 'other', component: 'llm' }, rowKey: 'k', diagnose: { canOpen: true, state: { k: { phase: 'error', message: 'diagnoseFailed' } }, ask() {}, copy() {} } })
+  const [, status] = failed.children.filter(Boolean)
+  assert.equal(status.props.className, 'mem0-error')
 })
 
 /** Fake host services recording the order of calls. */
@@ -531,6 +542,10 @@ test('confirmation each time: every memory-writing tool asks; with "no confirmat
   }
   for (const name of ['mem0_update', 'mem0_pin', 'mem0_add', 'mem0_profile_update']) assert.equal((await gate(exec(name, 'diag-skip'), allow)).kind, 'allow', name)
   for (const name of ['mem0_delete', 'mem0_profile_reset']) assert.equal((await gate(exec(name, 'diag-skip'), allow)).kind, 'ask', name)
+  // The confirmation card follows the prompt's language.
+  assert.match((await gate(exec('mem0_delete', 'diag-skip'), allow)).reason, /confirm it in this diagnosis session/)
+  const zhGate = createDiagnoseGate(store, { lang: () => 'zh' })
+  assert.equal((await zhGate(exec('mem0_delete', 'diag-skip'), allow)).reason, 'dsh-mem0：mem0_delete 会改动记忆，请确认（诊断会话）。')
   assert.equal((await gate(exec('mem0_search', 'diag-each'), allow)).kind, 'allow')
   assert.equal((await gate({ name: 'mem0_delete' }, allow)).kind, 'allow')
   // A subagent of a diagnosis session follows its parent's choice.

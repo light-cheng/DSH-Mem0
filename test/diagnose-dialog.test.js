@@ -347,6 +347,9 @@ test('prepare without a failure: the general prompts, its fixed fingerprint and 
   assert.equal(first.body.title, 'Mem0 AI 排查')
   assert.equal(first.body.sessionId, null)
   assert.match(first.body.texts.each, /后端：oss（本地），服务商 embedder openai 127\.0\.0\.1:47811/)
+  // The local client's resolved settings win (the profile may leave them to oss.json).
+  const resolved = { ...runtime, config: { backend: 'oss' }, client: { settings: () => ({ embedder: { provider: 'ollama', baseUrl: 'http://127.0.0.1:11434' }, llm: { provider: 'dsh' } }) } }
+  assert.match(prepareDiagnosis(resolved, { lang: 'zh' }).body.texts.each, /服务商 embedder ollama 127\.0\.0\.1:11434，LLM follows DSH/)
   assert.match(first.body.texts.each, /按项目分区 开/)
   assert.ok(first.body.texts.each.includes(path.join(dir, 'dsh-mem0', 'failures.json')))
   assert.notEqual(first.body.texts.each, first.body.texts.skip)

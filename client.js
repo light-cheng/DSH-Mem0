@@ -1822,8 +1822,12 @@ window.__ModuleLoader__.load({
       .mem0-dock-pop-foot .mem0-dock-pop-link{margin-top:0;display:inline}
       .mem0-sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
       .mem0-dock-pop-link{align-self:flex-start;margin-top:4px;border:0;background:transparent;padding:0;font:inherit;color:var(--dsw-alias-label-primary);text-decoration:underline;cursor:pointer}
-      .mem0-failure-advice{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:var(--dsw-alias-label-secondary)}
-      .mem0-failure-advice p{margin:0;flex:1 1 220px;min-width:0}
+      .mem0-failure-advice{display:flex;flex-direction:column;gap:4px;margin-top:4px;font-size:12px;color:var(--dsw-alias-label-secondary)}
+      .mem0-failure-advice p{margin:0}
+      .mem0-failure-advice-row{display:flex;align-items:center;gap:12px;min-width:0}
+      .mem0-failure-hint{flex:1 1 auto;min-width:0}
+      .mem0-failure-actions{display:flex;gap:6px;flex:none;margin-left:auto}
+      @media (max-width:640px){.mem0-failure-advice-row{flex-direction:column;align-items:stretch}.mem0-failure-actions{margin-left:0;flex-wrap:wrap}}
       .mem0-failures{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:320px;overflow:auto}
       .mem0-failure{border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
       .mem0-failure-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-primary)}
@@ -4158,7 +4162,10 @@ window.__ModuleLoader__.load({
         typeof sessions?.retain === 'function' &&
         typeof uiWorkspace?.openSession === 'function' &&
         typeof workspaces?.create === 'function'
-      return ok ? { sessions, uiWorkspace, workspaces, remote: get('remote'), layout: get('layout') } : null
+      // Remote faces are read as their own services: `remote.session` is not
+      // reachable through `remote` without an inject declaration.
+      const remote = { session: get('remote.session'), permissionPresets: get('remote.permissionPresets') }
+      return ok ? { sessions, uiWorkspace, workspaces, remote, layout: get('layout') } : null
     }
 
     function diagnoseError(reason, cause) {
@@ -4244,9 +4251,9 @@ window.__ModuleLoader__.load({
      * DSH's default model): `{ defaultKey, options: [{ value, label, group, selection }] }`.
      */
     async function diagnoseModelOptions(services) {
-      const read = services?.remote?.session?.modelCatalog
-      if (typeof read !== 'function') return null
       try {
+        const read = services?.remote?.session?.modelCatalog
+        if (typeof read !== 'function') return null
         const result = await read.call(services.remote.session)
         const catalog = result?.ok === false ? null : (result?.value ?? result)
         const groups = Array.isArray(catalog?.groups) ? catalog.groups : []
@@ -4261,7 +4268,8 @@ window.__ModuleLoader__.load({
         if (options.length === 0) return null
         const defaultKey = modelKey(catalog?.default)
         return { defaultKey: options.some((option) => option.value === defaultKey) ? defaultKey : '', options }
-      } catch {
+      } catch (error) {
+        console.warn('dsh-mem0: DSH model catalog not readable; the diagnosis dialog shows no model choice', error)
         return null
       }
     }
@@ -4278,9 +4286,9 @@ window.__ModuleLoader__.load({
      */
     async function diagnosePermission(services, skipConfirm) {
       if (!skipConfirm) return 'workspace-write'
-      const read = services?.remote?.permissionPresets?.catalog
-      if (typeof read !== 'function') return 'workspace-write'
       try {
+        const read = services?.remote?.permissionPresets?.catalog
+        if (typeof read !== 'function') return 'workspace-write'
         const result = await read.call(services.remote.permissionPresets)
         const options = (result?.ok === false ? null : (result?.value ?? result))?.options
         return Array.isArray(options) && options.some((option) => option?.value === 'auto') ? 'auto' : 'workspace-write'
@@ -4426,10 +4434,10 @@ window.__ModuleLoader__.load({
       if (!hintText && !advice.diagnose) return null
       const busy = Boolean(diagnose?.busy)
       const action = canOpen ? diagnoseRowAction(diagnose?.services, failure) : 'ask'
-      return h(
-        'div',
-        { className: 'mem0-failure-advice' },
-        hintText ? h('p', null, hintText) : null,
+      // One layout for every row: the hint on the left (empty when there is
+      // none), the buttons on the right in a fixed order with the diagnosis
+      // buttons last, so they line up from row to row; the status below.
+      const actions = [
         advice.action && diagnose?.onAction
           ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: () => diagnose.onAction(advice.action) }, t(advice.action === 'wizard' ? 'bannerWizard' : 'bannerSettings'))
           : null,
@@ -4449,6 +4457,16 @@ window.__ModuleLoader__.load({
         advice.diagnose && diagnose
           ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', title: canOpen ? undefined : t('diagnoseCopyOnly'), onClick: () => void diagnose.copy(rowKey, failure) }, t('diagnoseCopy'))
           : null,
+      ].filter(Boolean)
+      return h(
+        'div',
+        { className: 'mem0-failure-advice' },
+        h(
+          'div',
+          { className: 'mem0-failure-advice-row' },
+          h('p', { className: 'mem0-failure-hint' }, hintText || null),
+          actions.length ? h('div', { className: 'mem0-failure-actions' }, ...actions) : null,
+        ),
         state?.message ? h('p', { className: state.phase === 'error' ? 'mem0-error' : 'mem0-hint', role: 'status' }, state.message) : null,
       )
     }
@@ -4607,6 +4625,7 @@ window.__ModuleLoader__.load({
           const [prepared, models] = await Promise.all([prepare(failure), diagnoseModelOptions(services)])
           setDialog({ key, failure, ...diagnoseDialogState({ services, prepared, models, general: !failure }) })
         } catch (error) {
+          console.warn('dsh-mem0: could not prepare the diagnosis dialog', error)
           setDialog(null)
           mark(key, { phase: 'error', message: template(t(failure ? 'diagnoseFailed' : 'diagnoseFailedGeneral'), { reason: t('diagnoseReason_prepare') }) })
         }
@@ -4634,6 +4653,7 @@ window.__ModuleLoader__.load({
           setDialog(null)
           mark(dialog.key, { phase: 'done', message: t(outcome.kind === 'reopened' ? 'diagnoseReopened' : 'diagnoseOpened') })
         } catch (error) {
+          console.warn('dsh-mem0: could not open the diagnosis session', error)
           const reason = t(`diagnoseReason_${error?.diagnoseReason || 'create'}`)
           patch({ view: 'form', phase: 'error', message: template(t(dialog.general ? 'diagnoseFailedGeneral' : 'diagnoseFailed'), { reason }) })
         } finally {
