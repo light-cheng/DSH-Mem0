@@ -196,7 +196,110 @@ test('banners: only problems, each with where to fix it', () => {
   assert.deepEqual(codes({ ok: false, backend: 'platform', error: 'Mem0 memory is disabled' }, { enabled: false }), [], 'switched off is not a problem')
   assert.deepEqual(codes({ ok: true, activity: { capture: { status: 'skipped', reason: 'circuit-open' } }, failures: [{ at: '2026-11-22T11:00:00Z' }] }), ['circuit:diagnostics'])
   assert.deepEqual(codes({ ok: true, failures: [{ at: '2026-11-22T11:00:00Z' }, { at: '2026-11-10T11:00:00Z' }] }), ['failures:diagnostics'])
-  assert.deepEqual(codes({ ok: true, failures: [{ at: '2026-11-10T11:00:00Z' }] }), [], 'old failures stay in diagnostics')
+  assert.deepEqual(codes({ ok: true, failures: [{ at: '2026-11-10T11:00:00Z' }] }), ['failures:diagnostics'], 'no time window: an old unrecovered failure still counts')
+  assert.deepEqual(codes({ ok: true, failures: [{ at: '2026-11-22T11:00:00Z', recovered: true }] }), [], 'recovered failures stay in diagnostics only')
+})
+
+for (const [lang, one] of [['en', '1 memory problem not recovered yet.'], ['zh', '有 1 个记忆问题还没恢复。']]) {
+  test(`failure banner (${lang}): unrecovered entries only, "Got it" until a newer failure`, () => {
+    const tl = (key) => client[lang][key] ?? key
+    const failures = (data) => plain(client.bannerItems(tl, { ok: true, ...data }, { phase: 'ready' })).filter((item) => item.code === 'failures')
+    assert.deepEqual(failures({ failures: [{ at: '2026-11-25T05:00:00Z', recovered: true, recoveredAt: '2026-11-25T06:00:00Z' }] }), [])
+    const [item] = failures({ failures: [{ at: '2026-11-25T05:00:00Z', recovered: false }, { at: '2026-11-24T05:00:00Z', recovered: true }] })
+    assert.equal(item.text, one)
+    assert.equal(item.action, 'diagnostics')
+    assert.equal(item.secondary, 'acknowledge')
+    assert.equal(item.at, '2026-11-25T05:00:00Z')
+    assert.doesNotMatch(item.text, /[{}]/)
+    // 16 folded failures are one entry: one problem.
+    assert.equal(failures({ failures: [{ at: '2026-11-25T05:18:00Z', firstAt: '2026-11-25T01:00:00Z', count: 16, cause: 'circuit' }] })[0].text, one)
+    const two = failures({ failures: [{ at: '2026-11-25T05:00:00Z' }, { at: '2026-11-25T04:00:00Z' }] })[0]
+    assert.equal(two.text, lang === 'en' ? '2 memory problems not recovered yet.' : '有 2 个记忆问题还没恢复。')
+    assert.equal(two.at, '2026-11-25T05:00:00Z', '"Got it" stores the newest one')
+    // After "Got it": the acknowledged ones are quiet, a newer one is back.
+    const acknowledged = { failuresAcknowledgedAt: '2026-11-25T05:00:00Z' }
+    assert.deepEqual(failures({ ...acknowledged, failures: [{ at: '2026-11-25T05:00:00Z' }, { at: '2026-11-25T04:00:00Z' }] }), [])
+    const back = failures({ ...acknowledged, failures: [{ at: '2026-11-25T07:00:00Z' }, { at: '2026-11-25T05:00:00Z' }] })
+    assert.equal(back[0].text, one, 'only the new failure counts')
+    assert.equal(back[0].at, '2026-11-25T07:00:00Z')
+    // The banner renders both buttons.
+    const text = textOf(render(client.Banners({ t: tl, items: back, onAction() {} })))
+    assert.match(text, lang === 'en' ? /View diagnostics.*Got it/ : /查看诊断.*知道了/)
+    assert.equal(tl('bannerFailures'), 'bannerFailures', 'the old key is gone')
+  })
+
+  test(`diagnostics meta (${lang}): orange only for unrecovered failures or a failed connection`, () => {
+    const tl = (key) => client[lang][key] ?? key
+    const meta = (data, phase = 'ready') => {
+      const banners = client.bannerItems(tl, data, { phase })
+      return plain(client.diagnosticsMeta(tl, { data, banners, phase }))
+    }
+    assert.deepEqual(meta({ ok: true, failures: [{ at: '2026-11-25T05:00:00Z' }, { at: '2026-11-24T05:00:00Z', recovered: true }] }), { issue: true, text: tl('diagMetaIssue') })
+    assert.deepEqual(meta({ ok: true, failures: [{ at: '2026-11-25T05:00:00Z', recovered: true }, { at: '2026-11-24T05:00:00Z', recovered: true }] }), {
+      issue: false,
+      text: lang === 'en' ? 'All good · 2 recovered failures' : '一切正常 · 2 条已恢复的失败记录',
+    })
+    assert.equal(meta({ ok: true, failures: [{ at: '2026-11-25T05:00:00Z', recovered: true }] }).text, lang === 'en' ? 'All good · 1 recovered failure' : '一切正常 · 1 条已恢复的失败记录')
+    assert.deepEqual(meta({ ok: true, failures: [] }), { issue: false, text: lang === 'en' ? 'All good' : '一切正常' })
+    assert.equal(meta({ ok: true, failuresAcknowledgedAt: '2026-11-25T05:00:00Z', failures: [{ at: '2026-11-25T05:00:00Z' }] }).issue, false, '"Got it" also clears the orange')
+    // Acknowledged but not recovered: the ignored count in grey, not "All good".
+    const ack = { ok: true, failuresAcknowledgedAt: '2026-11-25T05:00:00Z' }
+    assert.deepEqual(meta({ ...ack, failures: [{ at: '2026-11-25T05:00:00Z' }] }), { issue: false, text: lang === 'en' ? '1 unrecovered problem ignored' : '已忽略 1 个未恢复的问题' })
+    assert.deepEqual(meta({ ...ack, failures: [{ at: '2026-11-25T05:00:00Z' }, { at: '2026-11-25T04:00:00Z' }] }), { issue: false, text: lang === 'en' ? '2 unrecovered problems ignored' : '已忽略 2 个未恢复的问题' })
+    assert.deepEqual(
+      meta({ ...ack, failures: [{ at: '2026-11-25T05:00:00Z' }, { at: '2026-11-25T03:00:00Z', recovered: true }] }),
+      { issue: false, text: lang === 'en' ? '1 unrecovered problem ignored' : '已忽略 1 个未恢复的问题' },
+      'with recovered entries too, only the ignored line',
+    )
+    assert.deepEqual(meta({ ...ack, failures: [{ at: '2026-11-25T05:00:00Z', recovered: true }] }).text, tl('diagMetaRecoveredOne').replace('{count}', '1'), 'acknowledged and then recovered: back to "All good"')
+    assert.deepEqual(meta({ ...ack, failures: [{ at: '2026-11-25T07:00:00Z' }, { at: '2026-11-25T05:00:00Z' }] }), { issue: true, text: tl('diagMetaIssue') }, 'a newer failure is orange again')
+    assert.equal(meta({ ok: false, backend: 'platform', failures: [] }, 'error').issue, true)
+    // The card shows it: the meta text, orange (metaWarn) only with an issue.
+    const summary = (data, phase = 'ready') => {
+      const banners = client.bannerItems(tl, data, { phase })
+      const view = client.diagnosticsMeta(tl, { data, banners, phase })
+      let found
+      walk(render(client.MaintenanceTab({
+        t: tl,
+        draft: {},
+        setField() {},
+        data,
+        status: { phase, message: '' },
+        hygiene: { run() {}, state: 'idle', message: '' },
+        reportTexts: null,
+        local: { openWizard() {}, wizardOpen: false, wizard: null, copyPath() {}, copied: false },
+        diagnostics: { issue: view.issue, meta: view.text, open: false },
+      })), (node) => {
+        if (node.props?.id === 'mem0-diagnostics') found = node.props.children.find((child) => child?.type === 'summary')
+      })
+      const span = found.props.children.find((child) => child?.props?.className?.includes('mem0-hint'))
+      return { text: textOf(span), warn: span.props.className.includes('mem0-warn-text') }
+    }
+    assert.deepEqual(summary({ ok: true, failures: [{ at: '2026-11-25T05:00:00Z' }] }), { text: tl('diagMetaIssue'), warn: true })
+    assert.deepEqual(summary({ ok: true, failures: [{ at: '2026-11-25T05:00:00Z', recovered: true }] }), { text: tl('diagMetaRecoveredOne').replace('{count}', '1'), warn: false })
+    assert.deepEqual(summary({ ok: true, failures: [] }), { text: tl('diagMetaOk'), warn: false })
+    assert.deepEqual(summary({ ok: true, failuresAcknowledgedAt: '2026-11-25T05:00:00Z', failures: [{ at: '2026-11-25T05:00:00Z' }] }), { text: tl('diagMetaIgnoredOne').replace('{count}', '1'), warn: false })
+  })
+}
+
+test('the failure list keeps recovered rows, dimmed and marked with the time', () => {
+  for (const lang of ['en', 'zh']) {
+    const tl = (key) => client[lang][key] ?? key
+    const recovered = { at: '2026-11-25T05:00:00.000Z', kind: 'recall', cause: 'timeout', component: 'embedder', message: 'timed out', recovered: true, recoveredAt: '2026-11-25T06:00:00.000Z' }
+    const open = { at: '2026-11-25T07:00:00.000Z', kind: 'capture', cause: 'other', component: 'llm', message: 'HTTP 500 boom', recovered: false }
+    const tree = render(client.FailureList({ t: tl, failures: [open, recovered] }))
+    const rows = []
+    walk(tree, (node) => {
+      if (String(node.props?.className ?? '').split(' ').includes('mem0-failure')) rows.push(node)
+    })
+    assert.equal(rows.length, 2, 'nothing is hidden')
+    assert.equal(rows[0].props.className, 'mem0-failure')
+    assert.equal(rows[1].props.className, 'mem0-failure mem0-failure-recovered')
+    const mark = lang === 'en' ? 'Recovered · ' : '已恢复 · '
+    assert.doesNotMatch(textOf(rows[0]), new RegExp(mark))
+    assert.match(textOf(rows[1]), new RegExp(`${mark}${new Date(recovered.recoveredAt).toLocaleString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+    assert.match(textOf(tree), lang === 'en' ? /marked recovered/ : /标为已恢复，记录本身不删/)
+  }
 })
 
 test('header status line: state, backend, count and where memories live', () => {
