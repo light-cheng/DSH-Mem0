@@ -298,7 +298,10 @@ function lifecycleWith(client, failures, { breaker } = {}) {
 const assembly = () => ({ sections: [], contexts: [], tools: [], variables: {} })
 
 test('a later success does not erase the failure history', async () => {
-  const failures = new FailureHistory({ filePath: tempFile(), backend: 'server' })
+  // A fixed clock: the failure and the success land on the same millisecond,
+  // which once made this test flaky.
+  const fixed = new Date('2026-11-27T00:00:00Z')
+  const failures = new FailureHistory({ filePath: tempFile(), backend: 'server', now: () => fixed })
   let fail = true
   const client = {
     async search() {
@@ -320,7 +323,7 @@ test('a later success does not erase the failure history', async () => {
   assert.ok(Number.isFinite(list[0].durationMs))
   // Kept, but marked recovered by the later successful recall.
   assert.equal(list[0].recovered, true)
-  assert.ok(Date.parse(list[0].recoveredAt) >= Date.parse(list[0].at))
+  assert.equal(list[0].recoveredAt, fixed.toISOString())
 })
 
 test('capture failures and circuit-breaker skips are recorded', async () => {
@@ -665,6 +668,17 @@ function clockedHistory(options = {}) {
   const history = new FailureHistory({ now: () => new Date(clock), ...options })
   return { history, tick }
 }
+
+test('recovery: a success in the same millisecond as the failure recovers it', () => {
+  const at = new Date('2026-11-25T05:00:00.123Z')
+  const history = new FailureHistory({ now: () => at })
+  history.record({ kind: 'recall', error: withCode('connect ECONNREFUSED 127.0.0.1:8000', 'ECONNREFUSED') })
+  assert.equal(history.list()[0].at, at.toISOString())
+  assert.equal(history.recordSuccess('recall'), true)
+  const [entry] = history.list()
+  assert.equal(entry.recovered, true)
+  assert.equal(entry.recoveredAt, at.toISOString())
+})
 
 test('recovery: a later success of the same kind recovers the failure; another kind does not', () => {
   const { history, tick } = clockedHistory()
