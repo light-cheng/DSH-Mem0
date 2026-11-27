@@ -660,6 +660,8 @@ window.__ModuleLoader__.load({
       dockShortSkipped: 'Skipped',
       dockShortFailed: 'Failed',
       dockShortPaused: 'Paused',
+      dockShortIdle: 'Ready',
+      dockShortDisabled: 'Off',
       dockFullRecalled: 'Recalled {count} memories',
       dockFullSaved: 'Saved {count} new memories',
       dockFullSavedUpdated: '{update} updated',
@@ -1486,6 +1488,8 @@ window.__ModuleLoader__.load({
       dockShortSkipped: '已跳过',
       dockShortFailed: '记忆失败',
       dockShortPaused: '记忆已暂停',
+      dockShortIdle: '待命',
+      dockShortDisabled: '已关闭',
       dockFullRecalled: '已召回记忆 {count}',
       dockFullSaved: '已保存 {count} 条新记忆',
       dockFullSavedUpdated: '更新 {update} 条',
@@ -3452,6 +3456,8 @@ window.__ModuleLoader__.load({
       if (view.kind === 'memory') notice = of('error')
       else if (view.kind === 'circuit') notice = of('paused')
       else if (view.kind === 'ok' || (view.kind === 'idle' && view.label !== t('dockIdle'))) notice = of('recall', 'capture', 'nothing', 'skipped')
+      else if (view.kind === 'disabled') short = t('dockShortDisabled')
+      else if (view.kind === 'idle' && view.label === t('dockIdle')) short = t('dockShortIdle')
       else if (view.kind === 'busy') {
         const key = Object.keys(DOCK_BUSY_SHORT).find((name) => t(name) === view.label)
         if (key) short = t(DOCK_BUSY_SHORT[key])
