@@ -25,6 +25,9 @@ import { FailureHistory } from './lib/failure-history.js'
 import { CONFIG_FINGERPRINT_FILE, ConfigGuard, describeConfigWarning } from './lib/config-guard.js'
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
+import { createDiagnoseGate, DIAGNOSE_SESSIONS_FILE, DiagnoseSessions, isDiagnoseSession } from './lib/diagnose-sessions.js'
+import { diagnoseDirectoryPath, registerDiagnoseRoutes } from './lib/diagnose-routes.js'
+import { registerDiagnoseSkill } from './lib/diagnose-kb.js'
 import { dshDefaultWorkspaces, ProjectResolver, SESSION_PROJECTS } from './lib/project-scope.js'
 
 export const name = 'dsh-mem0'
@@ -119,12 +122,24 @@ export async function apply(ctx, rawConfig) {
     logger,
   })
   if (configGuard.status()) logger?.warn?.(describeConfigWarning(configGuard.status()))
+  // Diagnosis sessions the settings page opened (lib/diagnose-sessions.js):
+  // the plugin's write tools ask there, and automatic recall/capture and
+  // hygiene leave them alone.
+  const diagnoseSessions = new DiagnoseSessions({
+    filePath: dataDir ? path.join(dataDir, DIAGNOSE_SESSIONS_FILE) : undefined,
+    logger,
+  })
+  // A subagent of a diagnosis session counts as one: follow its parent.
+  const lookupSession = (id) => (ctx.get?.('sessions') ?? ctx.sessions)?.get?.(id)
+  const inDiagnosis = (session) => isDiagnoseSession(diagnoseSessions, session, { lookup: lookupSession })
   const runtime = {
     config,
     configGuard,
     // Where cordis.patch.yml and its crash-recovery backups are.
     profileDir,
     failures,
+    diagnoseSessions,
+    logger,
     client: undefined,
     breaker: undefined,
     lifecycle: undefined,
@@ -168,6 +183,20 @@ export async function apply(ctx, rawConfig) {
   }
 
   registerGuiRoutes(ctx, () => runtime)
+  registerDiagnoseRoutes(ctx, () => runtime)
+  // The diagnosis checklists as a skill, offered to diagnosis sessions
+  // only (by session id); until DSH's skill registry takes it, prompts
+  // carry the checklist.
+  runtime.diagnoseSkill = { ready: false, lang: 'en' }
+  registerDiagnoseSkill(ctx, {
+    inDiagnosis,
+    onChange: (listener) => diagnoseSessions.onChange(listener),
+    lang: () => runtime.diagnoseSkill.lang,
+    onReady: () => {
+      runtime.diagnoseSkill.ready = true
+    },
+    logger,
+  })
   if (!config.enabled) return
 
   // Without a literal apiKey, every REST request asks DSH credentials first
@@ -193,6 +222,7 @@ export async function apply(ctx, rawConfig) {
     llm: llmServices.current,
     // DSH injects the model services after startup: passes wait for them.
     awaitModel: typeof ctx.inject === 'function',
+    excludedSessions: () => diagnoseSessions.ids(),
   })
   // Partitions (global / project / session) are stored by the local
   // backend; REST backends keep every memory global. The project comes from
@@ -227,6 +257,8 @@ export async function apply(ctx, rawConfig) {
     budget: () => ctx.get?.('strataBudget'),
     // DSH's session registry, for folds that carry only a session id.
     sessions: () => ctx.get?.('sessions') ?? ctx.sessions,
+    // No automatic recall or capture in diagnosis sessions.
+    skipSession: inDiagnosis,
   })
   runtime.client = client
   runtime.breaker = breaker
@@ -261,13 +293,27 @@ export async function apply(ctx, rawConfig) {
     )
   }
 
-  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard, projects, onExplicitAdd: (session, rows) => lifecycle.noteExplicitAdd(session, rows) })
+  // The diagnosis workspace's folder is no project: tool calls there
+  // neither record one nor search a project partition. A diagnosis session
+  // the user opened in one of their own workspaces keeps its project, so
+  // "memories of another project" can be checked from there.
+  const diagnosisFolder = diagnoseDirectoryPath(runtime)
+  const inDiagnosisFolder = (session) => {
+    const cwd = session?.header?.cwd ?? session?.cwd
+    return typeof cwd !== 'string' || cwd === diagnosisFolder || cwd.startsWith(`${diagnosisFolder}${path.sep}`)
+  }
+  const toolProjects = projects && { resolve: (session) => (inDiagnosis(session) && inDiagnosisFolder(session) ? null : projects.resolve(session)) }
+  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard, projects: toolProjects, onExplicitAdd: (session, rows) => lifecycle.noteExplicitAdd(session, rows) })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
     return () => {
       for (const dispose of disposers) dispose()
     }
   }, 'dsh-mem0: tools')
+  // DSH's permission presets do not cover plugin tools: in diagnosis
+  // sessions the plugin asks before its write tools (delete and summary
+  // reset always) and refuses credential reads and cordis.patch.yml edits.
+  ctx.on('tools/pre-execute', createDiagnoseGate(diagnoseSessions, { lookup: lookupSession, lang: () => runtime.diagnoseSkill?.lang }))
 
   if (config.autoRecall) {
     // The memory summary is a system-prompt section, not a runtime context:
