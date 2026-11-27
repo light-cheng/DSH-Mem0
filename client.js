@@ -801,6 +801,8 @@ window.__ModuleLoader__.load({
       diagMetaOk: 'All good',
       diagMetaRecoveredOne: 'All good · {count} recovered failure',
       diagMetaRecoveredMany: 'All good · {count} recovered failures',
+      diagMetaIgnoredOne: '{count} unrecovered problem ignored',
+      diagMetaIgnoredMany: '{count} unrecovered problems ignored',
       discard: 'Discard',
     }
 
@@ -1578,6 +1580,8 @@ window.__ModuleLoader__.load({
       diagMetaOk: '一切正常',
       diagMetaRecoveredOne: '一切正常 · {count} 条已恢复的失败记录',
       diagMetaRecoveredMany: '一切正常 · {count} 条已恢复的失败记录',
+      diagMetaIgnoredOne: '已忽略 {count} 个未恢复的问题',
+      diagMetaIgnoredMany: '已忽略 {count} 个未恢复的问题',
       discard: '放弃',
     }
 
@@ -5434,13 +5438,24 @@ window.__ModuleLoader__.load({
 
     /**
      * The diagnostics card's meta line: orange only while a banner points to
-     * diagnostics or the connection failed; else "All good", with the number
-     * of recovered failures still listed. Pure.
+     * diagnostics or the connection failed; else the number of unrecovered
+     * failures quieted with "Got it", or "All good" with the number of
+     * recovered failures still listed. Pure.
      */
     function diagnosticsMeta(t, { data, banners = [], phase } = {}) {
       const issue = banners.some((item) => item.action === 'diagnostics') || phase === 'error' || data?.ok === false
       if (issue) return { issue: true, text: t('diagMetaIssue') }
-      const recovered = (Array.isArray(data?.failures) ? data.failures : []).filter((failure) => failure?.recovered === true).length
+      const failures = Array.isArray(data?.failures) ? data.failures : []
+      // Not recovered but quieted with "Got it": not "All good", and not orange.
+      const acknowledged = Date.parse(data?.failuresAcknowledgedAt ?? '')
+      const ignored = Number.isFinite(acknowledged)
+        ? failures.filter((failure) => {
+            const at = Date.parse(failure?.at)
+            return failure?.recovered !== true && Number.isFinite(at) && at <= acknowledged
+          }).length
+        : 0
+      if (ignored > 0) return { issue: false, text: template(t(ignored === 1 ? 'diagMetaIgnoredOne' : 'diagMetaIgnoredMany'), { count: ignored }) }
+      const recovered = failures.filter((failure) => failure?.recovered === true).length
       if (recovered > 0) return { issue: false, text: template(t(recovered === 1 ? 'diagMetaRecoveredOne' : 'diagMetaRecoveredMany'), { count: recovered }) }
       return { issue: false, text: t('diagMetaOk') }
     }

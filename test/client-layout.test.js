@@ -242,6 +242,17 @@ for (const [lang, one] of [['en', '1 memory problem not recovered yet.'], ['zh',
     assert.equal(meta({ ok: true, failures: [{ at: '2026-11-25T05:00:00Z', recovered: true }] }).text, lang === 'en' ? 'All good · 1 recovered failure' : '一切正常 · 1 条已恢复的失败记录')
     assert.deepEqual(meta({ ok: true, failures: [] }), { issue: false, text: lang === 'en' ? 'All good' : '一切正常' })
     assert.equal(meta({ ok: true, failuresAcknowledgedAt: '2026-11-25T05:00:00Z', failures: [{ at: '2026-11-25T05:00:00Z' }] }).issue, false, '"Got it" also clears the orange')
+    // Acknowledged but not recovered: the ignored count in grey, not "All good".
+    const ack = { ok: true, failuresAcknowledgedAt: '2026-11-25T05:00:00Z' }
+    assert.deepEqual(meta({ ...ack, failures: [{ at: '2026-11-25T05:00:00Z' }] }), { issue: false, text: lang === 'en' ? '1 unrecovered problem ignored' : '已忽略 1 个未恢复的问题' })
+    assert.deepEqual(meta({ ...ack, failures: [{ at: '2026-11-25T05:00:00Z' }, { at: '2026-11-25T04:00:00Z' }] }), { issue: false, text: lang === 'en' ? '2 unrecovered problems ignored' : '已忽略 2 个未恢复的问题' })
+    assert.deepEqual(
+      meta({ ...ack, failures: [{ at: '2026-11-25T05:00:00Z' }, { at: '2026-11-25T03:00:00Z', recovered: true }] }),
+      { issue: false, text: lang === 'en' ? '1 unrecovered problem ignored' : '已忽略 1 个未恢复的问题' },
+      'with recovered entries too, only the ignored line',
+    )
+    assert.deepEqual(meta({ ...ack, failures: [{ at: '2026-11-25T05:00:00Z', recovered: true }] }).text, tl('diagMetaRecoveredOne').replace('{count}', '1'), 'acknowledged and then recovered: back to "All good"')
+    assert.deepEqual(meta({ ...ack, failures: [{ at: '2026-11-25T07:00:00Z' }, { at: '2026-11-25T05:00:00Z' }] }), { issue: true, text: tl('diagMetaIssue') }, 'a newer failure is orange again')
     assert.equal(meta({ ok: false, backend: 'platform', failures: [] }, 'error').issue, true)
     // The card shows it: the meta text, orange (metaWarn) only with an issue.
     const summary = (data, phase = 'ready') => {
@@ -267,6 +278,7 @@ for (const [lang, one] of [['en', '1 memory problem not recovered yet.'], ['zh',
     assert.deepEqual(summary({ ok: true, failures: [{ at: '2026-11-25T05:00:00Z' }] }), { text: tl('diagMetaIssue'), warn: true })
     assert.deepEqual(summary({ ok: true, failures: [{ at: '2026-11-25T05:00:00Z', recovered: true }] }), { text: tl('diagMetaRecoveredOne').replace('{count}', '1'), warn: false })
     assert.deepEqual(summary({ ok: true, failures: [] }), { text: tl('diagMetaOk'), warn: false })
+    assert.deepEqual(summary({ ok: true, failuresAcknowledgedAt: '2026-11-25T05:00:00Z', failures: [{ at: '2026-11-25T05:00:00Z' }] }), { text: tl('diagMetaIgnoredOne').replace('{count}', '1'), warn: false })
   })
 }
 
