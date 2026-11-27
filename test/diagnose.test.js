@@ -461,7 +461,8 @@ test('the record maps a fingerprint to its newest session, keeps the confirmatio
   assert.equal(reloaded.has('s2'), true)
   reloaded.forget('s2')
   assert.equal(reloaded.has('s2'), false)
-  assert.equal((fs.statSync(file).mode & 0o777).toString(8), '600')
+  // Windows has no POSIX mode bits: the file is always 666 there.
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600)
   // A version 1 record (the read-only release) loads with confirmation on.
   fs.writeFileSync(file, JSON.stringify({ version: 1, sessions: [{ sessionId: 'old', fingerprint: 'dsh-mem0:b', createdAt: '2026-11-27T00:00:00Z' }] }))
   assert.equal(new DiagnoseSessions({ filePath: file }).entry('old').skipConfirm, false)
