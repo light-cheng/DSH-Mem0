@@ -1686,6 +1686,8 @@ window.__ModuleLoader__.load({
       .mem0-scope{display:inline-flex;align-items:center;margin-left:4px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:10.5px;line-height:1.4;padding:0 6px;cursor:pointer;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
       .mem0-scope:hover{color:var(--dsw-alias-label-secondary)}
       .mem0-scope:disabled{opacity:.6;cursor:default}
+      /* Layout only: the status wrap and the partition chip side by side; no events. */
+      .mem0-dock-group{display:inline-flex;max-width:100%}
       .mem0-dock-wrap{position:relative;display:inline-flex;max-width:100%}
       .mem0-dock-pop{position:fixed;z-index:1000;width:max-content;max-width:min(360px,80vw);white-space:normal;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));box-shadow:0 6px 24px rgba(0,0,0,.18);padding:9px 11px;display:flex;flex-direction:column;gap:3px;font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
       .mem0-dock-pop-title{font-weight:600;color:var(--dsw-alias-state-error-primary)}
@@ -3788,51 +3790,58 @@ window.__ModuleLoader__.load({
         }
       }
 
+      // The partition chip sits beside the wrap, not inside it: the wrap's
+      // hover, focus and outside-click handling belong to the status button
+      // and its panel only, so hovering the chip opens only the chip's card.
       return h(
         'span',
-        {
-          className: 'mem0-dock-wrap',
-          ref: rootRef,
-          onMouseEnter: enter,
-          onMouseLeave: leave,
-          onFocus: enter,
-          onBlur: (event) => {
-            if (!rootRef.current?.contains(event.relatedTarget)) leave()
-          },
-        },
+        { className: 'mem0-dock-group' },
         h(
-          'button',
+          'span',
           {
-            type: 'button',
-            className: 'mem0-dock',
-            'aria-label': display.aria,
-            'aria-expanded': Boolean(open),
-            'aria-controls': open ? popId : undefined,
-            'data-dock-kind': chip.kind,
-            'data-dock-mode': display.mode,
-            'data-dock-tone': display.tone,
-            onClick: toggle,
+            className: 'mem0-dock-wrap',
+            ref: rootRef,
+            onMouseEnter: enter,
+            onMouseLeave: leave,
+            onFocus: enter,
+            onBlur: (event) => {
+              if (!rootRef.current?.contains(event.relatedTarget)) leave()
+            },
           },
-          h(OrbStatus, { state: chip.orb }),
-          // Keyed by text: a new text fades in (none with reduced motion).
-          h('span', { className: 'mem0-dock-text', key: display.text }, display.text),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'mem0-dock',
+              'aria-label': display.aria,
+              'aria-expanded': Boolean(open),
+              'aria-controls': open ? popId : undefined,
+              'data-dock-kind': chip.kind,
+              'data-dock-mode': display.mode,
+              'data-dock-tone': display.tone,
+              onClick: toggle,
+            },
+            h(OrbStatus, { state: chip.orb }),
+            // Keyed by text: a new text fades in (none with reduced motion).
+            h('span', { className: 'mem0-dock-text', key: display.text }, display.text),
+          ),
+          // Says each new notice once; stays put while the chip collapses.
+          h('span', { className: 'mem0-sr-only', 'aria-live': 'polite', role: 'status' }, snap.announce),
+          open
+            ? h(DockPanel, {
+                t,
+                chip,
+                recent: snap.recent,
+                expanded,
+                onExpand: (key) => setExpanded((current) => (current === key ? null : key)),
+                onSettings: openSettings,
+                id: popId,
+                popRef,
+                style: { left: `${open.left}px`, bottom: `${open.bottom}px`, maxWidth: `${open.width}px` },
+              })
+            : null,
         ),
-        // Says each new notice once; stays put while the chip collapses.
-        h('span', { className: 'mem0-sr-only', 'aria-live': 'polite', role: 'status' }, snap.announce),
         h(ScopeChip, { ctx, t, scope: data?.memoryScope ?? null, details }),
-        open
-          ? h(DockPanel, {
-              t,
-              chip,
-              recent: snap.recent,
-              expanded,
-              onExpand: (key) => setExpanded((current) => (current === key ? null : key)),
-              onSettings: openSettings,
-              id: popId,
-              popRef,
-              style: { left: `${open.left}px`, bottom: `${open.bottom}px`, maxWidth: `${open.width}px` },
-            })
-          : null,
       )
     }
 
