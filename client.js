@@ -617,7 +617,7 @@ window.__ModuleLoader__.load({
       diagnoseReason_register: 'the plugin could not record it',
       diagnoseReason_permission: 'the session did not switch to read-only',
       diagnoseReason_draft: 'the draft could not be filled in',
-      adviceAuthKey: 'The API key was refused (invalid, expired or without access). Check the key in the settings.',
+      adviceAuthKey: 'The API key was refused (invalid, expired or without access). Check the key.',
       adviceQuota: 'Quota used up or rate-limited by the provider. Wait and retry, or check the account balance and limits.',
       adviceTimeout: 'The call took longer than the timeout. If the service is just slow, raise the timeout in the settings.',
       adviceConnection: 'The service did not answer. Check that it runs and that the address in the settings is right.',
@@ -1421,7 +1421,7 @@ window.__ModuleLoader__.load({
       diagnoseReason_register: '插件没能记下这个会话',
       diagnoseReason_permission: '会话没能切到只读',
       diagnoseReason_draft: '草稿没能填进去',
-      adviceAuthKey: 'API key 被拒绝（无效、过期或没有权限）。请到设置里检查 key。',
+      adviceAuthKey: 'API key 被拒绝（无效、过期或没有权限）。请检查 key。',
       adviceQuota: '服务商的额度用完了，或者触发了限流。稍后重试，或检查账户余额和限额。',
       adviceTimeout: '调用超过了超时时间。如果只是服务慢，可以在设置里调高超时。',
       adviceConnection: '服务没有响应。请确认它在运行，设置里的地址也正确。',
@@ -4104,12 +4104,14 @@ window.__ModuleLoader__.load({
       const sessions = get('sessions')
       const uiWorkspace = get('uiWorkspace')
       const conversation = get('conversation')
+      const workspaces = get('workspaces')
       const ok =
         typeof sessions?.create === 'function' &&
         typeof sessions?.retain === 'function' &&
         typeof uiWorkspace?.openSession === 'function' &&
-        typeof conversation?.input?.requestDraftInitialization === 'function'
-      return ok ? { sessions, uiWorkspace, conversation, workspaces: get('workspaces') } : null
+        typeof conversation?.input?.requestDraftInitialization === 'function' &&
+        typeof workspaces?.create === 'function'
+      return ok ? { sessions, uiWorkspace, conversation, workspaces } : null
     }
 
     function diagnoseError(reason, cause) {
@@ -4165,13 +4167,28 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * The diagnosis workspace (created on first use, titled once). DSH's New
+     * Session reuses an unsent blank session of the current workspace, so
+     * diagnosis sessions live in a workspace of their own.
+     */
+    async function diagnosisWorkspace(workspaces, prepared) {
+      const known = (workspaces.list?.getSnapshot?.()?.items ?? []).find((item) => item?.path === prepared.cwd)
+      const workspace = known ?? (await workspaces.create({ path: prepared.cwd }))
+      if (!workspace?.workspaceId) throw diagnoseError('create')
+      if (!known && prepared.workspaceTitle && typeof workspaces.rename === 'function') {
+        await Promise.resolve(workspaces.rename(workspace.workspaceId, prepared.workspaceTitle)).catch(() => {})
+      }
+      return workspace.workspaceId
+    }
+
+    /**
      * Open (or return to) the diagnosis session for one prepared failure.
      * `prepared` comes from the diagnose route; `post` sends one action to
-     * it. Steps: create the session in the diagnosis folder (no workspace, so
-     * DSH's New Session never reuses it), record it with the plugin (tool
+     * it. Steps: create the session in the diagnosis workspace (never the
+     * user's, see diagnosisWorkspace), record it with the plugin (tool
      * gate and memory skip apply from here), switch it to read-only and
      * confirm that from the permissions projection (the command's own answer
-     * is not trusted), fill the draft, and only then show it. Any failure
+     * is not trusted); only then show it and fill the draft. Any failure
      * archives the half-made session and throws `diagnoseReason`.
      * @returns {{ kind: 'reopened' | 'created', sessionId: string }}
      */
@@ -4188,9 +4205,10 @@ window.__ModuleLoader__.load({
       if (!prepared?.cwd || !prepared?.text) throw diagnoseError('prepare')
       let sessionId
       try {
-        sessionId = await sessions.create({ cwd: prepared.cwd })
+        const workspaceId = await diagnosisWorkspace(services.workspaces, prepared)
+        sessionId = await sessions.create({ workspaceId })
       } catch (error) {
-        throw diagnoseError('create', error)
+        throw error?.diagnoseReason ? error : diagnoseError('create', error)
       }
       if (!sessionId) throw diagnoseError('create')
       try {
@@ -4208,6 +4226,11 @@ window.__ModuleLoader__.load({
         const readOnly = await waitUntil(() => permissionOf(session) === 'read-only', { timeoutMs: permissionTimeoutMs, sleep })
         if (!readOnly) throw diagnoseError('permission')
         if (prepared.title && typeof session.rename === 'function') await Promise.resolve(session.rename(prepared.title)).catch(() => {})
+        // Show it, then fill the draft once the conversation view holds the
+        // session: a draft filled before the view mounts is not kept (DSH
+        // 0.2.2-rc.5). A failure here archives it, which also leaves the view.
+        uiWorkspace.openSession(sessionId)
+        await waitUntil(() => Number(sessions.retainInfo?.(sessionId)?.getSnapshot?.()?.referenceCount) > 1, { timeoutMs: 3000, sleep })
         let filled
         try {
           filled = conversation.input.requestDraftInitialization(binding, { prompt: prepared.text, whenDraftExists: 'replace' })
@@ -4215,7 +4238,6 @@ window.__ModuleLoader__.load({
           throw diagnoseError('draft', error)
         }
         if (filled === 'blocked') throw diagnoseError('draft')
-        uiWorkspace.openSession(sessionId)
       } catch (error) {
         reference?.release?.()
         // The id stays recorded (the gate applies if it is ever restored);

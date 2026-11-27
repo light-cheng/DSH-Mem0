@@ -88,7 +88,7 @@ test('diagnosis facts keep only the allowed fields, in order, and drop detail, k
 test('the prompt redacts again, whatever the entry claims, and starts with /plan only for the draft', () => {
   const sanitize = (text) => sanitizeFailureMessage(text)
   const tools = { forbidden: ['mem0_delete'], ask: ['mem0_add'], status: 'mem0_status' }
-  const draft = buildDiagnosisPrompt(FAILURE, { plugin: 'dsh-mem0', version: '0.4.1', lang: 'zh', plan: true, tools, sanitize })
+  const draft = buildDiagnosisPrompt(FAILURE, { plugin: 'dsh-mem0', version: '0.4.1', lang: 'zh', plan: true, gated: true, tools, sanitize })
   const copy = buildDiagnosisPrompt(FAILURE, { plugin: 'dsh-mem0', lang: 'en', tools, sanitize })
   assert.ok(draft.text.startsWith('/plan '))
   assert.ok(!copy.text.startsWith('/plan'))
@@ -98,8 +98,12 @@ test('the prompt redacts again, whatever the entry claims, and starts with /plan
     assert.match(text, /mem0_delete/)
     assert.match(text, /mem0_status/)
   }
-  assert.match(draft.text, /只读/)
-  assert.match(copy.text, /read-only/)
+  assert.match(draft.text, /只读诊断会话/)
+  assert.match(draft.text, /插件会在这个会话里拒绝/)
+  // Copied text may be pasted into any session: it claims no gate.
+  assert.doesNotMatch(copy.text, /read-only diagnosis session|refuses/)
+  assert.match(copy.text, /Diagnose only/)
+  assert.match(copy.text, /mem0_delete, mem0_add: they change memories/)
 })
 
 test('a message cannot close the block or add lines', () => {
@@ -197,6 +201,9 @@ test('without the host services (DSH 0.2.1) the page offers only Copy diagnosis'
   const { diagnoseServices, FailureAdvice } = loadClient()
   assert.equal(diagnoseServices({ get: () => undefined }), null)
   assert.equal(diagnoseServices({ get: (name) => (name === 'sessions' ? { create() {}, retain() {} } : undefined) }), null)
+  const all = { sessions: { create() {}, retain() {} }, uiWorkspace: { openSession() {} }, conversation: { input: { requestDraftInitialization() {} } }, workspaces: { create() {} } }
+  assert.ok(diagnoseServices({ get: (name) => all[name] }))
+  assert.equal(diagnoseServices({ get: (name) => (name === 'workspaces' ? undefined : all[name]) }), null)
   const t = (key) => key
   const tree = FailureAdvice({ t, failure: { cause: 'other', component: 'llm' }, rowKey: 'k', diagnose: { canOpen: false, state: {}, start() {}, copy() {} } })
   const labels = tree.children.filter(Boolean).map((child) => child.children?.[0])
@@ -225,6 +232,7 @@ function fakeHost({ permission = 'read-only', draft = 'applied', createFails = f
     projections: { faceOf: (key) => ({ getSnapshot: () => (key === 'permissions' ? { currentValue: preset } : undefined) }) },
   }
   const binding = { sessionId: 'new-1', session }
+  const workspaceItems = [{ workspaceId: 'ws-user', path: '/Users/me/project', sessionIds: [] }]
   const services = {
     sessions: {
       list: { getSnapshot: () => ({ ids: listed, byId: {} }) },
@@ -251,7 +259,16 @@ function fakeHost({ permission = 'read-only', draft = 'applied', createFails = f
         },
       },
     },
-    workspaces: { list: { getSnapshot: () => ({ archivedSessionIds: archived }) } },
+    workspaces: {
+      list: { getSnapshot: () => ({ items: workspaceItems, archivedSessionIds: archived }) },
+      create: async ({ path: folder }) => {
+        calls.push(['workspace', folder])
+        const view = { workspaceId: 'ws-diag', path: folder, sessionIds: [] }
+        workspaceItems.push(view)
+        return view
+      },
+      rename: async (id, title) => calls.push(['workspace-title', id, title]),
+    },
   }
   const posts = []
   const post = async (body) => {
@@ -262,18 +279,27 @@ function fakeHost({ permission = 'read-only', draft = 'applied', createFails = f
   return { services, calls, posts, post }
 }
 
-const PREPARED = { text: '/plan hello', fingerprint: 'dsh-mem0:abc', cwd: '/profile/dsh-mem0/diagnose', title: 'Mem0 诊断：其他错误', sessionId: null }
+const PREPARED = { text: '/plan hello', fingerprint: 'dsh-mem0:abc', cwd: '/profile/dsh-mem0/mem0-diagnosis', title: 'Mem0 诊断：其他错误', workspaceTitle: 'Mem0 诊断', sessionId: null }
 const noSleep = async () => {}
 
-test('a new diagnosis: create in the diagnosis folder, record, read-only, confirm, draft, then open', async () => {
+test('a new diagnosis: own workspace, record, read-only, confirm, open, then draft', async () => {
   const { runDiagnosis } = loadClient()
   const host = fakeHost()
   const outcome = await runDiagnosis({ services: host.services, prepared: PREPARED, post: host.post, sleep: noSleep })
   assert.deepEqual(plain(outcome), { kind: 'created', sessionId: 'new-1' })
   const order = host.calls.map((call) => call[0])
-  assert.deepEqual(order.slice(0, 7), ['create', 'post', 'retain', 'command', 'rename', 'draft', 'open'])
-  // A folder of its own, never a workspace: New Session cannot reuse it.
-  assert.deepEqual(host.calls[0][1], { cwd: PREPARED.cwd })
+  assert.deepEqual(order.slice(0, 9), ['workspace', 'workspace-title', 'create', 'post', 'retain', 'command', 'rename', 'open', 'draft'])
+  // The diagnosis workspace, never the user's: their New Session cannot reuse it.
+  assert.deepEqual(host.calls[0], ['workspace', PREPARED.cwd])
+  assert.deepEqual(host.calls[1], ['workspace-title', 'ws-diag', 'Mem0 诊断'])
+  assert.deepEqual(host.calls[2][1], { workspaceId: 'ws-diag' })
+
+  // The next one reuses the workspace and leaves its title alone.
+  const next = fakeHost()
+  next.services.workspaces.list.getSnapshot().items.push({ workspaceId: 'ws-diag', path: PREPARED.cwd, sessionIds: [] })
+  await runDiagnosis({ services: next.services, prepared: PREPARED, post: next.post, sleep: noSleep })
+  assert.equal(next.calls.some((call) => call[0] === 'workspace' || call[0] === 'workspace-title'), false)
+  assert.deepEqual(next.calls[0][1], { workspaceId: 'ws-diag' })
   assert.deepEqual(host.posts[0], { action: 'register', sessionId: 'new-1', fingerprint: 'dsh-mem0:abc' })
   assert.deepEqual(host.calls.find((call) => call[0] === 'draft'), ['draft', 'new-1', '/plan', 'replace'])
   assert.equal(host.calls.some((call) => call[0] === 'archive'), false)
@@ -305,12 +331,14 @@ test('read-only not confirmed: the session is archived, never opened, whatever t
   assert.deepEqual(host.posts.at(-1), { action: 'unmap', sessionId: 'new-1' })
 })
 
-test('a blocked draft or a refused create: nothing half-made is opened', async () => {
+test('a blocked draft is archived; a refused create or record opens nothing', async () => {
   const { runDiagnosis } = loadClient()
   const blocked = fakeHost({ draft: 'blocked' })
   await assert.rejects(runDiagnosis({ services: blocked.services, prepared: PREPARED, post: blocked.post, sleep: noSleep }), (error) => error.diagnoseReason === 'draft')
-  assert.equal(blocked.calls.some((call) => call[0] === 'open'), false)
-  assert.ok(blocked.calls.some((call) => call[0] === 'archive'))
+  // Shown before the draft (DSH keeps a draft only once the view holds the
+  // session); a blocked draft archives it, which also leaves the view.
+  const order = blocked.calls.map((call) => call[0])
+  assert.ok(order.indexOf('archive') > order.indexOf('draft'))
 
   const refused = fakeHost({ createFails: true })
   await assert.rejects(runDiagnosis({ services: refused.services, prepared: PREPARED, post: refused.post, sleep: noSleep }), (error) => error.diagnoseReason === 'create')
@@ -364,7 +392,8 @@ test('prepare: prompt from the stored entry, fingerprint, existing session and t
   assert.doesNotMatch(first.body.text + first.body.copyText, /green tea|abcdefghijklmnop/)
   assert.ok(!first.body.copyText.startsWith('/plan'))
   assert.equal(first.body.sessionId, null)
-  assert.equal(first.body.cwd, path.join(dir, 'dsh-mem0', 'diagnose'))
+  assert.equal(first.body.cwd, path.join(dir, 'dsh-mem0', 'mem0-diagnosis'))
+  assert.equal(first.body.workspaceTitle, 'Mem0 诊断')
   assert.ok(fs.statSync(first.body.cwd).isDirectory())
   assert.equal(first.body.title, 'Mem0 诊断：其他错误')
   assert.deepEqual(handleDiagnoseAction(runtime, { action: 'register', sessionId: 'sess-9', fingerprint: first.body.fingerprint }).body, { ok: true })
