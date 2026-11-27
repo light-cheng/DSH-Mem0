@@ -1,7 +1,7 @@
 // Startup diagnostics of the local backend, from the 2026-11 Windows
 // incidents: the real reason behind a store that cannot open, the Windows
 // port hint on a refused embedder, embedded-Qdrant detection kept for the
-// migration, settings dropped by DSH's settings sync, and settings of the
+// migration, settings the profile lost (DSH desktop's crash recovery), and settings of the
 // Python sidecar era that must not raise a warning after the upgrade.
 // Mocks and temp folders only.
 import test from 'node:test'
@@ -137,7 +137,7 @@ test('an oss.json with embedded Qdrant no longer stops the local backend', (t) =
   assert.equal(config.native.problems.some((problem) => problem.component === 'embedder'), false)
 })
 
-// ---- 5. Settings dropped by DSH's settings sync ----
+// ---- 5. Settings the profile lost (DSH desktop's crash recovery) ----
 
 test('settings the profile sets are told apart from schema defaults', () => {
   assert.equal(isFieldSet({ collectionName: 'dsh_mem0' }, 'collectionName'), false)
@@ -166,12 +166,13 @@ test('the config guard reports settings that went missing since the last good ru
   assert.deepEqual(rewritten.status().missing, ['collectionName', 'embedderBaseUrl', 'embedderModel', 'translateMemories', 'userId'])
   rewritten.markWorking()
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).fields, [...full].sort(), 'a rewrite never becomes the baseline')
-  assert.match(describeConfigWarning(rewritten.status()), /missing: collectionName, embedderBaseUrl, embedderModel/)
+  assert.match(describeConfigWarning(rewritten.status()), /crash recovery.*cordis\.patch\.yml aside\): collectionName, embedderBaseUrl, embedderModel/)
+  assert.doesNotMatch(describeConfigWarning(rewritten.status()), /settings sync/)
 
   // Kept in oss.json's dsh_mem0 block: not missing.
   const covered = new ConfigGuard({ filePath: file, profileFields: ['backend', 'userId'], fallbackFields: ['embedderModel', 'embedderBaseUrl', 'collectionName', 'translateMemories'], retiredFields: RETIRED_KEY_FIELDS })
   assert.equal(covered.status(), null)
-  assert.ok(diagnosticLines({ config: { backend: 'platform' }, configGuard: rewritten }).some((line) => line.startsWith('warning: dsh-mem0 settings look rewritten')))
+  assert.ok(diagnosticLines({ config: { backend: 'platform' }, configGuard: rewritten }).some((line) => line.startsWith('warning: dsh-mem0 settings are missing from the profile')))
 })
 
 test('upgrade: an old fingerprint with pythonPath, mem0ConfigPath and historyDbPath raises no warning', (t) => {

@@ -208,7 +208,7 @@ test('oss: an upgraded profile with pythonPath and other sidecar settings starts
     sidecarEnv: ['OPENAI_API_KEY'],
   })
   assert.ok(debug.some((line) => /ignoring settings of the removed Python sidecar: pythonPath, mem0ConfigPath, historyDbPath, sidecarEnv/.test(line)), debug.join('\n'))
-  assert.equal(warn.some((line) => /settings look rewritten/.test(line)), false, warn.join('\n'))
+  assert.equal(warn.some((line) => /settings are missing from the profile/.test(line)), false, warn.join('\n'))
   assert.ok(ctx.tools.registered.includes('mem0_status'))
   // The store opens in the background, in the configured temporary folder.
   for (let index = 0; index < 50 && !fs.existsSync(storePath); index += 1) await new Promise((resolve) => setTimeout(resolve, 20))

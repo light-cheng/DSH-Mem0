@@ -272,7 +272,7 @@ config:
 
 向导只探测 `127.0.0.1`；你手动填的地址只在点「测试」时才连接。已存的 key 只发给保存时的那个服务：换了服务商或地址，要重新填 key。向导只读写自己的凭据名或当前配置正在用的那个，要替换别的 key 会先问你。记忆文件里的向量来自另一个 embedding 时，自测改用临时文件，保存时先重算向量；在这之前当前配置照常运行。
 
-也可以手动在 `~/.dsh/mem0/oss.json` 的 `dsh_mem0` 段里配置，DSH 的设置同步不会重写这个文件（见 [examples/oss-config.example.json](examples/oss-config.example.json)）：
+也可以手动在 `~/.dsh/mem0/oss.json` 的 `dsh_mem0` 段里配置，DSH 不会碰这个文件（见 [examples/oss-config.example.json](examples/oss-config.example.json)）：
 
 ```json
 {
@@ -326,7 +326,17 @@ config:
 
 **文件权限。** 在 macOS 和 Linux 上，数据库文件及其 `-wal` / `-shm` 文件权限设为 0600。在 Windows 上它们继承 `%USERPROFILE%\.dsh\mem0` 的 ACL，默认只有你的账号、SYSTEM 和 Administrators 能读；不要把这个目录放进同步盘或共享目录。
 
-**让插件设置避开 DSH 的重写。** DSH 的设置同步可能重写 profile 的 `cordis.patch.yml` 并丢掉插件设置（安装插件时出现过：dsh-mem0 配置块被删到只剩 `backend`）。写在 `oss.json` 的 `dsh_mem0` 段里的设置不受影响。插件也会发现这种重写：它记下上次正常运行时设置了哪些关键配置（只记字段名，存在 `<DSH profile>/dsh-mem0/config-fingerprint.json`）。其中有字段消失时，设置页和 `mem0_status` 会提示「dsh-mem0 配置疑似被重写，缺少：…」。写在 `dsh_mem0` 段里的设置不算缺失。如果是你有意删掉的，删除 `config-fingerprint.json` 即可。
+<a id="profile-settings-lost"></a>
+**profile 丢了插件设置时。** 插件设置存在 DSH profile 的 `cordis.patch.yml` 里，DSH 自己会改这个文件：
+
+- **启动失败后点了「禁用第三方插件」。** DSH 桌面版启动失败时会弹对话框，其中一个按钮是「禁用第三方插件、备份 profile patch 并重启」。点了它，**整份** `cordis.patch.yml` 会被改名成 `cordis.patch.yml.bak-<时间戳>`（在 profile 目录里），原位置换成空文件：dsh-mem0 的设置、其他插件的设置、宿主设置（语言、主题）从此都只在这个备份里。**先选「重启」**，只有 DSH 仍然起不来时才用第三方插件那个按钮。
+- **在设置页保存一次**，dsh-mem0 块里当前版本不认识的键都会被删掉，包括 `pythonPath` 这类退役的键。这是预期行为。
+
+插件的应对：
+
+- 每次在设置页保存后，插件把关键设置复制一份到 `~/.dsh/mem0/oss.json` 的 `dsh_mem0` 段，DSH 不会碰这个文件：`backend`、`baseUrl`、`authType`、`apiKeyEnv`、`userId`、`agentId`、`collectionName`、存储路径、embedder 和抽取 LLM 的设置、`translateMemories`、`captureStrataFolds`。profile 里设了的值始终优先，副本只补 profile 丢掉的字段，所以记忆仍写到原来的库和用户。key 本身从不复制，只写凭据名。`oss.json` 里只有这一段会变，文件整体原子替换。副本写不进去时，保存照样成功，DSH 日志里留一条警告。
+- 插件记下上次正常运行时设置了哪些关键配置（只记字段名，存在 `<DSH profile>/dsh-mem0/config-fingerprint.json`）。其中有字段消失、副本也没补上时，设置页和 `mem0_status` 会提示「profile 里缺少 dsh-mem0 的设置……，缺少：…」。如果是你有意删掉的，删除 `config-fingerprint.json` 即可。
+- profile 目录里有比上次正常运行更新的 `cordis.patch.yml.bak-*` 时，提示里会写出这个文件名，并给出「从备份恢复 dsh-mem0 设置」按钮。它只读备份里 dsh-mem0 那一条，通过 DSH 的设置 API 写回，别的条目一律不碰；备份里的 API Key 不会复制回来（需要重新填）。备份里的宿主设置和其他插件的设置要你手动复制回 `cordis.patch.yml`。「不再提示」会隐藏这个备份的提示。
 
 <a id="migrating-from-qdrant"></a>
 **从 Python sidecar（0.3.x）升级。** 旧版的 Python sidecar、Qdrant 和旧版回退路径已移除。旧设置（`pythonPath`、`mem0ConfigPath`、`historyDbPath`、`sidecarEnv`）会被忽略，只记一条 debug 日志，不报错，也不会触发「配置疑似被重写」的提示。请用[配置向导](#setup-wizard)重新配置，它的最后一步负责迁移记忆：
@@ -465,8 +475,8 @@ Invoke-RestMethod http://127.0.0.1:15434/api/tags   # Ollama
 **安装或更新插件后**，检查一次记忆：
 
 1. 看输入框下方的记忆状态：没有红色的「记忆失败」。
-2. 让 agent 运行 `mem0_status`：`status: ready`、`store: ok (sqlite)`、`embedder: ok`，并且没有 `warning: dsh-mem0 settings look rewritten`。
-3. 配置被重写时，在插件设置页补回（或用 DSH 在 `cordis.patch.yml` 旁边留的 `.bak-<时间>` 备份恢复），并考虑把它们挪到 `oss.json` 的 `dsh_mem0` 段里。
+2. 让 agent 运行 `mem0_status`：`status: ready`、`store: ok (sqlite)`、`embedder: ok`，并且没有 `warning: dsh-mem0 settings are missing from the profile`。
+3. DSH 启动失败时，对话框里先选「重启」，不要先选「禁用第三方插件」。如果已经点过，原来的文件在 profile 目录下的 `cordis.patch.yml.bak-<时间戳>`：在插件设置页用「从备份恢复 dsh-mem0 设置」，宿主和其他插件的条目手动复制回去（见 [profile 丢了插件设置时](#profile-settings-lost)）。
 
 ## 工具
 

@@ -107,19 +107,23 @@ export async function apply(ctx, rawConfig) {
     backend: config.backend,
     logger,
   })
-  // Key settings that went missing since the plugin last ran fine (DSH's
-  // settings sync rewriting cordis.patch.yml); see lib/config-guard.js.
+  // Key settings that went missing since the plugin last ran fine, and a
+  // crash-recovery backup of cordis.patch.yml (DSH desktop's "disable
+  // third-party plugins" moves the whole file aside); see lib/config-guard.js.
   const configGuard = new ConfigGuard({
     filePath: dataDir ? path.join(dataDir, CONFIG_FINGERPRINT_FILE) : undefined,
     profileFields: config.profileFields,
     fallbackFields: config.settingsFromOss,
     retiredFields: RETIRED_KEY_FIELDS,
+    profileDir,
     logger,
   })
   if (configGuard.status()) logger?.warn?.(describeConfigWarning(configGuard.status()))
   const runtime = {
     config,
     configGuard,
+    // Where cordis.patch.yml and its crash-recovery backups are.
+    profileDir,
     failures,
     client: undefined,
     breaker: undefined,

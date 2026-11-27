@@ -8,9 +8,23 @@ English is the default; the Chinese version follows below.
 
 Creating a GitHub release publishes the package to npm automatically (`.github/workflows/release.yml`, npm trusted publishing, no token). Tag the release `vX.Y.Z`, matching the `version` in `package.json`; a mismatch fails the workflow before anything is published. A release marked **pre-release** is published to the `next` dist-tag, otherwise to `latest`. If the first pre-release publish fails with an error about dist-tags, publish stable releases only (leave **pre-release** unticked).
 
+### Release checklist
+
+Before tagging a release, besides CI on all three platforms:
+
+- **Profile patch regression.** In an isolated profile (temporary `HOME` and `DSH_HOME`, default workspace pinned as in the test isolation notes, `MEM0_DIR` in a temporary folder, `MEM0_TELEMETRY=false`, a test user id), seed `cordis.patch.yml` with: a comment line, a dsh-mem0 block holding an unknown key and a retired key (`pythonPath`) with an end-of-line comment, another plugin's block, and host settings (`locale`, `ui-theme`). Then install, enable, change one setting on the plugin settings page and save, switch the component off and on, uninstall, reinstall and restart, and diff the patch after each step. Expected: only the settings-page save changes the dsh-mem0 block, and only by dropping keys outside the schema (and its comments); nothing else changes anywhere. After the save, the `dsh_mem0` block of `oss.json` holds the key settings and no key, and the rest of `oss.json` is unchanged.
+- **Simulated crash recovery (W3).** With the plugin set up and run once, stop DSH, move `cordis.patch.yml` to `cordis.patch.yml.bak-<Date.now()>` and write `[]` in its place (what *Disable third-party plugins, back up the profile patch and restart* does), then start DSH. Expected: the settings page and `mem0_status` name the backup file; memory still works with the same store, user and embedder (filled from `dsh_mem0`); **Restore dsh-mem0 settings from the backup** writes back the dsh-mem0 entry only (diff: no other entry appears) and the notice goes away.
+
 ### Unreleased
 
 #### What changes for you
+
+- **Plugin settings survive DSH desktop's crash recovery.** When DSH desktop fails to start, its dialog offers *Disable third-party plugins, back up the profile patch and restart*. That button moves the whole profile patch (`cordis.patch.yml`) aside, so the Mem0 settings, other plugins' settings and the host's language and theme were all gone afterwards, and memory quietly went to another store or user. Now:
+  - **Choose "Restart" first** in that dialog; use the third-party button only when DSH still cannot start. If it was used, the previous file is `cordis.patch.yml.bak-<timestamp>` in the profile folder.
+  - After every save on the settings page, the plugin copies the key settings (backend and server, user and agent id, store path, embedder and extraction LLM, translation and dsh-strata capture) into the `dsh_mem0` block of `~/.dsh/mem0/oss.json`, which DSH never touches. The profile still wins; the copy only fills what the profile lost. Keys are never copied, only credential names. If the copy cannot be written the save still succeeds, with one warning in the DSH log.
+  - When such a backup is newer than the last good run, the settings page and `mem0_status` name it, and **Restore dsh-mem0 settings from the backup** writes the dsh-mem0 entry back through DSH's settings API (nothing else in the profile changes; an API key in the backup is not copied). The host settings (language, theme) and other plugins' settings are in that backup too and have to be copied back by hand.
+  - The warning no longer blames "DSH settings sync": it says "dsh-mem0 settings are missing from the profile".
+- **A save on the settings page drops retired keys.** Keys the current version does not know, such as `pythonPath` of the Python sidecar era, disappear from the dsh-mem0 block after one save on the settings page. That is expected.
 
 - **The status below the input box is short, and says more on hover.** It shows a short state with no product name: **Recalled 20**, **Saving**, **Saved 3**, **Nothing new**, **Failed**, **Paused**. A new notice (each finished recall or save, a new failure or pause) first shows in full for 8 seconds, e.g. "Recalled 20 memories · 119 ms", then folds into the panel; a newer one replaces it and restarts the 8 seconds, and the countdown pauses while the pointer or keyboard focus is on it. In-progress states (recalling, saving) only change the short text. A failure or a pause is never folded: it stays red with its sentence until the next recall or save succeeds. Hover or focus the status for a panel: the latest sentence, the last 5 notices of this conversation with their time (kept in memory only), each opening its details (recall: query, first 3 results, step times; save: counts and the first 3 saved rows; failure: the cause and what to do), and **Open settings**. With reduced motion on, nothing fades. Screen readers always get the whole sentence, and each new notice is announced once.
 - **New switch: Settings › Common switches › Show details in the status bar** (off by default, `dockDetails`; the environment variable `MEM0_DOCK_DETAILS=on/off` overrides it on the server side). When on, the status always shows the whole latest sentence and the partition chip shows the project name, e.g. "Project pocket-ledger". Display only: recall and capture are unchanged.
@@ -205,9 +219,23 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 在 GitHub 上新建 release 就会自动发到 npm（`.github/workflows/release.yml`，npm trusted publishing，不用 token）。tag 写成 `vX.Y.Z`，和 `package.json` 的 `version` 一致；不一致时 workflow 在发布前失败，不会发出任何东西。勾选 **pre-release** 时发布到 `next` 标签，否则发布到 `latest`。如果第一次 prerelease 发布失败、报错和 dist-tag 有关，就改为只发正式版（不勾选 **pre-release**）。
 
+### 发版清单
+
+打 tag 之前，除了三个平台的 CI 全绿，还要做：
+
+- **profile patch 回归检查。** 在隔离 profile 里做（临时 `HOME` 和 `DSH_HOME`，默认工作区按测试隔离笔记事先固定，`MEM0_DIR` 指向临时目录，`MEM0_TELEMETRY=false`，测试 user id）。先预置一份 `cordis.patch.yml`，里面要有：一行注释；dsh-mem0 块，含一个未知键和一个退役键（`pythonPath`），带行尾注释；另一个插件的块；宿主设置（`locale`、`ui-theme`）。然后依次做：装、启用、在插件设置页改一项并保存、组件关再开、卸载、重装、重启，每一步之后都 diff 一次 patch。预期：只有设置页保存会改 dsh-mem0 块，而且只删掉 schema 外的键（和块内注释）；其他地方一律不变。保存后 `oss.json` 的 `dsh_mem0` 段有关键设置、没有 key，`oss.json` 其余内容不变。
+- **模拟崩溃恢复（W3）。** 插件配好并正常运行过一次后，停掉 DSH，把 `cordis.patch.yml` 改名成 `cordis.patch.yml.bak-<Date.now()>`，原位置写入 `[]`（这就是「禁用第三方插件、备份 profile patch 并重启」做的事），再启动 DSH。预期：设置页和 `mem0_status` 写出备份文件名；记忆照常工作，库、用户和 embedder 都没变（由 `dsh_mem0` 补上）；「从备份恢复 dsh-mem0 设置」只写回 dsh-mem0 这一条（diff 里没有出现别的条目），之后提示消失。
+
 ### 未发布
 
 #### 你会看到的变化
+
+- **插件设置不再因 DSH 桌面版的崩溃恢复而丢失。** DSH 桌面版启动失败时，对话框里有个按钮「禁用第三方插件、备份 profile patch 并重启」。点了它，整份 profile patch（`cordis.patch.yml`）会被移走：Mem0 的设置、其他插件的设置、宿主的语言和主题都没了，记忆还会悄悄写到别的库或别的用户。现在：
+  - 在那个对话框里**先选「重启」**，只有 DSH 仍然起不来时才用第三方插件那个按钮。如果已经点过，原来的文件在 profile 目录下的 `cordis.patch.yml.bak-<时间戳>`。
+  - 每次在设置页保存后，插件把关键设置（后端和服务器、user / agent id、存储路径、embedder 和抽取 LLM、翻译、dsh-strata 采集）复制一份到 `~/.dsh/mem0/oss.json` 的 `dsh_mem0` 段，DSH 不会碰这个文件。profile 仍然优先，副本只补 profile 丢掉的字段。key 本身从不复制，只写凭据名。副本写不进去时，保存照样成功，DSH 日志里留一条警告。
+  - 这样的备份比上次正常运行更新时，设置页和 `mem0_status` 会写出它的文件名；「从备份恢复 dsh-mem0 设置」通过 DSH 的设置 API 写回 dsh-mem0 这一条（profile 里别的东西不变；备份里的 API Key 不复制）。宿主设置（语言、主题）和其他插件的设置也在这个备份里，需要手动找回。
+  - 提示不再说是「DSH 设置同步」造成的，改为「profile 里缺少 dsh-mem0 的设置」。
+- **在设置页保存一次会删掉退役的键。** 当前版本不认识的键（比如 Python sidecar 时代的 `pythonPath`），在设置页保存一次后会从 dsh-mem0 块里消失。这是预期行为。
 
 - **输入框下方的状态更短，详情放进悬浮窗。** 平时只显示简短状态，不带产品名：「已召回 20」「保存中」「已保存 3」「无新内容」「记忆失败」「记忆已暂停」。有新提示时（每轮召回或保存完成、新的失败或暂停），先完整显示 8 秒，比如「已召回记忆 20 · 119 ms」，再收进悬浮窗；停留期间来了新提示就直接替换并重新计时，鼠标悬停或键盘聚焦时暂停计时。召回中、保存中这类进行中的状态只更新简短文字。失败和暂停不收起，保持红色和完整句子，直到下一次召回或保存成功。悬停或聚焦状态会弹出悬浮窗：最近一条提示的完整句子、这个对话最近 5 条提示和时间（只存在内存里），每条都能点开看详情（召回：查询、前 3 条结果、各步耗时；保存：统计和前 3 条；失败：原因和下一步），最后是「打开设置」。系统开了「减少动态效果」时不做渐隐。读屏软件始终读到完整句子，新提示只播报一次。
 - **新开关：设置 › 常用开关 ›「底部栏显示详情」**（默认关闭，配置键 `dockDetails`；服务端可用环境变量 `MEM0_DOCK_DETAILS=on/off` 覆盖）。打开后状态一直显示最近一条提示的完整句子，分区 chip 显示项目名，比如「项目 pocket-ledger」。只影响显示，召回和保存不变。

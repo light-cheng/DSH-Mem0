@@ -272,7 +272,7 @@ config:
 
 The wizard probes nothing but `127.0.0.1`; an address you type is contacted only when you press a test button. A stored key is sent only to the server it was saved for: after changing the provider or address, type the key again. The wizard reads and writes only its own credential names or the one your settings use, and asks before replacing another key. If the memory file holds vectors of another embedder, the self-test runs in a temporary file and saving recomputes the vectors first; until then the current setup keeps working.
 
-Or configure by hand in the `dsh_mem0` block of `~/.dsh/mem0/oss.json`, which DSH's settings sync never rewrites (see [examples/oss-config.example.json](examples/oss-config.example.json)):
+Or configure by hand in the `dsh_mem0` block of `~/.dsh/mem0/oss.json`, which DSH never touches (see [examples/oss-config.example.json](examples/oss-config.example.json)):
 
 ```json
 {
@@ -326,10 +326,20 @@ The activity record says how many facts were left out as near-duplicates and how
 
 **File permissions.** On macOS and Linux the file and its `-wal` / `-shm` companions are set to mode 0600. On Windows they inherit the ACL of `%USERPROFILE%\.dsh\mem0`, which by default only your account, SYSTEM and Administrators can read; keep the folder out of synced or shared folders.
 
-**Keeping plugin settings out of DSH's reach.** DSH's settings sync can rewrite the profile's `cordis.patch.yml` and drop plugin settings (seen when a plugin was installed: the dsh-mem0 block was cut down to `backend`). Everything in the `dsh_mem0` block of `oss.json` survives that. The plugin also notices a rewrite: it records which key settings were set the last time it ran fine (names only, in `<DSH profile>/dsh-mem0/config-fingerprint.json`). When some of them disappear, the settings page and `mem0_status` say "dsh-mem0 settings look rewritten; missing: …". Settings kept in the `dsh_mem0` block do not count as missing. If you removed one on purpose, delete `config-fingerprint.json`.
+<a id="profile-settings-lost"></a>
+**When the profile loses the plugin settings.** The plugin settings live in the DSH profile's `cordis.patch.yml`, a file DSH changes on its own:
+
+- **"Disable third-party plugins" after a failed start.** When DSH desktop fails to start, its dialog offers *Disable third-party plugins, back up the profile patch and restart*. That button moves the **whole** `cordis.patch.yml` to `cordis.patch.yml.bak-<timestamp>` (in the profile folder) and starts over with an empty file: the dsh-mem0 settings, every other plugin's settings and the host settings (language, theme) are then only in that backup. **Choose "Restart" first**; use the third-party button only when DSH still cannot start.
+- **A save on the settings page** drops every key of the dsh-mem0 block that the current version does not know, retired ones such as `pythonPath` included. That is expected.
+
+What the plugin does about it:
+
+- After every save on the settings page it copies the key settings into the `dsh_mem0` block of `~/.dsh/mem0/oss.json`, which DSH never touches: `backend`, `baseUrl`, `authType`, `apiKeyEnv`, `userId`, `agentId`, `collectionName`, the store path, the embedder and extraction LLM settings, `translateMemories` and `captureStrataFolds`. A value the profile sets always wins; the copy only fills fields the profile lost, so memories keep going to the same store and user. Keys are never copied, only credential names. Only that block of `oss.json` changes, and the file is replaced atomically. If the copy cannot be written, the save still succeeds and the DSH log has one warning.
+- It records which key settings were set the last time it ran fine (names only, in `<DSH profile>/dsh-mem0/config-fingerprint.json`). When some disappear and the copy does not cover them, the settings page and `mem0_status` say "dsh-mem0 settings are missing from the profile …; missing: …". If you removed one on purpose, delete `config-fingerprint.json`.
+- When the profile folder has a `cordis.patch.yml.bak-*` newer than the last good run, the notice names that file and offers **Restore dsh-mem0 settings from the backup**. It reads only the dsh-mem0 entry of the backup and writes it back through DSH's settings API; no other entry is touched, and an API key in the backup is not copied (enter it again). The host settings and other plugins' settings in that backup have to be copied back into `cordis.patch.yml` by hand. **Dismiss** hides the notice for that backup.
 
 <a id="migrating-from-qdrant"></a>
-**Coming from the Python sidecar (0.3.x).** The Python sidecar, Qdrant and the fallback paths of earlier versions have been removed. Old settings (`pythonPath`, `mem0ConfigPath`, `historyDbPath`, `sidecarEnv`) are ignored with a debug line, never an error, and do not trigger the "settings look rewritten" warning. Reconfigure with the [setup wizard](#setup-wizard); its last step moves your memories:
+**Coming from the Python sidecar (0.3.x).** The Python sidecar, Qdrant and the fallback paths of earlier versions have been removed. Old settings (`pythonPath`, `mem0ConfigPath`, `historyDbPath`, `sidecarEnv`) are ignored with a debug line, never an error, and do not trigger the "settings are missing from the profile" warning. Reconfigure with the [setup wizard](#setup-wizard); its last step moves your memories:
 
 - It reads one collection of a running Qdrant **server** (the one `oss.json` or `collectionName` names, else `dsh_mem0`; at the address in `oss.json`, else `127.0.0.1:6333`, on Windows often `127.0.0.1:15333`) and in it only the memories of your `userId`. No other collection can be chosen, none is listed, and names starting with `mem0` are refused. A Qdrant API key in `oss.json` is sent only to that Qdrant. Qdrant is only read: nothing there is changed or deleted, and **no backup is made**.
 - Vectors are copied when the old and new embedder are the same model and dimension and you tick the box; otherwise they are recomputed with the new embedder. Timestamps become UTC (originals kept in the metadata); a manual memory summary comes along.
@@ -435,7 +445,7 @@ Changes saved in the settings page or the profile config apply on their own: the
 <a id="windows-troubleshooting"></a>
 ## Windows troubleshooting
 
-Most local-backend failures on Windows come from three things: a port taken by a Windows reserved range, a model server that is not running, or plugin settings that DSH rewrote. Look in that order: ports, processes, settings.
+Most local-backend failures on Windows come from three things: a port taken by a Windows reserved range, a model server that is not running, or plugin settings the profile lost. Look in that order: ports, processes, settings.
 
 **Reserved ports.** Hyper-V, WSL2 and Docker Desktop make Windows (WinNAT) reserve TCP port ranges at boot, at different places each time. A service whose port falls inside one cannot listen: its process runs, but the port is silent. Its own log says `os error 10013` or "An attempt was made to access a socket in a way forbidden by its access permissions". The plugin then reports, for example, "Embedder Ollama unreachable at 127.0.0.1:11434 (connection refused)" with this hint.
 
@@ -465,8 +475,8 @@ Invoke-RestMethod http://127.0.0.1:15434/api/tags   # Ollama
 **After installing or updating a plugin**, check memory once:
 
 1. Look at the memory status under the composer: no red **Memory failed**.
-2. Ask the agent to run `mem0_status`: `status: ready`, `store: ok (sqlite)`, `embedder: ok`, and no `warning: dsh-mem0 settings look rewritten`.
-3. If settings were rewritten, set them again on the plugin settings page (or restore `cordis.patch.yml` from the `.bak-<time>` copy DSH writes next to it), and consider moving them into the `dsh_mem0` block of `oss.json`.
+2. Ask the agent to run `mem0_status`: `status: ready`, `store: ok (sqlite)`, `embedder: ok`, and no `warning: dsh-mem0 settings are missing from the profile`.
+3. If DSH failed to start, choose **Restart** in its dialog before *Disable third-party plugins*. If that button was used, the previous file is `cordis.patch.yml.bak-<timestamp>` in the profile folder: use **Restore dsh-mem0 settings from the backup** on the plugin settings page, and copy the host and other plugins' entries back by hand (see [when the profile loses the plugin settings](#profile-settings-lost)).
 
 ## Tools
 

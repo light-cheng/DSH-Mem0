@@ -18,6 +18,7 @@ window.__ModuleLoader__.load({
     const MEMORIES_PATH = 'dsh-mem0/gui/memories'
     const PROFILE_PATH = 'dsh-mem0/gui/profile'
     const SETUP_PATH = 'dsh-mem0/gui/setup'
+    const PROFILE_PATCH_PATH = 'dsh-mem0/gui/profile-patch'
 
     // The settings page's UI strings live only here (en + zh, same keys;
     // test/client.test.js checks parity). locale/*.json carry just the package
@@ -324,7 +325,14 @@ window.__ModuleLoader__.load({
       failureCause_config: 'Configuration error',
       failureHintUnreachable: '{component} unreachable at {endpoint}. Is it running? On Windows, a port in a reserved range fails to bind (os error 10013 in the service log): see the README, Windows troubleshooting.',
       failureHintOutputLimit: "The LLM answer reached its output limit (max_tokens {n}): reasoning used up the output. Raise Mem0's llmMaxTokens (8000 or more), or set llmReasoningEffort to low; this is not DSH's model setting. Gateway: {detail}",
-      configWarning: 'dsh-mem0 settings look rewritten (DSH settings sync); missing: {fields}',
+      configWarning: 'dsh-mem0 settings are missing from the profile (DSH desktop crash recovery, "disable third-party plugins", moves the whole cordis.patch.yml aside); missing: {fields}',
+      configWarningBackup: 'DSH desktop crash recovery moved the profile settings aside: the previous file is {file} in the profile folder. "Restore dsh-mem0 settings from the backup" brings back this plugin\'s settings only; the host settings (language, theme) and other plugins\' settings are in that backup too and have to be copied back by hand.',
+      bannerRestore: 'Restore dsh-mem0 settings from the backup',
+      bannerDismiss: 'Dismiss',
+      restoreDone: 'Restored {count} dsh-mem0 settings from {file}.',
+      restoreApiKey: 'The backup held an API key; it was not copied: enter it again.',
+      restoreNothing: '{file} holds no dsh-mem0 settings to restore.',
+      restoreFailed: 'Could not restore from the backup: {error}',
       upgradeLegacyQdrant: 'Earlier memories are still in Qdrant ({endpoint}, collection {collection}). This version keeps memories in SQLite and does not read them; move them with the local setup wizard (last step).',
       upgradeNoLocalConfig: 'No local backend settings were found in ~/.dsh/mem0/oss.json. Earlier versions fell back to reading settings from elsewhere; this one does not. Set it up again with the setup wizard.',
       wzOpen: "Local setup wizard",
@@ -575,7 +583,7 @@ window.__ModuleLoader__.load({
       wzMissingEmbedder: "embedding model",
       wzMissingLlm: "extraction LLM",
       upgradeQdrantMigrated: "The old data is still in Qdrant and no longer used: you may delete it or stop the Qdrant service.",
-      configWarningFix: 'Restore them above and save, or keep them in the "dsh_mem0" block of oss.json, which DSH does not rewrite. Removed on purpose: delete config-fingerprint.json next to failures.json.',
+      configWarningFix: 'Restore them above and save (the plugin keeps a copy in the "dsh_mem0" block of oss.json, which DSH does not rewrite). Removed on purpose: delete config-fingerprint.json next to failures.json.',
       failureRepeated: '{count} times since {since}',
       failureComponent_llm: 'LLM',
       failureComponent_embedder: 'Embedder',
@@ -1087,7 +1095,14 @@ window.__ModuleLoader__.load({
       failureCause_config: '配置错误',
       failureHintUnreachable: '{component}不可达：{endpoint}。请确认服务在运行；Windows 上端口落在系统保留段时服务会绑定失败（服务日志里有 os error 10013），见 README「Windows 排障」。',
       failureHintOutputLimit: 'LLM 回复达到输出上限（max_tokens {n}），推理把输出用完了。请调高 Mem0 的 llmMaxTokens（建议 ≥ 8000），或把 llmReasoningEffort 设成 low；这不是 DSH 的模型设置。网关原话：{detail}',
-      configWarning: 'dsh-mem0 配置疑似被重写（DSH 设置同步），缺少：{fields}',
+      configWarning: 'profile 里缺少 dsh-mem0 的设置（DSH 桌面版的崩溃恢复「禁用第三方插件」会把整份 cordis.patch.yml 移走），缺少：{fields}',
+      configWarningBackup: 'DSH 桌面版的崩溃恢复把 profile 设置移走了，原文件在 profile 目录下的 {file}。「从备份恢复 dsh-mem0 设置」只找回本插件的设置；宿主设置（语言、主题）和其他插件的设置也在这个备份里，需要你手动找回。',
+      bannerRestore: '从备份恢复 dsh-mem0 设置',
+      bannerDismiss: '不再提示',
+      restoreDone: '已从 {file} 恢复 {count} 项 dsh-mem0 设置。',
+      restoreApiKey: '备份里有 API Key，没有复制回来，请重新填写。',
+      restoreNothing: '{file} 里没有可恢复的 dsh-mem0 设置。',
+      restoreFailed: '从备份恢复失败：{error}',
       upgradeLegacyQdrant: '旧记忆仍在 Qdrant（{endpoint}，collection {collection}）。这个版本把记忆存在 SQLite，不读取它们；请用本地配置向导的最后一步迁移。',
       upgradeNoLocalConfig: '在 ~/.dsh/mem0/oss.json 里没有找到本地后端配置。旧版本会从其他位置回退读取配置，这个版本不会，请用设置向导重新配置。',
       wzOpen: "本地配置向导",
@@ -1338,7 +1353,7 @@ window.__ModuleLoader__.load({
       wzMissingEmbedder: "embedding 模型",
       wzMissingLlm: "抽取 LLM",
       upgradeQdrantMigrated: "旧数据仍在 Qdrant，不再使用，可以自行删除或停掉 Qdrant 服务。",
-      configWarningFix: '在上方补回并保存，或写进 oss.json 的 "dsh_mem0" 段（DSH 不会重写它）。如果是有意删除，删掉 failures.json 旁边的 config-fingerprint.json。',
+      configWarningFix: '在上方补回并保存（插件会在 oss.json 的 "dsh_mem0" 段留一份副本，DSH 不会改写它）。如果是有意删除，删掉 failures.json 旁边的 config-fingerprint.json。',
       failureRepeated: '自 {since} 起共 {count} 次',
       failureComponent_llm: 'LLM',
       failureComponent_embedder: '向量模型',
@@ -5283,17 +5298,60 @@ window.__ModuleLoader__.load({
       return { state, label, parts, where }
     }
 
+    /** Fields oss.json's dsh_mem0 block keeps a copy of (lib/config-mirror.js MIRROR_FIELDS). */
+    const COPY_FIELDS = [
+      'backend', 'apiKeyEnv', 'baseUrl', 'authType', 'collectionName', 'userId', 'agentId',
+      'translateMemories', 'captureStrataFolds', 'storePath',
+      'embedderProvider', 'embedderBaseUrl', 'embedderModel', 'embedderDims', 'embedderApiKeyRef',
+      'llmProvider', 'llmBaseUrl', 'llmModel', 'llmApiKeyRef', 'llmMaxTokens', 'llmTemperature', 'llmReasoningEffort',
+    ]
+
+    /**
+     * What the page tells the plugin after a save, for the copy in
+     * oss.json: the values after and before, and which fields changed.
+     * Never the API key. Pure.
+     */
+    function settingsCopyPayload(next, previous, changedKeys) {
+      const pick = (source) => {
+        const out = {}
+        for (const key of COPY_FIELDS) if (source && key in source) out[key] = source[key]
+        return out
+      }
+      return { action: 'saved', values: pick(next), previous: pick(previous), changed: (changedKeys ?? []).filter((key) => COPY_FIELDS.includes(key)) }
+    }
+
+    /**
+     * The DSH settings operations that write a backup's dsh-mem0 settings
+     * back: one `set` per field that differs from the form, on the dsh-mem0
+     * form only. Never the API key. Pure.
+     */
+    function restoreOps(settings, current) {
+      const ops = []
+      for (const [key, value] of Object.entries(settings ?? {})) {
+        if (key === 'apiKey') continue
+        if (current && same(current[key], value)) continue
+        ops.push({ op: 'set', path: [key], value })
+      }
+      return ops
+    }
+
     /**
      * Problems that need the user, newest-first priority, each with where to
      * fix it ('wizard', 'diagnostics' or 'settings'). Nothing when all is well. Pure.
      */
     function bannerItems(t, data, { phase, message, enabled = true, now = Date.now() } = {}) {
       const items = []
-      if (data?.configWarning?.missing?.length) {
+      const warning = data?.configWarning
+      if (warning?.missing?.length || warning?.backup) {
+        const parts = []
+        if (warning.missing?.length) parts.push(template(t('configWarning'), { fields: warning.missing.join(', ') }))
+        if (warning.backup) parts.push(template(t('configWarningBackup'), { file: String(warning.backup) }))
+        if (warning.missing?.length) parts.push(t('configWarningFix'))
         items.push({
           code: 'configWarning',
-          text: `${template(t('configWarning'), { fields: data.configWarning.missing.join(', ') })} ${t('configWarningFix')}`,
-          action: 'settings',
+          text: parts.join(' '),
+          action: warning.backup ? 'restore' : 'settings',
+          ...(warning.backup ? { secondary: 'dismiss', file: String(warning.backup) } : {}),
         })
       }
       const notices = Array.isArray(data?.upgradeNotices) ? data.upgradeNotices : []
@@ -5523,7 +5581,7 @@ window.__ModuleLoader__.load({
 
     function Banners({ t, items, onAction }) {
       if (items.length === 0) return null
-      const label = { wizard: 'bannerWizard', diagnostics: 'bannerDiagnostics', settings: 'bannerSettings' }
+      const label = { wizard: 'bannerWizard', diagnostics: 'bannerDiagnostics', settings: 'bannerSettings', restore: 'bannerRestore', dismiss: 'bannerDismiss' }
       return h(
         'div',
         { className: 'mem0-banners' },
@@ -5533,7 +5591,8 @@ window.__ModuleLoader__.load({
             { key: item.code, className: 'mem0-banner', role: 'alert' },
             h('span', { 'aria-hidden': true }, '⚠'),
             h('span', { className: 'mem0-banner-text' }, item.text),
-            h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: () => onAction(item.action) }, t(label[item.action])),
+            h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: () => onAction(item.action, item) }, t(label[item.action])),
+            item.secondary ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: () => onAction(item.secondary, item) }, t(label[item.secondary])) : null,
           ),
         ),
       )
@@ -6020,7 +6079,7 @@ window.__ModuleLoader__.load({
         'div',
         { className: 'mem0-savebar', role: 'status' },
         h('span', { className: `mem0-dot${dirty ? ' warn' : saveState === 'error' ? ' error' : ' ok'}` }),
-        h('span', { className: saveState === 'error' ? 'mem0-error mem0-savebar-text' : 'mem0-savebar-text' }, saveState === 'error' ? saveMessage || t('saveFailed') : dirty ? t('unsaved') : t('saved')),
+        h('span', { className: saveState === 'error' ? 'mem0-error mem0-savebar-text' : 'mem0-savebar-text' }, saveState === 'error' ? saveMessage || t('saveFailed') : dirty ? t('unsaved') : saveMessage || t('saved')),
         dirty ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: onDiscard }, t('discard')) : null,
         dirty
           ? h('button', { type: 'button', className: 'mem0-primary mem0-sm', onClick: onSave, disabled: !writable || saveState === 'saving' }, saveState === 'saving' ? t('saving') : t('save'))
@@ -6376,10 +6435,88 @@ window.__ModuleLoader__.load({
         const accepted = await form.mutate([{ op: 'set', path: ['backend'], value: 'oss' }], snapshot.revision)
         if (accepted) {
           const next = { ...draft, backend: 'oss' }
+          void copySettings(next, initial, ['backend'])
           setInitial((current) => ({ ...(current ?? next), backend: 'oss' }))
           setDraft(next)
         }
         return accepted
+      }
+
+      // After a save DSH accepted: the plugin copies the key settings into
+      // oss.json (lib/config-mirror.js). A failure there never fails the
+      // save; the plugin logs it.
+      const copySettings = async (next, previous, changedKeys) => {
+        try {
+          await fetchJson(PROFILE_PATCH_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            // The profile's other values too: fields the page does not
+            // edit (embedder and LLM, set by the wizard or by hand) are copied.
+            body: JSON.stringify(settingsCopyPayload({ ...(snapshot.value ?? {}), ...next }, { ...(snapshot.value ?? {}), ...previous }, changedKeys)),
+          })
+        } catch {
+          // logged by the plugin when it got the request
+        }
+      }
+
+      // The notice's "restore from the backup": read the backup's dsh-mem0
+      // entry from the plugin, write it with DSH's settings API (this form
+      // only), then mark the backup handled.
+      const restoreFromBackup = async (file) => {
+        if (!snapshot.writable) return
+        setSaveState('saving')
+        setSaveMessage('')
+        try {
+          const found = await fetchJson(`${PROFILE_PATCH_PATH}?file=${encodeURIComponent(file)}`, { retry: false })
+          if (!found?.ok) {
+            setSaveState('error')
+            setSaveMessage(found?.reason === 'no-entry' ? template(t('restoreNothing'), { file }) : template(t('restoreFailed'), { error: found?.error ?? '' }))
+            return
+          }
+          const base = initial ?? draft ?? {}
+          const ops = restoreOps(found.settings, base)
+          if (ops.length > 0) {
+            const accepted = await form.mutate(ops, snapshot.revision)
+            if (!accepted) {
+              setSaveState('error')
+              setSaveMessage(template(t('restoreFailed'), { error: t('saveFailed') }))
+              return
+            }
+            const next = { ...base, ...found.settings }
+            void copySettings(next, base, ops.map((op) => op.path[0]))
+            setInitial(next)
+            setDraft(next)
+          }
+          await fetchJson(PROFILE_PATCH_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'handled', file }),
+          })
+          setSaveState('saved')
+          setSaveMessage(
+            ops.length > 0
+              ? `${template(t('restoreDone'), { count: ops.length, file })}${found.hadApiKey ? ` ${t('restoreApiKey')}` : ''}`
+              : template(t('restoreNothing'), { file }),
+          )
+          await delay(450)
+          await refreshStatus()
+        } catch (error) {
+          setSaveState('error')
+          setSaveMessage(template(t('restoreFailed'), { error: error.message || '' }))
+        }
+      }
+
+      const dismissBackup = async (file) => {
+        try {
+          await fetchJson(PROFILE_PATCH_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'handled', file }),
+          })
+        } catch {
+          // the notice stays; nothing else depends on it
+        }
+        await refreshStatus()
       }
 
       const applySaved = (next) => {
@@ -6417,6 +6554,7 @@ window.__ModuleLoader__.load({
             setSaveMessage(t('saveFailed'))
             return false
           }
+          void copySettings(next, initial, ops.map((op) => op.path[0]))
           applySaved(next)
           await delay(450)
           await refreshStatus()
@@ -6637,8 +6775,10 @@ window.__ModuleLoader__.load({
         cancel: cancelProfileEdit,
         reset: resetProfile,
       }
-      const onBannerAction = (action) => {
+      const onBannerAction = (action, item) => {
         if (action === 'wizard') return openWizard()
+        if (action === 'restore') return void restoreFromBackup(item?.file ?? '')
+        if (action === 'dismiss') return void dismissBackup(item?.file ?? '')
         if (action === 'diagnostics') {
           setTab('maintenance')
           setDiagnosticsOpen(true)
@@ -6795,6 +6935,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
   },
 })
