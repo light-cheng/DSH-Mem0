@@ -112,6 +112,56 @@ test('short states: at most 12 characters, no product name, the spec wording', (
   }
 })
 
+test('idle and off: "待命" / "Ready", "已关闭" / "Off" with the switch off; the whole "Mem0" sentence with it on', () => {
+  const cases = [
+    [{ data: { activity: {} } }, '待命', 'Ready', 'Mem0 待命', 'Mem0 ready'],
+    [{ data: {} }, '待命', 'Ready', 'Mem0 待命', 'Mem0 ready'],
+    [{ data: { enabled: false, activity: { recall: recallOk() } } }, '已关闭', 'Off', 'Mem0 已关闭', 'Mem0 off'],
+  ]
+  for (const [input, zhShort, enShort, zhFull, enFull] of cases) {
+    for (const [t, shortText, fullText] of [[tz, zhShort, zhFull], [te, enShort, enFull]]) {
+      const chip = dockChip(t, input, NOW)
+      assert.equal(chip.short, shortText)
+      assert.equal(chip.full, fullText)
+      const off = dockDisplay(chip, { dwell: null, details: false })
+      assert.equal(off.mode, 'short')
+      assert.equal(off.text, shortText)
+      assert.doesNotMatch(off.text, /Mem0/)
+      assert.equal(off.aria, fullText, 'screen readers still get the whole sentence')
+      const on = dockDisplay(chip, { dwell: null, details: true })
+      assert.equal(on.text, fullText)
+      assert.equal(on.aria, fullText)
+    }
+  }
+})
+
+test('switch off: no state puts the product name in the status bar', () => {
+  const states = [
+    {},
+    { enabled: false },
+    { activity: { recall: recallOk() } },
+    { activity: { recall: { status: 'searching' } } },
+    { activity: { capture: { status: 'saving' } } },
+    { activity: { capture: { status: 'queued' } } },
+    { activity: { capture: { status: 'extracting' } } },
+    { activity: { capture: saved() } },
+    { activity: { capture: saved(iso(-500), { facts: 1, add: 0, none: 1, count: 0 }) } },
+    { activity: { capture: { status: 'skipped', reason: 'low-value', at: iso(-100) } } },
+    { activity: { capture: { status: 'skipped', reason: 'too-short', at: iso(-100) } } },
+    { activity: { capture: { status: 'error', at: iso(-100) } }, failures: [{ kind: 'capture', cause: 'auth', at: iso(-100) }] },
+    { activity: { capture: { status: 'skipped', reason: 'circuit-open', circuitUntil: iso(120_000), at: iso(-100) } } },
+  ]
+  for (const t of [tz, te]) {
+    for (const data of states) {
+      const chip = dockChip(t, { data }, NOW)
+      assert.doesNotMatch(chip.short, /Mem0/, JSON.stringify(data))
+      assert.doesNotMatch(dockDisplay(chip, { dwell: null, details: false }).text, /Mem0/, JSON.stringify(data))
+    }
+    const unavailable = dockChip(t, { failed: true, fetchError: 'timeout' }, NOW)
+    assert.doesNotMatch(dockDisplay(unavailable, { details: false }).text, /Mem0/)
+  }
+})
+
 test('whole sentences: "已召回记忆 20 · 119 ms", "已保存 2 条新记忆", "记忆失败：…"', () => {
   assert.equal(dockChip(tz, { data: { activity: { recall: recallOk() } } }, NOW).full, '已召回记忆 20 · 119 ms')
   assert.equal(dockChip(te, { data: { activity: { recall: recallOk() } } }, NOW).full, 'Recalled 20 memories · 119 ms')
