@@ -122,8 +122,9 @@ export async function apply(ctx, rawConfig) {
     logger,
   })
   if (configGuard.status()) logger?.warn?.(describeConfigWarning(configGuard.status()))
-  // Read-only diagnosis sessions the settings page opened (lib/diagnose-sessions.js):
-  // the plugin's write tools, automatic recall/capture and hygiene leave them alone.
+  // Diagnosis sessions the settings page opened (lib/diagnose-sessions.js):
+  // the plugin's write tools ask there, and automatic recall/capture and
+  // hygiene leave them alone.
   const diagnoseSessions = new DiagnoseSessions({
     filePath: dataDir ? path.join(dataDir, DIAGNOSE_SESSIONS_FILE) : undefined,
     logger,
@@ -183,11 +184,13 @@ export async function apply(ctx, rawConfig) {
 
   registerGuiRoutes(ctx, () => runtime)
   registerDiagnoseRoutes(ctx, () => runtime)
-  // The diagnosis checklists as a skill, offered in the diagnosis folder
-  // only; until DSH's skill registry takes it, drafts carry the checklist.
+  // The diagnosis checklists as a skill, offered to diagnosis sessions
+  // only (by session id); until DSH's skill registry takes it, prompts
+  // carry the checklist.
   runtime.diagnoseSkill = { ready: false, lang: 'en' }
   registerDiagnoseSkill(ctx, {
-    directory: () => diagnoseDirectoryPath(runtime),
+    inDiagnosis,
+    onChange: (listener) => diagnoseSessions.onChange(listener),
     lang: () => runtime.diagnoseSkill.lang,
     onReady: () => {
       runtime.diagnoseSkill.ready = true
@@ -254,7 +257,7 @@ export async function apply(ctx, rawConfig) {
     budget: () => ctx.get?.('strataBudget'),
     // DSH's session registry, for folds that carry only a session id.
     sessions: () => ctx.get?.('sessions') ?? ctx.sessions,
-    // No automatic recall or capture in read-only diagnosis sessions.
+    // No automatic recall or capture in diagnosis sessions.
     skipSession: inDiagnosis,
   })
   runtime.client = client
@@ -290,9 +293,16 @@ export async function apply(ctx, rawConfig) {
     )
   }
 
-  // A diagnosis session's folder is no project: its tool calls neither
-  // record one nor search a project partition.
-  const toolProjects = projects && { resolve: (session) => (inDiagnosis(session) ? null : projects.resolve(session)) }
+  // The diagnosis workspace's folder is no project: tool calls there
+  // neither record one nor search a project partition. A diagnosis session
+  // the user opened in one of their own workspaces keeps its project, so
+  // "memories of another project" can be checked from there.
+  const diagnosisFolder = diagnoseDirectoryPath(runtime)
+  const inDiagnosisFolder = (session) => {
+    const cwd = session?.header?.cwd ?? session?.cwd
+    return typeof cwd !== 'string' || cwd === diagnosisFolder || cwd.startsWith(`${diagnosisFolder}${path.sep}`)
+  }
+  const toolProjects = projects && { resolve: (session) => (inDiagnosis(session) && inDiagnosisFolder(session) ? null : projects.resolve(session)) }
   const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard, projects: toolProjects, onExplicitAdd: (session, rows) => lifecycle.noteExplicitAdd(session, rows) })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
@@ -300,8 +310,9 @@ export async function apply(ctx, rawConfig) {
       for (const dispose of disposers) dispose()
     }
   }, 'dsh-mem0: tools')
-  // DSH's read-only preset does not cover plugin tools: in diagnosis
-  // sessions the plugin refuses its write tools and asks before adding.
+  // DSH's permission presets do not cover plugin tools: in diagnosis
+  // sessions the plugin asks before its write tools (delete and summary
+  // reset always) and refuses credential reads and cordis.patch.yml edits.
   ctx.on('tools/pre-execute', createDiagnoseGate(diagnoseSessions, { lookup: lookupSession }))
 
   if (config.autoRecall) {

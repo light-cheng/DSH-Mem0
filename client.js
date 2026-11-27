@@ -603,20 +603,38 @@ window.__ModuleLoader__.load({
       failureStep_store: 'storing',
       failureStepRunning: '{step} still running after {ms} ms',
       diagnoseAsk: 'Ask DSH to diagnose',
-      diagnoseAskHint: 'Opens a new read-only session with this failure (redacted, no key or memory text) as an unsent draft. Memory is not changed in that session.',
+      diagnoseAskHint: 'Opens a new conversation about this failure (redacted, no key or memory text): the AI asks you first, then checks, and changes things only with your OK.',
+      diagnoseOpenSession: 'Open diagnosis session',
+      diagnoseGeneral: 'AI troubleshoot',
+      diagnoseGeneralHint: 'Not sure which failure it is? Describe what you see and let DSH find out.',
       diagnoseCopy: 'Copy diagnosis',
       diagnoseCopied: 'Copied. Paste it into a new session.',
       diagnoseCopyFailed: 'Could not copy: {reason}',
       diagnoseCopyOnly: 'This DSH version cannot open a session for a plugin: copy the diagnosis and paste it into a new session.',
-      diagnoseOpening: 'Opening a read-only diagnosis session…',
-      diagnoseOpened: 'Diagnosis session opened: check the draft, then send it.',
+      diagnoseOpened: 'Diagnosis session opened; the prompt was sent.',
       diagnoseReopened: 'Back to the diagnosis session already open for this problem.',
-      diagnoseFailed: 'Could not open a diagnosis session ({reason}). Copy the diagnosis and paste it into a new session instead.',
+      diagnoseFailed: 'Could not open a diagnosis session ({reason}). Use Copy diagnosis and paste it into a new session instead.',
+      diagnoseFailedGeneral: 'Could not open a troubleshooting session ({reason}). Use Copy diagnosis and paste it into a new session instead.',
       diagnoseReason_prepare: 'the plugin did not answer',
       diagnoseReason_create: 'DSH did not create the session',
       diagnoseReason_register: 'the plugin could not record it',
-      diagnoseReason_permission: 'the session did not switch to read-only',
-      diagnoseReason_draft: 'the draft could not be filled in',
+      diagnoseReason_permission: 'the session permissions could not be set',
+      diagnoseReason_model: 'the chosen model could not be set',
+      diagnoseReason_send: 'the prompt could not be sent',
+      dlgIntro: 'This starts a new conversation. The AI asks you first, then gets to work.',
+      dlgLoading: 'Getting ready…',
+      dlgExisting: 'This problem already has a diagnosis session.',
+      dlgExistingGeneral: 'Your last AI troubleshoot session is still there. Continue it, or start a new one?',
+      dlgContinue: 'Continue last diagnosis',
+      dlgNew: 'Start another',
+      dlgWorkspace: 'Workspace',
+      dlgModel: 'Model',
+      dlgModelDefault: '{name} (DSH default)',
+      dlgSkip: 'No confirmation for each change',
+      dlgSkipRisk: 'When ticked, the AI changes settings, runs commands and edits memories without asking you each time; a wrong change may need undoing by hand. Deleting memories and rebuilding the summary still ask.',
+      dlgStart: 'Start troubleshooting',
+      dlgClose: 'Close',
+      dlgOpening: 'Opening the session…',
       adviceAuthKey: 'The API key was refused (invalid, expired or without access). Check the key.',
       adviceQuota: 'Quota used up or rate-limited by the provider. Wait and retry, or check the account balance and limits.',
       adviceTimeout: 'The call took longer than the timeout. If the service is just slow, raise the timeout in the settings.',
@@ -1409,20 +1427,38 @@ window.__ModuleLoader__.load({
       failureStep_store: '写入',
       failureStepRunning: '{step}已运行 {ms} ms 仍未完成',
       diagnoseAsk: '让 DSH 诊断',
-      diagnoseAskHint: '新开一个只读会话，把这条失败（已脱敏，不含 key 和记忆正文）预填成草稿，不会自动发送。这个会话里不会改动记忆。',
+      diagnoseAskHint: '就这条失败新开一段对话（已脱敏，不含 key 和记忆正文）：AI 先问清楚再查，改动前先征得你同意。',
+      diagnoseOpenSession: '打开诊断会话',
+      diagnoseGeneral: 'AI 排查',
+      diagnoseGeneralHint: '说不清是哪条失败？描述一下现象，让 DSH 帮你查。',
       diagnoseCopy: '复制诊断信息',
       diagnoseCopied: '已复制，粘贴到新会话里即可。',
       diagnoseCopyFailed: '复制失败：{reason}',
       diagnoseCopyOnly: '当前 DSH 版本不支持插件新开会话：请复制诊断信息，粘贴到新会话里。',
-      diagnoseOpening: '正在打开只读诊断会话…',
-      diagnoseOpened: '诊断会话已打开：确认草稿后再发送。',
+      diagnoseOpened: '诊断会话已打开，提示词已发出。',
       diagnoseReopened: '已回到这个问题之前打开的诊断会话。',
-      diagnoseFailed: '诊断会话没能打开（{reason}）。可以复制诊断信息，粘贴到新会话里。',
+      diagnoseFailed: '诊断会话没能打开（{reason}）。可以用「复制诊断信息」，粘贴到新会话里。',
+      diagnoseFailedGeneral: '排查会话没能打开（{reason}）。可以用「复制诊断信息」，粘贴到新会话里。',
       diagnoseReason_prepare: '插件没有响应',
       diagnoseReason_create: 'DSH 没有建好会话',
       diagnoseReason_register: '插件没能记下这个会话',
-      diagnoseReason_permission: '会话没能切到只读',
-      diagnoseReason_draft: '草稿没能填进去',
+      diagnoseReason_permission: '会话权限没能设好',
+      diagnoseReason_model: '选的模型没能设上',
+      diagnoseReason_send: '提示词没能发出去',
+      dlgIntro: '会新建一段对话，AI 先问清再动手。',
+      dlgLoading: '正在准备…',
+      dlgExisting: '这个问题已经有诊断会话了。',
+      dlgExistingGeneral: '上次的 AI 排查会话还在，接着用还是新开一个？',
+      dlgContinue: '继续上次的诊断',
+      dlgNew: '另开一个',
+      dlgWorkspace: '工作区',
+      dlgModel: '模型',
+      dlgModelDefault: '{name}（DSH 默认）',
+      dlgSkip: '修改时不用逐项确认',
+      dlgSkipRisk: '勾选后，AI 会直接修改配置、执行命令、改动记忆，不再逐项问你；改错了可能需要你手动恢复。删除记忆和重建概要仍会确认。',
+      dlgStart: '开始排查',
+      dlgClose: '关闭',
+      dlgOpening: '正在开会话…',
       adviceAuthKey: 'API key 被拒绝（无效、过期或没有权限）。请检查 key。',
       adviceQuota: '服务商的额度用完了，或者触发了限流。稍后重试，或检查账户余额和限额。',
       adviceTimeout: '调用超过了超时时间。如果只是服务慢，可以在设置里调高超时。',
@@ -1899,6 +1935,12 @@ window.__ModuleLoader__.load({
       .mem0-modal h3{margin:0;font-size:14px}
       .mem0-quote{border-left:3px solid var(--dsw-alias-border-l3);padding:6px 10px;background:var(--dsw-alias-bg-layer-2);border-radius:4px;font-size:12px;word-break:break-word;max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:4px}
       .mem0-modal-actions{display:flex;justify-content:flex-end;gap:8px}
+      .mem0-dlg-check{display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer}
+      .mem0-dlg-risk{margin:-6px 0 0 24px;font-size:11px;color:var(--dsw-alias-label-secondary)}
+      .mem0-dlg-risk-on{color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-state-error-primary))}
+      .mem0-diag-entry{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
+      .mem0-diag-entry-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+      .mem0-diag-entry-row .mem0-hint{margin:0}
       .mem0-danger-btn{border-radius:8px;padding:7px 14px;font:inherit;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--dsw-alias-state-error-primary);background:var(--dsw-alias-state-error-primary);color:#fff}
       @media (max-width:640px){.mem0-head{flex-direction:column}.mem0-activity-grid{grid-template-columns:1fr}.mem0-mem{flex-direction:column}.mem0-mem-actions{opacity:1}}
       @media (max-width:640px){.mem0-segments{grid-template-columns:1fr 1fr}.mem0-grid{grid-template-columns:1fr}.mem0-status-grid{grid-template-columns:1fr 1fr}}
@@ -4095,7 +4137,10 @@ window.__ModuleLoader__.load({
 
     /**
      * The host services a diagnosis session needs, or null on DSH versions
-     * without them (0.2.1): then only "Copy diagnosis" is offered.
+     * without them (0.2.1): then only "Copy diagnosis" is offered. `remote`
+     * (model and permission catalogs, model selection) and `layout` are
+     * optional: without them the dialog hides the model choice and the
+     * session keeps DSH's default permissions.
      */
     function diagnoseServices(ctx) {
       const get = (name) => {
@@ -4107,15 +4152,13 @@ window.__ModuleLoader__.load({
       }
       const sessions = get('sessions')
       const uiWorkspace = get('uiWorkspace')
-      const conversation = get('conversation')
       const workspaces = get('workspaces')
       const ok =
         typeof sessions?.create === 'function' &&
         typeof sessions?.retain === 'function' &&
         typeof uiWorkspace?.openSession === 'function' &&
-        typeof conversation?.input?.requestDraftInitialization === 'function' &&
         typeof workspaces?.create === 'function'
-      return ok ? { sessions, uiWorkspace, conversation, workspaces } : null
+      return ok ? { sessions, uiWorkspace, workspaces, remote: get('remote'), layout: get('layout') } : null
     }
 
     function diagnoseError(reason, cause) {
@@ -4137,6 +4180,7 @@ window.__ModuleLoader__.load({
 
     /** Whether a recorded diagnosis session is still listed and not archived. */
     function diagnoseSessionAlive(services, sessionId) {
+      if (!services || !sessionId) return false
       try {
         const list = services.sessions.list?.getSnapshot?.()
         const listed = Boolean(list?.ids?.includes?.(sessionId) || list?.byId?.[sessionId])
@@ -4156,24 +4200,98 @@ window.__ModuleLoader__.load({
     }
 
     // References the plugin holds on diagnosis sessions until the
-    // conversation view holds its own (the draft lives with the binding).
+    // conversation view holds its own.
     const diagnoseReferences = new Map()
 
     function releaseWhenShown(services, sessionId, reference, { sleep = delay } = {}) {
       diagnoseReferences.get(sessionId)?.release?.()
       diagnoseReferences.set(sessionId, reference)
-      void waitUntil(() => Number(services.sessions.retainInfo?.(sessionId)?.getSnapshot?.()?.referenceCount) > 1, { timeoutMs: 15000, stepMs: 250, sleep }).then((shown) => {
-        // Not shown: keep holding it, so the draft is not dropped.
-        if (!shown || diagnoseReferences.get(sessionId) !== reference) return
+      void waitUntil(() => Number(services.sessions.retainInfo?.(sessionId)?.getSnapshot?.()?.referenceCount) > 1, { timeoutMs: 15000, stepMs: 250, sleep }).then(() => {
+        if (diagnoseReferences.get(sessionId) !== reference) return
         diagnoseReferences.delete(sessionId)
         reference.release?.()
       })
     }
 
+    /** The dialog's value for the plugin's own "Mem0 diagnosis" workspace. */
+    const DIAGNOSE_WORKSPACE = 'mem0-diagnosis'
+
     /**
-     * The diagnosis workspace (created on first use, titled once). DSH's New
-     * Session reuses an unsent blank session of the current workspace, so
-     * diagnosis sessions live in a workspace of their own.
+     * Workspaces the dialog offers: the diagnosis workspace first (the
+     * default), then the user's own, by title. Pure.
+     */
+    function diagnoseWorkspaceOptions(services, prepared) {
+      let items = []
+      try {
+        items = services?.workspaces?.list?.getSnapshot?.()?.items ?? []
+      } catch {
+        items = []
+      }
+      const own = items
+        .filter((item) => item?.workspaceId && item.path !== prepared?.cwd)
+        .map((item) => ({ value: item.workspaceId, label: item.title || String(item.path ?? '').split(/[\\/]/).filter(Boolean).pop() || item.workspaceId }))
+      return [{ value: DIAGNOSE_WORKSPACE, label: prepared?.workspaceTitle || 'Mem0' }, ...own]
+    }
+
+    /** `provider/model` of a selection, for comparing and as an option value. */
+    function modelKey(selection) {
+      return selection?.provider && selection?.model ? `${selection.provider}/${selection.model}` : ''
+    }
+
+    /**
+     * DSH's model catalog as dialog options, or null when the plugin cannot
+     * read it (then the dialog shows no model choice and the session runs
+     * DSH's default model): `{ defaultKey, options: [{ value, label, group, selection }] }`.
+     */
+    async function diagnoseModelOptions(services) {
+      const read = services?.remote?.session?.modelCatalog
+      if (typeof read !== 'function') return null
+      try {
+        const result = await read.call(services.remote.session)
+        const catalog = result?.ok === false ? null : (result?.value ?? result)
+        const groups = Array.isArray(catalog?.groups) ? catalog.groups : []
+        const options = []
+        for (const group of groups) {
+          for (const model of Array.isArray(group?.models) ? group.models : []) {
+            if (!group?.id || !model?.id) continue
+            const selection = { provider: group.id, model: model.id }
+            options.push({ value: modelKey(selection), label: model.name || model.id, group: group.name || group.id, selection })
+          }
+        }
+        if (options.length === 0) return null
+        const defaultKey = modelKey(catalog?.default)
+        return { defaultKey: options.some((option) => option.value === defaultKey) ? defaultKey : '', options }
+      } catch {
+        return null
+      }
+    }
+
+    /**
+     * The permission preset of a new diagnosis session. Every change asks by
+     * default: DSH's "workspace-write" (writes outside the workspace and
+     * wider commands ask). With "no confirmation for each change" ticked:
+     * "auto" (Auto review: full access, DSH's reviewer model asks the user
+     * only for risky calls) when this DSH offers it; else "workspace-write"
+     * as well. Never "danger-full-access": its approval policy "never"
+     * rejects every ask without showing it, so the plugin's confirmation of
+     * mem0_delete and mem0_profile_reset could not reach the user.
+     */
+    async function diagnosePermission(services, skipConfirm) {
+      if (!skipConfirm) return 'workspace-write'
+      const read = services?.remote?.permissionPresets?.catalog
+      if (typeof read !== 'function') return 'workspace-write'
+      try {
+        const result = await read.call(services.remote.permissionPresets)
+        const options = (result?.ok === false ? null : (result?.value ?? result))?.options
+        return Array.isArray(options) && options.some((option) => option?.value === 'auto') ? 'auto' : 'workspace-write'
+      } catch {
+        return 'workspace-write'
+      }
+    }
+
+    /**
+     * The diagnosis workspace (created on first use, titled once): the
+     * default place for diagnosis sessions, away from the user's projects.
      */
     async function diagnosisWorkspace(workspaces, prepared) {
       const known = (workspaces.list?.getSnapshot?.()?.items ?? []).find((item) => item?.path === prepared.cwd)
@@ -4185,38 +4303,57 @@ window.__ModuleLoader__.load({
       return workspace.workspaceId
     }
 
+    /** Leave the settings page for the session (openSession usually does). */
+    function closeSettings(services) {
+      try {
+        services?.layout?.selectPanel?.(null)
+      } catch {
+        // Nothing to close.
+      }
+    }
+
     /**
-     * Open (or return to) the diagnosis session for one prepared failure.
-     * `prepared` comes from the diagnose route; `post` sends one action to
-     * it. Steps: create the session in the diagnosis workspace (never the
-     * user's, see diagnosisWorkspace), record it with the plugin (tool
-     * gate and memory skip apply from here), switch it to read-only and
-     * confirm that from the permissions projection (the command's own answer
-     * is not trusted); only then show it and fill the draft. Any failure
-     * archives the half-made session and throws `diagnoseReason`.
+     * Open (or return to) a diagnosis session. `prepared` comes from the
+     * diagnose route; `choice` is the dialog's answer:
+     * `{ reuse, workspace, model, defaultModel, skipConfirm }`; `post` sends
+     * one action to the route.
+     *
+     * `reuse` with a recorded session still listed and not archived: back
+     * to it. Otherwise: create the session in the chosen workspace, record
+     * it with the plugin (gate, skill and memory skip apply from here), set
+     * the permission preset (diagnosePermission, confirmed from the
+     * permissions projection) and the chosen model (DSH saves a session's
+     * model as its default too, so the route puts the default back), name
+     * it, send the prompt, then show it. Any failure archives the half-made
+     * session and throws `diagnoseReason`.
      * @returns {{ kind: 'reopened' | 'created', sessionId: string }}
      */
-    async function runDiagnosis({ services, prepared, post, sleep = delay, permissionTimeoutMs = 5000 }) {
-      const { sessions, uiWorkspace, conversation } = services
+    async function runDiagnosis({ services, prepared, choice = {}, post, sleep = delay, permissionTimeoutMs = 5000 }) {
+      const { sessions, uiWorkspace } = services
       const existing = prepared?.sessionId
-      if (existing) {
+      if (existing && choice.reuse) {
         if (diagnoseSessionAlive(services, existing)) {
           uiWorkspace.openSession(existing)
+          closeSettings(services)
           return { kind: 'reopened', sessionId: existing }
         }
-        await post({ action: 'unmap', sessionId: existing }).catch(() => {})
       }
-      if (!prepared?.cwd || !prepared?.text) throw diagnoseError('prepare')
+      if (existing && !diagnoseSessionAlive(services, existing)) await post({ action: 'unmap', sessionId: existing }).catch(() => {})
+      const skipConfirm = choice.skipConfirm === true
+      const text = skipConfirm ? prepared?.texts?.skip : prepared?.texts?.each
+      const ownWorkspace = !choice.workspace || choice.workspace === DIAGNOSE_WORKSPACE
+      if (!text || (ownWorkspace && !prepared?.cwd)) throw diagnoseError('prepare')
       let sessionId
       try {
-        const workspaceId = await diagnosisWorkspace(services.workspaces, prepared)
-        sessionId = await sessions.create({ workspaceId })
+        const workspaceId = ownWorkspace ? await diagnosisWorkspace(services.workspaces, prepared) : choice.workspace
+        const created = await sessions.create({ workspaceId })
+        sessionId = typeof created === 'string' ? created : created?.sessionId
       } catch (error) {
         throw error?.diagnoseReason ? error : diagnoseError('create', error)
       }
       if (!sessionId) throw diagnoseError('create')
       try {
-        await post({ action: 'register', sessionId, fingerprint: prepared.fingerprint })
+        await post({ action: 'register', sessionId, fingerprint: prepared.fingerprint, skipConfirm })
       } catch (error) {
         await Promise.resolve(uiWorkspace.archiveSession?.(sessionId)).catch(() => {})
         throw diagnoseError('register', error)
@@ -4226,22 +4363,34 @@ window.__ModuleLoader__.load({
         reference = sessions.retain(sessionId, { source: 'dsh-mem0' })
         const binding = (await reference.ready) ?? reference.binding
         const session = binding.session
-        await session.command('/permission read-only')
-        const readOnly = await waitUntil(() => permissionOf(session) === 'read-only', { timeoutMs: permissionTimeoutMs, sleep })
-        if (!readOnly) throw diagnoseError('permission')
-        if (prepared.title && typeof session.rename === 'function') await Promise.resolve(session.rename(prepared.title)).catch(() => {})
-        // Show it, then fill the draft once the conversation view holds the
-        // session: a draft filled before the view mounts is not kept (DSH
-        // 0.2.2-rc.5). A failure here archives it, which also leaves the view.
-        uiWorkspace.openSession(sessionId)
-        await waitUntil(() => Number(sessions.retainInfo?.(sessionId)?.getSnapshot?.()?.referenceCount) > 1, { timeoutMs: 3000, sleep })
-        let filled
-        try {
-          filled = conversation.input.requestDraftInitialization(binding, { prompt: prepared.text, whenDraftExists: 'replace' })
-        } catch (error) {
-          throw diagnoseError('draft', error)
+        const preset = await diagnosePermission(services, skipConfirm)
+        if (permissionOf(session) !== preset) {
+          await session.command(`/permission ${preset}`)
+          // The command's own answer is not trusted: the projection is.
+          if (!(await waitUntil(() => permissionOf(session) === preset, { timeoutMs: permissionTimeoutMs, sleep }))) throw diagnoseError('permission')
         }
-        if (filled === 'blocked') throw diagnoseError('draft')
+        const wanted = modelKey(choice.model)
+        const select = services.remote?.session?.selectModel
+        if (wanted && wanted !== modelKey(choice.defaultModel) && typeof select === 'function') {
+          await post({ action: 'default-model', op: 'remember' })
+          let result
+          try {
+            result = await select.call(services.remote.session, { sessionId, provider: choice.model.provider, model: choice.model.model })
+          } finally {
+            await post({ action: 'default-model', op: 'restore' }).catch(() => {})
+          }
+          if (result?.ok === false) throw diagnoseError('model', result.error)
+        }
+        if (prepared.title && typeof session.rename === 'function') await Promise.resolve(session.rename(prepared.title)).catch(() => {})
+        let sent
+        try {
+          sent = await session.prompt([{ type: 'text', text }], 'queue')
+        } catch (error) {
+          throw diagnoseError('send', error)
+        }
+        if (sent?.ok === false) throw diagnoseError('send', sent.error)
+        uiWorkspace.openSession(sessionId)
+        closeSettings(services)
       } catch (error) {
         reference?.release?.()
         // The id stays recorded (the gate applies if it is ever restored);
@@ -4256,8 +4405,16 @@ window.__ModuleLoader__.load({
 
     /** What is sent to the route: the stored failure's identity and facts, never `detail`. */
     function diagnosePayload(failure) {
-      const { detail, ...rest } = failure ?? {}
+      const { detail, diagnosisSessionId, ...rest } = failure ?? {}
       return rest
+    }
+
+    /**
+     * Which diagnosis button a failure row shows: 'open' when its recorded
+     * session is still there ("Open diagnosis session"), else 'ask'. Pure.
+     */
+    function diagnoseRowAction(services, failure) {
+      return failure?.diagnosisSessionId && diagnoseSessionAlive(services, failure.diagnosisSessionId) ? 'open' : 'ask'
     }
 
     /** Advice line and diagnosis buttons under one failure. */
@@ -4267,7 +4424,8 @@ window.__ModuleLoader__.load({
       const hintText = advice.hint === 'unreachable' ? unreachableHint(t, failure) : advice.hint ? t(advice.hint) : ''
       const canOpen = Boolean(diagnose?.canOpen)
       if (!hintText && !advice.diagnose) return null
-      const busy = state?.phase === 'opening'
+      const busy = Boolean(diagnose?.busy)
+      const action = canOpen ? diagnoseRowAction(diagnose?.services, failure) : 'ask'
       return h(
         'div',
         { className: 'mem0-failure-advice' },
@@ -4276,7 +4434,17 @@ window.__ModuleLoader__.load({
           ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: () => diagnose.onAction(advice.action) }, t(advice.action === 'wizard' ? 'bannerWizard' : 'bannerSettings'))
           : null,
         advice.diagnose && canOpen
-          ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', title: t('diagnoseAskHint'), disabled: busy, onClick: () => void diagnose.start(rowKey, failure) }, t('diagnoseAsk'))
+          ? h(
+              'button',
+              {
+                type: 'button',
+                className: 'mem0-secondary mem0-sm',
+                title: action === 'open' ? undefined : t('diagnoseAskHint'),
+                disabled: busy,
+                onClick: () => void (action === 'open' ? diagnose.reopen(rowKey, failure.diagnosisSessionId) : diagnose.ask(rowKey, failure)),
+              },
+              t(action === 'open' ? 'diagnoseOpenSession' : 'diagnoseAsk'),
+            )
           : null,
         advice.diagnose && diagnose
           ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', title: canOpen ? undefined : t('diagnoseCopyOnly'), onClick: () => void diagnose.copy(rowKey, failure) }, t('diagnoseCopy'))
@@ -4285,41 +4453,237 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /** State and actions behind FailureAdvice, for the settings page. */
-    function useDiagnose(ctx, t, onAction) {
+    /** The "AI troubleshoot" entry at the top of the Diagnostics tab. */
+    function DiagnoseEntry({ t, diagnose }) {
+      if (!diagnose?.canOpen) return null
+      const state = diagnose.state?.general
+      return h(
+        'div',
+        { className: 'mem0-diag-entry' },
+        h(
+          'div',
+          { className: 'mem0-diag-entry-row' },
+          h('p', { className: 'mem0-hint' }, t('diagnoseGeneralHint')),
+          h('button', { type: 'button', className: 'mem0-primary mem0-sm', disabled: Boolean(diagnose.busy), onClick: () => void diagnose.general() }, t('diagnoseGeneral')),
+        ),
+        state?.message ? h('p', { className: state.phase === 'error' ? 'mem0-error' : 'mem0-hint', role: 'status' }, state.message) : null,
+      )
+    }
+
+    /**
+     * The dialog before a diagnosis session opens. `dialog` (useDiagnose):
+     * `{ general, view: 'loading' | 'choose' | 'form', phase: 'idle' |
+     * 'opening' | 'error', message, workspaces, models, workspace, model,
+     * skipConfirm, canCopy }`. 'choose' offers the session already open for
+     * this problem (or the general entry's last one) or another one.
+     * "No confirmation for each change" starts unticked every time.
+     */
+    function DiagnoseDialog({ t, dialog, on }) {
+      useEffect(() => {
+        if (!dialog || typeof document === 'undefined') return undefined
+        const onKey = (event) => {
+          if (event.key === 'Escape') on.close()
+        }
+        document.addEventListener('keydown', onKey)
+        return () => document.removeEventListener('keydown', onKey)
+      }, [dialog])
+      if (!dialog) return null
+      const opening = dialog.phase === 'opening'
+      const title = t(dialog.general ? 'diagnoseGeneral' : 'diagnoseAsk')
+      let body
+      if (dialog.view === 'loading') {
+        body = [h('p', { key: 'l', className: 'mem0-hint' }, t('dlgLoading'))]
+      } else if (dialog.view === 'choose') {
+        body = [
+          h('p', { key: 'q' }, t(dialog.general ? 'dlgExistingGeneral' : 'dlgExisting')),
+          h(
+            'div',
+            { key: 'a', className: 'mem0-modal-actions' },
+            h('button', { type: 'button', className: 'mem0-secondary', onClick: on.startAnother, disabled: opening }, t('dlgNew')),
+            h('button', { type: 'button', className: 'mem0-primary', onClick: on.continueExisting, disabled: opening, autoFocus: true }, t('dlgContinue')),
+          ),
+        ]
+      } else {
+        const models = dialog.models
+        body = [
+          h(
+            'label',
+            { key: 'w', className: 'mem0-field' },
+            h('span', { className: 'mem0-label' }, t('dlgWorkspace')),
+            h(
+              'select',
+              { className: 'mem0-select', value: dialog.workspace, disabled: opening, onChange: (event) => on.set({ workspace: event.target.value }) },
+              (dialog.workspaces ?? []).map((option) => h('option', { key: option.value, value: option.value }, option.label)),
+            ),
+          ),
+          models
+            ? h(
+                'label',
+                { key: 'm', className: 'mem0-field' },
+                h('span', { className: 'mem0-label' }, t('dlgModel')),
+                h(
+                  'select',
+                  { className: 'mem0-select', value: dialog.model, disabled: opening, onChange: (event) => on.set({ model: event.target.value }) },
+                  models.options.map((option) =>
+                    h('option', { key: option.value, value: option.value }, option.value === models.defaultKey ? template(t('dlgModelDefault'), { name: option.label }) : `${option.label} · ${option.group}`),
+                  ),
+                ),
+              )
+            : null,
+          h(
+            'label',
+            { key: 's', className: 'mem0-dlg-check' },
+            h('input', { type: 'checkbox', checked: Boolean(dialog.skipConfirm), disabled: opening, onChange: (event) => on.set({ skipConfirm: event.target.checked }) }),
+            h('span', null, t('dlgSkip')),
+          ),
+          h('p', { key: 'r', className: dialog.skipConfirm ? 'mem0-dlg-risk mem0-dlg-risk-on' : 'mem0-dlg-risk' }, t('dlgSkipRisk')),
+          dialog.phase === 'error' && dialog.message ? h('p', { key: 'e', className: 'mem0-error', role: 'status' }, dialog.message) : null,
+          h(
+            'div',
+            { key: 'a', className: 'mem0-modal-actions' },
+            dialog.phase === 'error' && dialog.canCopy ? h('button', { type: 'button', className: 'mem0-secondary', onClick: on.copy }, t('diagnoseCopy')) : null,
+            h('button', { type: 'button', className: 'mem0-secondary', onClick: on.close, disabled: opening }, t('dlgClose')),
+            h('button', { type: 'button', className: 'mem0-primary', onClick: on.start, disabled: opening, autoFocus: true }, opening ? t('dlgOpening') : t('dlgStart')),
+          ),
+        ]
+      }
+      return h(
+        'div',
+        { className: 'mem0-modal-bg', onClick: (event) => { if (event.target === event.currentTarget && !opening) on.close() } },
+        h(
+          'div',
+          { className: 'mem0-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'mem0-diagnose-title' },
+          h('h3', { id: 'mem0-diagnose-title' }, title),
+          h('p', { className: 'mem0-section-hint' }, t('dlgIntro')),
+          ...body,
+          dialog.view === 'choose' ? h('div', { className: 'mem0-modal-actions' }, h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: on.close }, t('dlgClose'))) : null,
+        ),
+      )
+    }
+
+    /** The dialog state for a prepared diagnosis. Pure. */
+    function diagnoseDialogState({ services, prepared, models, general }) {
+      const existing = prepared?.sessionId && diagnoseSessionAlive(services, prepared.sessionId) ? prepared.sessionId : null
+      return {
+        general: Boolean(general),
+        prepared,
+        existing,
+        view: existing ? 'choose' : 'form',
+        phase: 'idle',
+        message: '',
+        workspaces: diagnoseWorkspaceOptions(services, prepared),
+        workspace: DIAGNOSE_WORKSPACE,
+        models: prepared?.keepsDefaultModel ? models : null,
+        model: models?.defaultKey || models?.options?.[0]?.value || '',
+        // Never remembered: every dialog starts unticked.
+        skipConfirm: false,
+        canCopy: Boolean(prepared?.copyText || prepared?.texts?.each),
+      }
+    }
+
+    /**
+     * State and actions behind FailureAdvice, DiagnoseEntry and DiagnoseDialog.
+     * `send` replaces the route call (tests).
+     */
+    function useDiagnose(ctx, t, onAction, { send } = {}) {
       const services = useMemo(() => diagnoseServices(ctx), [ctx])
       const [state, setState] = useState({})
+      const [dialog, setDialog] = useState(null)
+      // One session at a time: set synchronously, so a second click before
+      // React re-renders the disabled button opens nothing.
+      const busy = useRef(false)
       const mark = (key, next) => setState((previous) => ({ ...previous, [key]: next }))
+      const patch = (next) => setDialog((previous) => (previous ? { ...previous, ...next } : previous))
       const post = (body) =>
-        fetchJson(DIAGNOSE_PATH, { method: 'POST', retry: false, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((answer) => {
+        (send ?? ((payload) => fetchJson(DIAGNOSE_PATH, { method: 'POST', retry: false, headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })))(body).then((answer) => {
           if (answer?.ok === false) throw new Error(answer.error || 'refused')
           return answer
         })
-      const prepare = (failure) => post({ action: 'prepare', failure: diagnosePayload(failure), lang: pageLanguage(ctx) })
-      const start = async (key, failure) => {
-        if (!services) return
-        mark(key, { phase: 'opening', message: t('diagnoseOpening') })
+      const prepare = (failure) => post({ action: 'prepare', ...(failure ? { failure: diagnosePayload(failure) } : {}), lang: pageLanguage(ctx) })
+      const open = async (key, failure) => {
+        if (!services || busy.current) return
+        setDialog({ key, failure, general: !failure, view: 'loading', phase: 'idle' })
         try {
-          const prepared = await prepare(failure).catch((error) => {
-            throw diagnoseError('prepare', error)
-          })
-          const outcome = await runDiagnosis({ services, prepared, post })
-          mark(key, { phase: 'done', message: t(outcome.kind === 'reopened' ? 'diagnoseReopened' : 'diagnoseOpened') })
+          const [prepared, models] = await Promise.all([prepare(failure), diagnoseModelOptions(services)])
+          setDialog({ key, failure, ...diagnoseDialogState({ services, prepared, models, general: !failure }) })
         } catch (error) {
-          const reason = t(`diagnoseReason_${error?.diagnoseReason || 'create'}`)
-          mark(key, { phase: 'error', message: template(t('diagnoseFailed'), { reason }) })
+          setDialog(null)
+          mark(key, { phase: 'error', message: template(t(failure ? 'diagnoseFailed' : 'diagnoseFailedGeneral'), { reason: t('diagnoseReason_prepare') }) })
         }
       }
-      const copy = async (key, failure) => {
+      const reopen = (key, sessionId) => {
+        if (!services || !diagnoseSessionAlive(services, sessionId)) return
+        services.uiWorkspace.openSession(sessionId)
+        closeSettings(services)
+        mark(key, { phase: 'done', message: t('diagnoseReopened') })
+      }
+      const run = async (reuse) => {
+        if (!dialog || !services || busy.current) return
+        busy.current = true
+        patch({ phase: 'opening', message: '' })
+        const models = dialog.models
+        const picked = models?.options?.find((option) => option.value === dialog.model)?.selection ?? null
+        const fallback = models?.options?.find((option) => option.value === models.defaultKey)?.selection ?? null
         try {
-          const prepared = await prepare(failure)
-          await navigator.clipboard.writeText(prepared.copyText)
+          const outcome = await runDiagnosis({
+            services,
+            prepared: dialog.prepared,
+            choice: { reuse, workspace: dialog.workspace, model: picked, defaultModel: fallback, skipConfirm: dialog.skipConfirm === true },
+            post,
+          })
+          setDialog(null)
+          mark(dialog.key, { phase: 'done', message: t(outcome.kind === 'reopened' ? 'diagnoseReopened' : 'diagnoseOpened') })
+        } catch (error) {
+          const reason = t(`diagnoseReason_${error?.diagnoseReason || 'create'}`)
+          patch({ view: 'form', phase: 'error', message: template(t(dialog.general ? 'diagnoseFailedGeneral' : 'diagnoseFailed'), { reason }) })
+        } finally {
+          busy.current = false
+        }
+      }
+      const copyText = async (key, text) => {
+        try {
+          await navigator.clipboard.writeText(text)
           mark(key, { phase: 'done', message: t('diagnoseCopied') })
         } catch (error) {
           mark(key, { phase: 'error', message: template(t('diagnoseCopyFailed'), { reason: error?.message || '?' }) })
         }
       }
-      return { canOpen: Boolean(services), state, start, copy, onAction }
+      const copy = async (key, failure) => {
+        try {
+          const prepared = await prepare(failure)
+          await copyText(key, prepared.copyText)
+        } catch (error) {
+          mark(key, { phase: 'error', message: template(t('diagnoseCopyFailed'), { reason: error?.message || '?' }) })
+        }
+      }
+      const on = {
+        set: patch,
+        close: () => {
+          if (!busy.current) setDialog(null)
+        },
+        start: () => void run(false),
+        continueExisting: () => void run(true),
+        startAnother: () => patch({ view: 'form' }),
+        copy: () => {
+          if (!dialog) return
+          const text = dialog.prepared?.copyText || dialog.prepared?.texts?.each
+          setDialog(null)
+          void copyText(dialog.key, text)
+        },
+      }
+      return {
+        canOpen: Boolean(services),
+        services,
+        busy: busy.current || dialog?.phase === 'opening',
+        state,
+        dialog,
+        on,
+        ask: (key, failure) => open(key, failure),
+        general: () => open('general', null),
+        reopen,
+        copy,
+        onAction,
+      }
     }
 
     // ---- local setup wizard (lib/setup-routes.js) ------------------------
@@ -6497,7 +6861,7 @@ window.__ModuleLoader__.load({
     /**
      * The Diagnostics tab: one card with the connection details, the local
      * store and the failure list (hints, recovered marks, "Ask DSH to
-     * diagnose"). `diagnostics` is diagnosticsMeta's view `{ issue, text }`:
+     * diagnose"), with "AI troubleshoot" on top. `diagnostics` is diagnosticsMeta's view `{ issue, text }`:
      * the card's top-right status comes only from there, so a new state
      * (e.g. failures the user acknowledged that did not recover) is one
      * change in diagnosticsMeta.
@@ -6506,6 +6870,7 @@ window.__ModuleLoader__.load({
       return h(
         Card,
         { id: 'mem0-diagnostics', title: t('diagTitle'), meta: diagnostics?.text ?? (diagnostics?.issue ? t('diagMetaIssue') : t('diagMetaOk')), metaWarn: Boolean(diagnostics?.issue), hint: t('diagHint') },
+        h(DiagnoseEntry, { t, diagnose }),
         h(StatusGrid, { items: statusItemsFor(t, data) }),
         status?.phase === 'error' || data?.ok === false ? h('p', { className: 'mem0-error' }, data?.error ?? status?.message) : null,
         data?.store ? h(StoreStatus, { t, store: data.store }) : null,
@@ -6537,7 +6902,7 @@ window.__ModuleLoader__.load({
       const [apiKey, setApiKey] = useState('')
       const [apiKeySet, setApiKeySet] = useState(false)
       const [status, setStatus] = useState({ phase: 'loading', data: null, message: '' })
-      // Failure list: hint jumps and "Ask DSH to diagnose" (onBannerAction is defined below).
+      // Failure list and "AI troubleshoot": hint jumps, the diagnosis dialog (onBannerAction is defined below).
       const diagnose = useDiagnose(ctx, t, (action) => onBannerAction(action))
       const [saveState, setSaveState] = useState('idle')
       const [saveMessage, setSaveMessage] = useState('')
@@ -7343,6 +7708,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'mem0-tab-body', role: 'tabpanel' }, body),
         h(SaveBar, { t, dirty, saveState, saveMessage, onSave: () => void save(), onDiscard: discard, writable: snapshot.writable }),
         h(DeleteDialog, { t, dialog: deleteDialog, onCancel: () => answerDelete(false), onConfirm: () => answerDelete(true) }),
+        h(DiagnoseDialog, { t, dialog: diagnose.dialog, on: diagnose.on }),
       )
     }
 
@@ -7393,6 +7759,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, DiagnosticsTab, TabBar, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder, diagnoseAdvice, diagnoseServices, runDiagnosis, permissionOf, diagnosePayload, FailureAdvice, DIAGNOSE_REPEAT_COUNT } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, DiagnosticsTab, TabBar, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder, diagnoseAdvice, diagnoseServices, runDiagnosis, permissionOf, diagnosePayload, FailureAdvice, DIAGNOSE_REPEAT_COUNT, DiagnoseDialog, DiagnoseEntry, diagnoseDialogState, diagnoseRowAction, diagnoseWorkspaceOptions, diagnoseModelOptions, diagnosePermission, DIAGNOSE_WORKSPACE, useDiagnose } }
   },
 })
