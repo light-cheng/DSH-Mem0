@@ -794,6 +794,8 @@ window.__ModuleLoader__.load({
       captureTag_ADD: 'New',
       captureTag_UPDATE: 'Updated',
       captureTag_DELETE: 'Removed',
+      captureLastWrite: 'Last write · {time}',
+      captureLastWriteCount: '{count} written',
       capturePending: 'Platform is processing this save in the background.',
       capturePendingEvent: 'Platform is processing this save in the background (event {id}).',
       captureOssOnlyAdd: 'The local backend only adds memories; merging and cleanup happen in the weekly check.',
@@ -1620,6 +1622,8 @@ window.__ModuleLoader__.load({
       captureTag_ADD: '新增',
       captureTag_UPDATE: '更新',
       captureTag_DELETE: '删除',
+      captureLastWrite: '上次写入 · {time}',
+      captureLastWriteCount: '写入 {count} 条',
       capturePending: 'Platform 正在后台处理这次保存。',
       capturePendingEvent: 'Platform 正在后台处理这次保存（事件 {id}）。',
       captureOssOnlyAdd: '本地后端只新增记忆；合并和清理在每周巡检里做。',
@@ -1746,6 +1750,7 @@ window.__ModuleLoader__.load({
       .mem0-activity-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
       .mem0-activity-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}
       .mem0-activity-main{font-size:12px;color:var(--dsw-alias-label-secondary);margin:0;line-height:1.5}
+      .mem0-act-last{margin-top:8px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1)}
       .mem0-activity-meta{font-size:11px;color:var(--dsw-alias-label-tertiary);margin:0;line-height:1.5;word-break:break-word}
       .mem0-report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;font-size:12px;color:var(--dsw-alias-label-secondary);margin:8px 0}
       .mem0-report-details-list{display:flex;flex-direction:column;gap:8px}
@@ -6227,6 +6232,21 @@ window.__ModuleLoader__.load({
       return { items, pending, ossNote: Boolean(capture) && backend === 'oss' }
     }
 
+    /**
+     * The "Last write" block under the capture card: the last round that
+     * wrote something (activity.lastWrite), shown only when the latest round
+     * is a different one (nothing new, skipped, queued, saving, failed), so a
+     * write stays visible until the next one. Null otherwise. Pure.
+     */
+    function lastWriteView(capture, lastWrite, backend) {
+      if (!lastWrite || typeof lastWrite !== 'object') return null
+      if (capture?.at && lastWrite.at === capture.at) return null
+      const items = captureView(lastWrite, backend).items
+      const count = ['add', 'update', 'delete'].reduce((sum, key) => sum + (Number.isInteger(lastWrite[key]) && lastWrite[key] > 0 ? lastWrite[key] : 0), 0)
+      if (items.length === 0 && count === 0) return null
+      return { at: lastWrite.at ?? '', items, count }
+    }
+
     /** The existing one-line capture stats: messages · written · event · time. Pure. */
     function captureMetaLine(t, capture) {
       const meta = []
@@ -6481,10 +6501,22 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function CapturePanel({ t, capture, backend, onJump }) {
+    function CapturePanel({ t, capture, lastWrite, backend, onJump }) {
       const view = captureView(capture, backend)
+      const last = lastWriteView(capture, lastWrite, backend)
       const meta = captureMetaLine(t, capture)
       const tagClass = { ADD: 'mem0-tag-add', UPDATE: 'mem0-tag-update', DELETE: 'mem0-tag-delete' }
+      const rows = (items) => items.map((item) =>
+        h(ActivityItem, {
+          key: item.key,
+          t,
+          tag: item.event ? t(`captureTag_${item.event}`) : null,
+          tagClass: item.event ? tagClass[item.event] : '',
+          text: item.memory,
+          previous: item.previous,
+          onJump: item.jumpable ? () => onJump(item.id) : null,
+        }),
+      )
       return h(
         'div',
         { className: 'mem0-activity' },
@@ -6493,34 +6525,29 @@ window.__ModuleLoader__.load({
         capture?.error ? h('p', { className: 'mem0-error' }, capture.error) : null,
         ...activityDetails(t, capture).map((line, index) => h('p', { className: 'mem0-activity-meta', key: `cd${index}` }, line)),
         meta ? h('p', { className: 'mem0-activity-meta' }, meta) : null,
-        view.items.length > 0
-          ? h(
-              'div',
-              { className: 'mem0-act-list' },
-              view.items.map((item) =>
-                h(ActivityItem, {
-                  key: item.key,
-                  t,
-                  tag: item.event ? t(`captureTag_${item.event}`) : null,
-                  tagClass: item.event ? tagClass[item.event] : '',
-                  text: item.memory,
-                  previous: item.previous,
-                  onJump: item.jumpable ? () => onJump(item.id) : null,
-                }),
-              ),
-            )
-          : null,
+        view.items.length > 0 ? h('div', { className: 'mem0-act-list' }, rows(view.items)) : null,
         view.pending
           ? h('div', { className: 'mem0-act-list' }, h('div', { className: 'mem0-act-item mem0-act-note' }, view.pending.eventId ? template(t('capturePendingEvent'), { id: view.pending.eventId }) : t('capturePending')))
           : capture?.status === 'extracting' || capture?.status === 'queued'
             ? h('p', { className: 'mem0-hint' }, t('activityAsyncHint'))
             : null,
+        last
+          ? h(
+              'div',
+              { className: 'mem0-act-last' },
+              h('p', { className: 'mem0-activity-meta' }, template(t('captureLastWrite'), { time: activityTime(last.at) })),
+              last.items.length > 0
+                ? h('div', { className: 'mem0-act-list' }, rows(last.items))
+                : h('p', { className: 'mem0-activity-meta' }, template(t('captureLastWriteCount'), { count: last.count })),
+            )
+          : null,
         view.ossNote ? h('p', { className: 'mem0-hint' }, t('captureOssOnlyAdd')) : null,
       )
     }
 
     function ActivityCard({ t, data, onRefresh, refreshing, onJump }) {
       const capture = data?.activity?.capture ?? null
+      const lastWrite = data?.activity?.lastWrite ?? null
       const recall = data?.activity?.recall ?? null
       return h(
         Card,
@@ -6536,7 +6563,7 @@ window.__ModuleLoader__.load({
               { className: 'mem0-activity-grid' },
               // Recall first: a turn recalls before it saves (user decision 5).
               h(RecallPanel, { t, recall, onJump }),
-              h(CapturePanel, { t, capture, backend: data?.backend, onJump }),
+              h(CapturePanel, { t, capture, lastWrite, backend: data?.backend, onJump }),
             ),
       )
     }
@@ -7785,6 +7812,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, DiagnosticsTab, TabBar, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder, diagnoseAdvice, diagnoseServices, runDiagnosis, permissionOf, diagnosePayload, FailureAdvice, DIAGNOSE_REPEAT_COUNT, DiagnoseDialog, DiagnoseEntry, diagnoseDialogState, diagnoseRowAction, diagnoseWorkspaceOptions, diagnoseModelOptions, diagnosePermission, DIAGNOSE_WORKSPACE, useDiagnose } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, lastWriteView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, DiagnosticsTab, TabBar, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder, diagnoseAdvice, diagnoseServices, runDiagnosis, permissionOf, diagnosePayload, FailureAdvice, DIAGNOSE_REPEAT_COUNT, DiagnoseDialog, DiagnoseEntry, diagnoseDialogState, diagnoseRowAction, diagnoseWorkspaceOptions, diagnoseModelOptions, diagnosePermission, DIAGNOSE_WORKSPACE, useDiagnose } }
   },
 })

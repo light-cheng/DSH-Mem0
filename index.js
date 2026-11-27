@@ -79,7 +79,7 @@ export async function apply(ctx, rawConfig) {
   // before the backend is chosen, since `backend: auto` depends on it.
   const credential = await lookupApiKey(ctx, rawConfig, { logger })
   const config = resolveConfig(rawConfig, { credential })
-  const activity = { recall: null, capture: null, maintenance: null }
+  const activity = { recall: null, capture: null, lastWrite: null, maintenance: null }
   // DSH's file policy lets the host write inside the active profile, while
   // the Mem0 history directory can live outside it. Keep derived state next
   // to the profile so hygiene history survives restarts without widening
