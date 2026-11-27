@@ -283,7 +283,7 @@ test('the skill is offered to recorded diagnosis sessions only, by session id, a
   assert.equal(await provider.get({ ...candidate, name: 'something-else' }, agent('diag-1')), undefined)
   // Every list line of every failure section is in the body, in order.
   for (const section of FAILURE_CAUSES) {
-    const lines = checklistFor({ cause: section }, { lang: 'en' })
+    const lines = checklistFor({ cause: section }, { lang: 'en', tools: true })
     let last = en.content.indexOf(`## ${section} (`)
     for (const line of lines) {
       const at = en.content.indexOf(line, last + 1)

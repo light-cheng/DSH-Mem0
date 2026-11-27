@@ -326,7 +326,8 @@ test('the general prompt carries the plugin state, redacted, in the agreed words
   ]) assert.ok(zh.includes(line), line)
   assert.match(zh, /最近未恢复的失败：超时 5 次（最后一次 [^）]+）；连接失败 1 次/)
   assert.match(zh, /调用 dsh-mem0-kb 技能/)
-  assert.match(zh, /第三步，能修就修：先说原因和打算怎么改，用户同意了再改，改完用 mem0_status 验证/)
+  assert.match(zh, /第三步，能修就修：先说原因和打算怎么改，用户同意了再改，改完用 mem0_check 验证。问题分三类：配置类[^。]*mem0_setting_set 改[\s\S]*数据类[\s\S]*外部类（服务宕机、额度用完、网络）修不了/)
+  assert.match(zh, /先用 mem0_check（target status）[\s\S]*不要自己读文件、发请求或查端口/)
   assert.match(zh, /第四步，如果看起来是插件本身的问题[\s\S]*不要提交到任何地方/)
   assert.match(zh, /每一处修改（配置、命令、记忆）都会弹确认/)
   assert.match(zh, /不要直接改 cordis\.patch\.yml/)
@@ -351,7 +352,10 @@ test('prepare without a failure: the general prompts, its fixed fingerprint and 
   const resolved = { ...runtime, config: { backend: 'oss' }, client: { settings: () => ({ embedder: { provider: 'ollama', baseUrl: 'http://127.0.0.1:11434' }, llm: { provider: 'dsh' } }) } }
   assert.match(prepareDiagnosis(resolved, { lang: 'zh' }).body.texts.each, /服务商 embedder ollama 127\.0\.0\.1:11434，LLM follows DSH/)
   assert.match(first.body.texts.each, /按项目分区 开/)
-  assert.ok(first.body.texts.each.includes(path.join(dir, 'dsh-mem0', 'failures.json')))
+  // The session checks failures with mem0_check, not by reading the file.
+  assert.ok(!first.body.texts.each.includes('failures.json'))
+  assert.match(first.body.texts.each, /用 mem0_check 看连接和最近的失败（target failures）/)
+  assert.match(first.body.texts.each, /不要直接改 cordis\.patch\.yml（DSH 会改写它）：插件设置用 mem0_setting_set 改/)
   assert.notEqual(first.body.texts.each, first.body.texts.skip)
   await handleDiagnoseAction(runtime, { action: 'register', sessionId: 'general-1', fingerprint: GENERAL_FINGERPRINT })
   assert.equal(prepareDiagnosis(runtime, { lang: 'en' }).body.sessionId, 'general-1')

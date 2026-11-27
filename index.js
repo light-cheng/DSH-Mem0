@@ -28,6 +28,7 @@ import { registerGuiRoutes } from './lib/gui-routes.js'
 import { createDiagnoseGate, DIAGNOSE_SESSIONS_FILE, DiagnoseSessions, isDiagnoseSession } from './lib/diagnose-sessions.js'
 import { diagnoseDirectoryPath, registerDiagnoseRoutes } from './lib/diagnose-routes.js'
 import { registerDiagnoseSkill } from './lib/diagnose-kb.js'
+import { createDiagnoseTools, diagnoseToolOptions, latestRuntime, setLatestRuntime } from './lib/diagnose-tools.js'
 import { dshDefaultWorkspaces, ProjectResolver, SESSION_PROJECTS } from './lib/project-scope.js'
 
 export const name = 'dsh-mem0'
@@ -147,6 +148,8 @@ export async function apply(ctx, rawConfig) {
     localizer,
     activity,
   }
+  // mem0_setting_set waits for the runtime of the reloaded plugin.
+  setLatestRuntime(runtime)
   // DSH's model service: translation (opt-in) and model-led hygiene.
   // Optional, and it may appear after the backend started.
   const llmServices = { current: null }
@@ -310,6 +313,16 @@ export async function apply(ctx, rawConfig) {
       for (const dispose of disposers) dispose()
     }
   }, 'dsh-mem0: tools')
+  // mem0_check and mem0_setting_set: diagnosis sessions only (DSH's
+  // step-time `when`; execute refuses elsewhere too). The setting tool
+  // always asks (the gate below).
+  const diagnoseTools = createDiagnoseTools({ ctx, getRuntime: () => latestRuntime() ?? runtime, inDiagnosis })
+  ctx.effect(() => {
+    const disposers = diagnoseTools.map((tool) => ctx.tools.register(tool, diagnoseToolOptions(inDiagnosis)))
+    return () => {
+      for (const dispose of disposers) dispose()
+    }
+  }, 'dsh-mem0: diagnosis tools')
   // DSH's permission presets do not cover plugin tools: in diagnosis
   // sessions the plugin asks before its write tools (delete and summary
   // reset always) and refuses credential reads and cordis.patch.yml edits.
