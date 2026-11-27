@@ -20,6 +20,8 @@ window.__ModuleLoader__.load({
     const SETUP_PATH = 'dsh-mem0/gui/setup'
     const PROFILE_PATCH_PATH = 'dsh-mem0/gui/profile-patch'
     const FAILURES_PATH = 'dsh-mem0/gui/failures'
+    /** "Ask DSH to diagnose" and "Copy diagnosis" (lib/diagnose-routes.js). */
+    const DIAGNOSE_PATH = 'dsh-mem0/gui/diagnose'
 
     // The settings page's UI strings live only here (en + zh, same keys;
     // test/client.test.js checks parity). locale/*.json carry just the package
@@ -600,6 +602,31 @@ window.__ModuleLoader__.load({
       failureStep_llm_extract: 'fact extraction',
       failureStep_store: 'storing',
       failureStepRunning: '{step} still running after {ms} ms',
+      diagnoseAsk: 'Ask DSH to diagnose',
+      diagnoseAskHint: 'Opens a new read-only session with this failure (redacted, no key or memory text) as an unsent draft. Memory is not changed in that session.',
+      diagnoseCopy: 'Copy diagnosis',
+      diagnoseCopied: 'Copied. Paste it into a new session.',
+      diagnoseCopyFailed: 'Could not copy: {reason}',
+      diagnoseCopyOnly: 'This DSH version cannot open a session for a plugin: copy the diagnosis and paste it into a new session.',
+      diagnoseOpening: 'Opening a read-only diagnosis session…',
+      diagnoseOpened: 'Diagnosis session opened: check the draft, then send it.',
+      diagnoseReopened: 'Back to the diagnosis session already open for this problem.',
+      diagnoseFailed: 'Could not open a diagnosis session ({reason}). Copy the diagnosis and paste it into a new session instead.',
+      diagnoseReason_prepare: 'the plugin did not answer',
+      diagnoseReason_create: 'DSH did not create the session',
+      diagnoseReason_register: 'the plugin could not record it',
+      diagnoseReason_permission: 'the session did not switch to read-only',
+      diagnoseReason_draft: 'the draft could not be filled in',
+      adviceAuthKey: 'The API key was refused (invalid, expired or without access). Check the key in the settings.',
+      adviceQuota: 'Quota used up or rate-limited by the provider. Wait and retry, or check the account balance and limits.',
+      adviceTimeout: 'The call took longer than the timeout. If the service is just slow, raise the timeout in the settings.',
+      adviceConnection: 'The service did not answer. Check that it runs and that the address in the settings is right.',
+      adviceConfig: 'The settings cannot be used as they are; retrying does not help until they are fixed.',
+      adviceCircuit: 'Skipped after repeated failures; the earlier failure in this list is the cause.',
+      adviceTruncated: 'The extraction answer hit its output limit: raise llmMaxTokens, or set llmReasoningEffort to low.',
+      adviceExtractionModel: 'The extraction model returned nothing usable. Another model usually fixes this.',
+      adviceNotJson: 'The extraction model did not answer in JSON. Often the model choice; if another model does not help, ask DSH to diagnose.',
+      adviceStartup: 'The local memory store could not start. Check the store path in the setup wizard; if that looks right, ask DSH to diagnose.',
       dockOpen: 'Open Mem0 settings',
       dockDetails: 'Show details in the status bar',
       dockDetailsHint: 'When on, the status bar always shows the full details; when off it shows a short state, and a new notice stays for 8 seconds before it moves into the panel you see on hover. Display only. Applies at once.',
@@ -1379,6 +1406,31 @@ window.__ModuleLoader__.load({
       failureStep_llm_extract: '事实抽取',
       failureStep_store: '写入',
       failureStepRunning: '{step}已运行 {ms} ms 仍未完成',
+      diagnoseAsk: '让 DSH 诊断',
+      diagnoseAskHint: '新开一个只读会话，把这条失败（已脱敏，不含 key 和记忆正文）预填成草稿，不会自动发送。这个会话里不会改动记忆。',
+      diagnoseCopy: '复制诊断信息',
+      diagnoseCopied: '已复制，粘贴到新会话里即可。',
+      diagnoseCopyFailed: '复制失败：{reason}',
+      diagnoseCopyOnly: '当前 DSH 版本不支持插件新开会话：请复制诊断信息，粘贴到新会话里。',
+      diagnoseOpening: '正在打开只读诊断会话…',
+      diagnoseOpened: '诊断会话已打开：确认草稿后再发送。',
+      diagnoseReopened: '已回到这个问题之前打开的诊断会话。',
+      diagnoseFailed: '诊断会话没能打开（{reason}）。可以复制诊断信息，粘贴到新会话里。',
+      diagnoseReason_prepare: '插件没有响应',
+      diagnoseReason_create: 'DSH 没有建好会话',
+      diagnoseReason_register: '插件没能记下这个会话',
+      diagnoseReason_permission: '会话没能切到只读',
+      diagnoseReason_draft: '草稿没能填进去',
+      adviceAuthKey: 'API key 被拒绝（无效、过期或没有权限）。请到设置里检查 key。',
+      adviceQuota: '服务商的额度用完了，或者触发了限流。稍后重试，或检查账户余额和限额。',
+      adviceTimeout: '调用超过了超时时间。如果只是服务慢，可以在设置里调高超时。',
+      adviceConnection: '服务没有响应。请确认它在运行，设置里的地址也正确。',
+      adviceConfig: '当前设置没法使用，改好之前重试也没用。',
+      adviceCircuit: '连续失败后被跳过；原因是列表里更早的那条失败。',
+      adviceTruncated: '抽取回复达到输出上限：调高 llmMaxTokens，或把 llmReasoningEffort 设成 low。',
+      adviceExtractionModel: '抽取模型没有给出可用的结果，换一个模型通常就好。',
+      adviceNotJson: '抽取模型没有按 JSON 回答，多半是模型选择的问题；换模型仍不行，再让 DSH 诊断。',
+      adviceStartup: '本地记忆库没能启动。先在配置向导里检查存储路径；路径没问题的话，让 DSH 诊断。',
       dockOpen: '打开 Mem0 设置',
       dockDetails: '底部栏显示详情',
       dockDetailsHint: '打开后底部栏一直显示完整详情；关闭时只显示简短状态，新提示会先停留 8 秒，再收进悬停时的浮窗。只影响显示。立即生效。',
@@ -1730,6 +1782,8 @@ window.__ModuleLoader__.load({
       .mem0-dock-pop-foot .mem0-dock-pop-link{margin-top:0;display:inline}
       .mem0-sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
       .mem0-dock-pop-link{align-self:flex-start;margin-top:4px;border:0;background:transparent;padding:0;font:inherit;color:var(--dsw-alias-label-primary);text-decoration:underline;cursor:pointer}
+      .mem0-failure-advice{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:var(--dsw-alias-label-secondary)}
+      .mem0-failure-advice p{margin:0;flex:1 1 220px;min-width:0}
       .mem0-failures{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:320px;overflow:auto}
       .mem0-failure{border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
       .mem0-failure-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-primary)}
@@ -3923,7 +3977,7 @@ window.__ModuleLoader__.load({
     }
 
     /** "Recent failures" in the activity card (stored history, newest first). */
-    function FailureList({ t, failures }) {
+    function FailureList({ t, failures, diagnose }) {
       const list = Array.isArray(failures) ? failures : []
       return h(
         'div',
@@ -3963,11 +4017,283 @@ window.__ModuleLoader__.load({
                     recovered ? h('span', { className: 'mem0-failure-recovered-tag' }, template(t('failureRecovered'), { time: activityTime(failure.recoveredAt) })) : null,
                   ),
                   failureMessage(t, failure) ? h('p', { className: 'mem0-failure-msg' }, failureMessage(t, failure)) : null,
+                  h(FailureAdvice, { t, failure, rowKey: `${failure.at}-${index}`, diagnose }),
                 )
               }),
             )
           : null,
       )
+    }
+
+    // ---- "Ask DSH to diagnose" (lib/diagnose-routes.js, lib/diagnose-sessions.js)
+
+    /** A failure folded this many times without recovering is worth a diagnosis. */
+    const DIAGNOSE_REPEAT_COUNT = 5
+    const QUOTA_PATTERN = /\b429\b|quota|rate.?limit|too many requests|insufficient (?:credits|balance|quota)|billing|余额|额度|限流/i
+
+    /**
+     * What the failure list offers for one failure. Pure.
+     * - `hint`: a fixed advice key for known causes (auth is split into a
+     *   refused key and quota / rate limits);
+     * - `action`: where the hint points ('settings' or 'wizard'), or null;
+     * - `diagnose`: whether "Ask DSH to diagnose" is offered: other errors
+     *   (HTTP 5xx, …), an unknown component, a local backend that did not
+     *   start, an extraction answer that was not JSON, and any failure that
+     *   repeated DIAGNOSE_REPEAT_COUNT times without recovering.
+     */
+    function diagnoseAdvice(failure) {
+      const cause = failure?.cause || 'other'
+      const local = failure?.backend === 'oss'
+      let hint = null
+      let action = null
+      let diagnose = false
+      if (cause === 'auth') {
+        const status = Number(failure?.status)
+        const quota = status === 429 || (status !== 401 && status !== 403 && QUOTA_PATTERN.test(String(failure?.message ?? '')))
+        hint = quota ? 'adviceQuota' : 'adviceAuthKey'
+        action = quota ? null : local ? 'wizard' : 'settings'
+      } else if (cause === 'timeout') {
+        hint = 'adviceTimeout'
+        action = 'settings'
+      } else if (cause === 'connection') {
+        hint = failure?.endpoint ? 'unreachable' : 'adviceConnection'
+        action = local ? 'wizard' : 'settings'
+      } else if (cause === 'config') {
+        hint = 'adviceConfig'
+        action = local ? 'wizard' : 'settings'
+      } else if (cause === 'circuit') {
+        hint = 'adviceCircuit'
+      } else if (cause === 'extraction') {
+        if (failure?.reason === 'truncated') {
+          // The message already carries the full advice when the gateway said so.
+          hint = failure?.detail ? null : 'adviceTruncated'
+          action = 'settings'
+        } else if (failure?.reason === 'not_json') {
+          hint = 'adviceNotJson'
+          action = local ? 'wizard' : null
+          diagnose = true
+        } else {
+          hint = 'adviceExtractionModel'
+          action = local ? 'wizard' : null
+        }
+      } else if (cause === 'startup') {
+        hint = 'adviceStartup'
+        action = 'wizard'
+        diagnose = true
+      } else {
+        diagnose = true
+      }
+      // A breaker skip names the component of the failure that tripped it.
+      if (cause !== 'circuit' && (failure?.component || 'unknown') === 'unknown') diagnose = true
+      if (cause !== 'circuit' && Number(failure?.count) >= DIAGNOSE_REPEAT_COUNT && failure?.recovered !== true) diagnose = true
+      return { hint, action, diagnose }
+    }
+
+    /**
+     * The host services a diagnosis session needs, or null on DSH versions
+     * without them (0.2.1): then only "Copy diagnosis" is offered.
+     */
+    function diagnoseServices(ctx) {
+      const get = (name) => {
+        try {
+          return ctx?.get?.(name)
+        } catch {
+          return undefined
+        }
+      }
+      const sessions = get('sessions')
+      const uiWorkspace = get('uiWorkspace')
+      const conversation = get('conversation')
+      const ok =
+        typeof sessions?.create === 'function' &&
+        typeof sessions?.retain === 'function' &&
+        typeof uiWorkspace?.openSession === 'function' &&
+        typeof conversation?.input?.requestDraftInitialization === 'function'
+      return ok ? { sessions, uiWorkspace, conversation, workspaces: get('workspaces') } : null
+    }
+
+    function diagnoseError(reason, cause) {
+      const error = new Error(`diagnosis: ${reason}`)
+      error.diagnoseReason = reason
+      if (cause !== undefined) error.cause = cause
+      return error
+    }
+
+    /** The session's current permission preset, from its `permissions` projection. */
+    function permissionOf(session) {
+      try {
+        const value = session?.projections?.faceOf?.('permissions')?.getSnapshot?.()
+        return typeof value?.currentValue === 'string' ? value.currentValue : null
+      } catch {
+        return null
+      }
+    }
+
+    /** Whether a recorded diagnosis session is still listed and not archived. */
+    function diagnoseSessionAlive(services, sessionId) {
+      try {
+        const list = services.sessions.list?.getSnapshot?.()
+        const listed = Boolean(list?.ids?.includes?.(sessionId) || list?.byId?.[sessionId])
+        const archived = services.workspaces?.list?.getSnapshot?.()?.archivedSessionIds
+        return listed && !(Array.isArray(archived) && archived.includes(sessionId))
+      } catch {
+        return false
+      }
+    }
+
+    async function waitUntil(check, { timeoutMs = 5000, stepMs = 100, sleep = delay } = {}) {
+      for (let waited = 0; ; waited += stepMs) {
+        if (check()) return true
+        if (waited >= timeoutMs) return false
+        await sleep(stepMs)
+      }
+    }
+
+    // References the plugin holds on diagnosis sessions until the
+    // conversation view holds its own (the draft lives with the binding).
+    const diagnoseReferences = new Map()
+
+    function releaseWhenShown(services, sessionId, reference, { sleep = delay } = {}) {
+      diagnoseReferences.get(sessionId)?.release?.()
+      diagnoseReferences.set(sessionId, reference)
+      void waitUntil(() => Number(services.sessions.retainInfo?.(sessionId)?.getSnapshot?.()?.referenceCount) > 1, { timeoutMs: 15000, stepMs: 250, sleep }).then((shown) => {
+        // Not shown: keep holding it, so the draft is not dropped.
+        if (!shown || diagnoseReferences.get(sessionId) !== reference) return
+        diagnoseReferences.delete(sessionId)
+        reference.release?.()
+      })
+    }
+
+    /**
+     * Open (or return to) the diagnosis session for one prepared failure.
+     * `prepared` comes from the diagnose route; `post` sends one action to
+     * it. Steps: create the session in the diagnosis folder (no workspace, so
+     * DSH's New Session never reuses it), record it with the plugin (tool
+     * gate and memory skip apply from here), switch it to read-only and
+     * confirm that from the permissions projection (the command's own answer
+     * is not trusted), fill the draft, and only then show it. Any failure
+     * archives the half-made session and throws `diagnoseReason`.
+     * @returns {{ kind: 'reopened' | 'created', sessionId: string }}
+     */
+    async function runDiagnosis({ services, prepared, post, sleep = delay, permissionTimeoutMs = 5000 }) {
+      const { sessions, uiWorkspace, conversation } = services
+      const existing = prepared?.sessionId
+      if (existing) {
+        if (diagnoseSessionAlive(services, existing)) {
+          uiWorkspace.openSession(existing)
+          return { kind: 'reopened', sessionId: existing }
+        }
+        await post({ action: 'unmap', sessionId: existing }).catch(() => {})
+      }
+      if (!prepared?.cwd || !prepared?.text) throw diagnoseError('prepare')
+      let sessionId
+      try {
+        sessionId = await sessions.create({ cwd: prepared.cwd })
+      } catch (error) {
+        throw diagnoseError('create', error)
+      }
+      if (!sessionId) throw diagnoseError('create')
+      try {
+        await post({ action: 'register', sessionId, fingerprint: prepared.fingerprint })
+      } catch (error) {
+        await Promise.resolve(uiWorkspace.archiveSession?.(sessionId)).catch(() => {})
+        throw diagnoseError('register', error)
+      }
+      let reference
+      try {
+        reference = sessions.retain(sessionId, { source: 'dsh-mem0' })
+        const binding = (await reference.ready) ?? reference.binding
+        const session = binding.session
+        await session.command('/permission read-only')
+        const readOnly = await waitUntil(() => permissionOf(session) === 'read-only', { timeoutMs: permissionTimeoutMs, sleep })
+        if (!readOnly) throw diagnoseError('permission')
+        if (prepared.title && typeof session.rename === 'function') await Promise.resolve(session.rename(prepared.title)).catch(() => {})
+        let filled
+        try {
+          filled = conversation.input.requestDraftInitialization(binding, { prompt: prepared.text, whenDraftExists: 'replace' })
+        } catch (error) {
+          throw diagnoseError('draft', error)
+        }
+        if (filled === 'blocked') throw diagnoseError('draft')
+        uiWorkspace.openSession(sessionId)
+      } catch (error) {
+        reference?.release?.()
+        // The id stays recorded (the gate applies if it is ever restored);
+        // only its fingerprint goes, so the next click starts afresh.
+        await Promise.resolve(uiWorkspace.archiveSession?.(sessionId)).catch(() => {})
+        await post({ action: 'unmap', sessionId }).catch(() => {})
+        throw error?.diagnoseReason ? error : diagnoseError('create', error)
+      }
+      releaseWhenShown(services, sessionId, reference, { sleep })
+      return { kind: 'created', sessionId }
+    }
+
+    /** What is sent to the route: the stored failure's identity and facts, never `detail`. */
+    function diagnosePayload(failure) {
+      const { detail, ...rest } = failure ?? {}
+      return rest
+    }
+
+    /** Advice line and diagnosis buttons under one failure. */
+    function FailureAdvice({ t, failure, rowKey, diagnose }) {
+      const advice = diagnoseAdvice(failure)
+      const state = diagnose?.state?.[rowKey]
+      const hintText = advice.hint === 'unreachable' ? unreachableHint(t, failure) : advice.hint ? t(advice.hint) : ''
+      const canOpen = Boolean(diagnose?.canOpen)
+      if (!hintText && !advice.diagnose) return null
+      const busy = state?.phase === 'opening'
+      return h(
+        'div',
+        { className: 'mem0-failure-advice' },
+        hintText ? h('p', null, hintText) : null,
+        advice.action && diagnose?.onAction
+          ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', onClick: () => diagnose.onAction(advice.action) }, t(advice.action === 'wizard' ? 'bannerWizard' : 'bannerSettings'))
+          : null,
+        advice.diagnose && canOpen
+          ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', title: t('diagnoseAskHint'), disabled: busy, onClick: () => void diagnose.start(rowKey, failure) }, t('diagnoseAsk'))
+          : null,
+        advice.diagnose && diagnose
+          ? h('button', { type: 'button', className: 'mem0-secondary mem0-sm', title: canOpen ? undefined : t('diagnoseCopyOnly'), onClick: () => void diagnose.copy(rowKey, failure) }, t('diagnoseCopy'))
+          : null,
+        state?.message ? h('p', { className: state.phase === 'error' ? 'mem0-error' : 'mem0-hint', role: 'status' }, state.message) : null,
+      )
+    }
+
+    /** State and actions behind FailureAdvice, for the settings page. */
+    function useDiagnose(ctx, t, onAction) {
+      const services = useMemo(() => diagnoseServices(ctx), [ctx])
+      const [state, setState] = useState({})
+      const mark = (key, next) => setState((previous) => ({ ...previous, [key]: next }))
+      const post = (body) =>
+        fetchJson(DIAGNOSE_PATH, { method: 'POST', retry: false, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((answer) => {
+          if (answer?.ok === false) throw new Error(answer.error || 'refused')
+          return answer
+        })
+      const prepare = (failure) => post({ action: 'prepare', failure: diagnosePayload(failure), lang: pageLanguage(ctx) })
+      const start = async (key, failure) => {
+        if (!services) return
+        mark(key, { phase: 'opening', message: t('diagnoseOpening') })
+        try {
+          const prepared = await prepare(failure).catch((error) => {
+            throw diagnoseError('prepare', error)
+          })
+          const outcome = await runDiagnosis({ services, prepared, post })
+          mark(key, { phase: 'done', message: t(outcome.kind === 'reopened' ? 'diagnoseReopened' : 'diagnoseOpened') })
+        } catch (error) {
+          const reason = t(`diagnoseReason_${error?.diagnoseReason || 'create'}`)
+          mark(key, { phase: 'error', message: template(t('diagnoseFailed'), { reason }) })
+        }
+      }
+      const copy = async (key, failure) => {
+        try {
+          const prepared = await prepare(failure)
+          await navigator.clipboard.writeText(prepared.copyText)
+          mark(key, { phase: 'done', message: t('diagnoseCopied') })
+        } catch (error) {
+          mark(key, { phase: 'error', message: template(t('diagnoseCopyFailed'), { reason: error?.message || '?' }) })
+        }
+      }
+      return { canOpen: Boolean(services), state, start, copy, onAction }
     }
 
     // ---- local setup wizard (lib/setup-routes.js) ------------------------
@@ -6072,7 +6398,7 @@ window.__ModuleLoader__.load({
     }
 
     /** The maintenance tab: memory check, its settings, local setup and migration, diagnostics. */
-    function MaintenanceTab({ t, draft, setField, data, status, hygiene, reportTexts, local, diagnostics }) {
+    function MaintenanceTab({ t, draft, setField, data, status, hygiene, reportTexts, local, diagnostics, diagnose }) {
       const maintenance = data?.maintenance ?? null
       const fields = (group) => settingControls({ t, names: visibleFields(SETTINGS_LAYOUT[group], draft.backend), draft, setField })
       const migration = migrationState(data)
@@ -6145,7 +6471,7 @@ window.__ModuleLoader__.load({
           h(StatusGrid, { items: statusItemsFor(t, data) }),
           status.phase === 'error' || data?.ok === false ? h('p', { className: 'mem0-error' }, data?.error ?? status.message) : null,
           data?.store ? h(StoreStatus, { t, store: data.store }) : null,
-          h(FailureList, { t, failures: data?.failures }),
+          h(FailureList, { t, failures: data?.failures, diagnose }),
         ),
       )
     }
@@ -6174,6 +6500,8 @@ window.__ModuleLoader__.load({
       const [apiKey, setApiKey] = useState('')
       const [apiKeySet, setApiKeySet] = useState(false)
       const [status, setStatus] = useState({ phase: 'loading', data: null, message: '' })
+      // Failure list: hint jumps and "Ask DSH to diagnose" (onBannerAction is defined below).
+      const diagnose = useDiagnose(ctx, t, (action) => onBannerAction(action))
       const [saveState, setSaveState] = useState('idle')
       const [saveMessage, setSaveMessage] = useState('')
       const [testState, setTestState] = useState('idle')
@@ -6935,6 +7263,7 @@ window.__ModuleLoader__.load({
           reportTexts,
           local: { openWizard, wizardOpen, wizard, copyPath: (path) => void copyPath(path), copied: pathCopied },
           diagnostics: { issue: diagnosticsIssue, meta: diagnosticsView.text, open: diagnosticsOpen || diagnosticsIssue },
+          diagnose,
         })
       } else {
         body = h(
@@ -7029,6 +7358,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder, diagnoseAdvice, diagnoseServices, runDiagnosis, permissionOf, diagnosePayload, FailureAdvice, DIAGNOSE_REPEAT_COUNT } }
   },
 })

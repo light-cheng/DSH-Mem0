@@ -25,6 +25,8 @@ import { FailureHistory } from './lib/failure-history.js'
 import { CONFIG_FINGERPRINT_FILE, ConfigGuard, describeConfigWarning } from './lib/config-guard.js'
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
+import { createDiagnoseGate, DIAGNOSE_SESSIONS_FILE, DiagnoseSessions, isDiagnoseSession } from './lib/diagnose-sessions.js'
+import { registerDiagnoseRoutes } from './lib/diagnose-routes.js'
 import { dshDefaultWorkspaces, ProjectResolver, SESSION_PROJECTS } from './lib/project-scope.js'
 
 export const name = 'dsh-mem0'
@@ -119,12 +121,23 @@ export async function apply(ctx, rawConfig) {
     logger,
   })
   if (configGuard.status()) logger?.warn?.(describeConfigWarning(configGuard.status()))
+  // Read-only diagnosis sessions the settings page opened (lib/diagnose-sessions.js):
+  // the plugin's write tools, automatic recall/capture and hygiene leave them alone.
+  const diagnoseSessions = new DiagnoseSessions({
+    filePath: dataDir ? path.join(dataDir, DIAGNOSE_SESSIONS_FILE) : undefined,
+    logger,
+  })
+  // A subagent of a diagnosis session counts as one: follow its parent.
+  const lookupSession = (id) => (ctx.get?.('sessions') ?? ctx.sessions)?.get?.(id)
+  const inDiagnosis = (session) => isDiagnoseSession(diagnoseSessions, session, { lookup: lookupSession })
   const runtime = {
     config,
     configGuard,
     // Where cordis.patch.yml and its crash-recovery backups are.
     profileDir,
     failures,
+    diagnoseSessions,
+    logger,
     client: undefined,
     breaker: undefined,
     lifecycle: undefined,
@@ -168,6 +181,7 @@ export async function apply(ctx, rawConfig) {
   }
 
   registerGuiRoutes(ctx, () => runtime)
+  registerDiagnoseRoutes(ctx, () => runtime)
   if (!config.enabled) return
 
   // Without a literal apiKey, every REST request asks DSH credentials first
@@ -193,6 +207,7 @@ export async function apply(ctx, rawConfig) {
     llm: llmServices.current,
     // DSH injects the model services after startup: passes wait for them.
     awaitModel: typeof ctx.inject === 'function',
+    excludedSessions: () => diagnoseSessions.ids(),
   })
   // Partitions (global / project / session) are stored by the local
   // backend; REST backends keep every memory global. The project comes from
@@ -227,6 +242,8 @@ export async function apply(ctx, rawConfig) {
     budget: () => ctx.get?.('strataBudget'),
     // DSH's session registry, for folds that carry only a session id.
     sessions: () => ctx.get?.('sessions') ?? ctx.sessions,
+    // No automatic recall or capture in read-only diagnosis sessions.
+    skipSession: inDiagnosis,
   })
   runtime.client = client
   runtime.breaker = breaker
@@ -261,13 +278,19 @@ export async function apply(ctx, rawConfig) {
     )
   }
 
-  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard, projects, onExplicitAdd: (session, rows) => lifecycle.noteExplicitAdd(session, rows) })
+  // A diagnosis session's folder is no project: its tool calls neither
+  // record one nor search a project partition.
+  const toolProjects = projects && { resolve: (session) => (inDiagnosis(session) ? null : projects.resolve(session)) }
+  const tools = createMem0Tools(client, config, { maintenance, localizer, activity, configGuard, projects: toolProjects, onExplicitAdd: (session, rows) => lifecycle.noteExplicitAdd(session, rows) })
   ctx.effect(() => {
     const disposers = tools.map((tool) => ctx.tools.register(tool))
     return () => {
       for (const dispose of disposers) dispose()
     }
   }, 'dsh-mem0: tools')
+  // DSH's read-only preset does not cover plugin tools: in diagnosis
+  // sessions the plugin refuses its write tools and asks before adding.
+  ctx.on('tools/pre-execute', createDiagnoseGate(diagnoseSessions, { lookup: lookupSession }))
 
   if (config.autoRecall) {
     // The memory summary is a system-prompt section, not a runtime context:
