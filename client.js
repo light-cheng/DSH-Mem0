@@ -325,8 +325,10 @@ window.__ModuleLoader__.load({
       failureCause_config: 'Configuration error',
       failureHintUnreachable: '{component} unreachable at {endpoint}. Is it running? On Windows, a port in a reserved range fails to bind (os error 10013 in the service log): see the README, Windows troubleshooting.',
       failureHintOutputLimit: "The LLM answer reached its output limit (max_tokens {n}): reasoning used up the output. Raise Mem0's llmMaxTokens (8000 or more), or set llmReasoningEffort to low; this is not DSH's model setting. Gateway: {detail}",
-      configWarning: 'dsh-mem0 settings are missing from the profile (DSH desktop crash recovery, "disable third-party plugins", moves the whole cordis.patch.yml aside); missing: {fields}',
-      configWarningBackup: 'DSH desktop crash recovery moved the profile settings aside: the previous file is {file} in the profile folder. "Restore dsh-mem0 settings from the backup" brings back this plugin\'s settings only; the host settings (language, theme) and other plugins\' settings are in that backup too and have to be copied back by hand.',
+      configWarning: 'dsh-mem0 settings are missing from the profile: {fields}.',
+      configWarningMissingBackup: 'dsh-mem0 settings are missing from the profile ({fields}): DSH desktop crash recovery moved cordis.patch.yml to {file} in the profile folder.',
+      configWarningBackup: 'DSH desktop crash recovery moved cordis.patch.yml to {file} in the profile folder.',
+      configWarningRestore: '"Restore dsh-mem0 settings from the backup" brings back only this plugin\'s settings; the host settings (language, theme) and other plugins\' settings are in that backup too and have to be copied back by hand.',
       bannerRestore: 'Restore dsh-mem0 settings from the backup',
       bannerDismiss: 'Dismiss',
       restoreDone: 'Restored {count} dsh-mem0 settings from {file}.',
@@ -583,7 +585,7 @@ window.__ModuleLoader__.load({
       wzMissingEmbedder: "embedding model",
       wzMissingLlm: "extraction LLM",
       upgradeQdrantMigrated: "The old data is still in Qdrant and no longer used: you may delete it or stop the Qdrant service.",
-      configWarningFix: 'Restore them above and save (the plugin keeps a copy in the "dsh_mem0" block of oss.json, which DSH does not rewrite). Removed on purpose: delete config-fingerprint.json next to failures.json.',
+      configWarningFix: 'Fill them in above and save.',
       failureRepeated: '{count} times since {since}',
       failureComponent_llm: 'LLM',
       failureComponent_embedder: 'Embedder',
@@ -1095,8 +1097,10 @@ window.__ModuleLoader__.load({
       failureCause_config: '配置错误',
       failureHintUnreachable: '{component}不可达：{endpoint}。请确认服务在运行；Windows 上端口落在系统保留段时服务会绑定失败（服务日志里有 os error 10013），见 README「Windows 排障」。',
       failureHintOutputLimit: 'LLM 回复达到输出上限（max_tokens {n}），推理把输出用完了。请调高 Mem0 的 llmMaxTokens（建议 ≥ 8000），或把 llmReasoningEffort 设成 low；这不是 DSH 的模型设置。网关原话：{detail}',
-      configWarning: 'profile 里缺少 dsh-mem0 的设置（DSH 桌面版的崩溃恢复「禁用第三方插件」会把整份 cordis.patch.yml 移走），缺少：{fields}',
-      configWarningBackup: 'DSH 桌面版的崩溃恢复把 profile 设置移走了，原文件在 profile 目录下的 {file}。「从备份恢复 dsh-mem0 设置」只找回本插件的设置；宿主设置（语言、主题）和其他插件的设置也在这个备份里，需要你手动找回。',
+      configWarning: 'profile 里缺少 dsh-mem0 的设置：{fields}。',
+      configWarningMissingBackup: 'profile 里缺少 dsh-mem0 的设置（{fields}）：DSH 桌面版的崩溃恢复把 cordis.patch.yml 移成了 profile 目录下的 {file}。',
+      configWarningBackup: 'DSH 桌面版的崩溃恢复把 cordis.patch.yml 移成了 profile 目录下的 {file}。',
+      configWarningRestore: '「从备份恢复 dsh-mem0 设置」只找回本插件的设置；宿主设置（语言、主题）和其他插件的设置也在这个备份里，需要你手动找回。',
       bannerRestore: '从备份恢复 dsh-mem0 设置',
       bannerDismiss: '不再提示',
       restoreDone: '已从 {file} 恢复 {count} 项 dsh-mem0 设置。',
@@ -1353,7 +1357,7 @@ window.__ModuleLoader__.load({
       wzMissingEmbedder: "embedding 模型",
       wzMissingLlm: "抽取 LLM",
       upgradeQdrantMigrated: "旧数据仍在 Qdrant，不再使用，可以自行删除或停掉 Qdrant 服务。",
-      configWarningFix: '在上方补回并保存（插件会在 oss.json 的 "dsh_mem0" 段留一份副本，DSH 不会改写它）。如果是有意删除，删掉 failures.json 旁边的 config-fingerprint.json。',
+      configWarningFix: '在上方补回并保存。',
       failureRepeated: '自 {since} 起共 {count} 次',
       failureComponent_llm: 'LLM',
       failureComponent_embedder: '向量模型',
@@ -5343,10 +5347,12 @@ window.__ModuleLoader__.load({
       const items = []
       const warning = data?.configWarning
       if (warning?.missing?.length || warning?.backup) {
-        const parts = []
-        if (warning.missing?.length) parts.push(template(t('configWarning'), { fields: warning.missing.join(', ') }))
-        if (warning.backup) parts.push(template(t('configWarningBackup'), { file: String(warning.backup) }))
-        if (warning.missing?.length) parts.push(t('configWarningFix'))
+        const fields = warning.missing?.length ? warning.missing.join(', ') : ''
+        const file = warning.backup ? String(warning.backup) : ''
+        // Two sentences at most: what happened (backup file, missing fields), then what to do.
+        const parts = file
+          ? [template(t(fields ? 'configWarningMissingBackup' : 'configWarningBackup'), { fields, file }), t('configWarningRestore')]
+          : [template(t('configWarning'), { fields }), t('configWarningFix')]
         items.push({
           code: 'configWarning',
           text: parts.join(' '),

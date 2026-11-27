@@ -335,7 +335,7 @@ config:
 插件的应对：
 
 - 每次在设置页保存后，插件把关键设置复制一份到 `~/.dsh/mem0/oss.json` 的 `dsh_mem0` 段，DSH 不会碰这个文件：`backend`、`baseUrl`、`authType`、`apiKeyEnv`、`userId`、`agentId`、`collectionName`、存储路径、embedder 和抽取 LLM 的设置、`translateMemories`、`captureStrataFolds`。profile 里设了的值始终优先，副本只补 profile 丢掉的字段，所以记忆仍写到原来的库和用户。key 本身从不复制，只写凭据名。`oss.json` 里只有这一段会变，文件整体原子替换。副本写不进去时，保存照样成功，DSH 日志里留一条警告。
-- 插件记下上次正常运行时设置了哪些关键配置（只记字段名，存在 `<DSH profile>/dsh-mem0/config-fingerprint.json`）。其中有字段消失、副本也没补上时，设置页和 `mem0_status` 会提示「profile 里缺少 dsh-mem0 的设置……，缺少：…」。如果是你有意删掉的，删除 `config-fingerprint.json` 即可。
+- 插件记下上次正常运行时设置了哪些关键配置（只记字段名，存在 `<DSH profile>/dsh-mem0/config-fingerprint.json`）。其中有字段消失、副本也没补上时，设置页和 `mem0_status` 会提示「profile 里缺少 dsh-mem0 的设置：…」。如果是你有意删掉的，删除 `config-fingerprint.json` 即可。
 - profile 目录里有比上次正常运行更新的 `cordis.patch.yml.bak-*` 时，提示里会写出这个文件名，并给出「从备份恢复 dsh-mem0 设置」按钮。它只读备份里 dsh-mem0 那一条，通过 DSH 的设置 API 写回，别的条目一律不碰；备份里的 API Key 不会复制回来（需要重新填）。备份里的宿主设置和其他插件的设置要你手动复制回 `cordis.patch.yml`。「不再提示」会隐藏这个备份的提示。
 
 <a id="migrating-from-qdrant"></a>
