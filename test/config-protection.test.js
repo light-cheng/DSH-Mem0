@@ -230,6 +230,9 @@ test('notice: a backup newer than the last good run is named (file name only), i
   const text = describeConfigWarning(status)
   assert.ok(text.includes(name), text)
   assert.match(text, /crash recovery/)
+  assert.equal(text.match(/crash recovery/g).length, 1, 'said once')
+  assert.match(text, /missing from the profile \(agentId, backend, translateMemories, userId\): DSH desktop crash recovery moved cordis\.patch\.yml to cordis\.patch\.yml\.bak-\d+ in the profile folder\. "Restore/)
+  assert.doesNotMatch(text, /oss\.json|config-fingerprint|failures\.json/, 'developer details live in the README')
   assert.match(text, /host settings \(language, theme\) and other plugins' settings are in that backup too/)
   assert.match(text, /Restore dsh-mem0 settings from the backup/)
   assert.doesNotMatch(text, /settings sync/)
@@ -254,10 +257,13 @@ test('notice: a backup newer than the last good run is named (file name only), i
     assert.equal(items[0].secondary, 'dismiss')
     assert.ok(items[0].text.includes(name), `${lang}: ${items[0].text}`)
     assert.ok(!items[0].text.includes('{'), `${lang}: placeholders filled`)
+    assert.ok(items[0].text.includes('agentId, backend, translateMemories, userId'), `${lang}: fields named`)
+    assert.ok(!/oss\.json|config-fingerprint|failures\.json/.test(items[0].text), `${lang}: no developer details`)
+    assert.ok((items[0].text.match(/[.。](?=\s|$)/g) ?? []).length <= 2, `${lang}: two sentences at most: ${items[0].text}`)
     assert.ok(dict.bannerRestore && dict.bannerDismiss && dict.restoreDone && dict.restoreApiKey)
   }
-  assert.match(client.zh.configWarningBackup, /宿主设置（语言、主题）和其他插件的设置也在这个备份里/)
-  assert.match(client.en.configWarning, /crash recovery/)
+  assert.match(client.zh.configWarningRestore, /宿主设置（语言、主题）和其他插件的设置也在这个备份里/)
+  assert.match(client.en.configWarningMissingBackup, /crash recovery/)
   assert.doesNotMatch(client.zh.configWarning, /设置同步/)
 
   // Dismissed: not named again.

@@ -166,7 +166,8 @@ test('the config guard reports settings that went missing since the last good ru
   assert.deepEqual(rewritten.status().missing, ['collectionName', 'embedderBaseUrl', 'embedderModel', 'translateMemories', 'userId'])
   rewritten.markWorking()
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).fields, [...full].sort(), 'a rewrite never becomes the baseline')
-  assert.match(describeConfigWarning(rewritten.status()), /crash recovery.*cordis\.patch\.yml aside\): collectionName, embedderBaseUrl, embedderModel/)
+  assert.match(describeConfigWarning(rewritten.status()), /^dsh-mem0 settings are missing from the profile: collectionName, embedderBaseUrl, embedderModel, translateMemories, userId \(all set on [^)]+\)\. Fill them in on the plugin settings page and save\.$/)
+  assert.doesNotMatch(describeConfigWarning(rewritten.status()), /oss\.json|config-fingerprint/)
   assert.doesNotMatch(describeConfigWarning(rewritten.status()), /settings sync/)
 
   // Kept in oss.json's dsh_mem0 block: not missing.
