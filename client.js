@@ -6450,7 +6450,9 @@ window.__ModuleLoader__.load({
           await fetchJson(PROFILE_PATCH_PATH, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(settingsCopyPayload(next, previous, changedKeys)),
+            // The profile's other values too: fields the page does not
+            // edit (embedder and LLM, set by the wizard or by hand) are copied.
+            body: JSON.stringify(settingsCopyPayload({ ...(snapshot.value ?? {}), ...next }, { ...(snapshot.value ?? {}), ...previous }, changedKeys)),
           })
         } catch {
           // logged by the plugin when it got the request
