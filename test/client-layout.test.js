@@ -1,4 +1,4 @@
-// The settings page layout (three tabs, header, save bar): every setting
+// The settings page layout (four tabs, header, save bar): every setting
 // still has a control, the capture card follows the PR1/PR2 contract, and
 // the library helpers page, filter and sort as the page expects.
 import test from 'node:test'
@@ -87,11 +87,9 @@ function renderSettings(backend, setField = () => {}) {
     draft,
     setField,
     data: null,
-    status: { phase: 'ready', message: '' },
     hygiene: { run() {}, state: 'idle', message: '' },
     reportTexts: null,
     local: { openWizard() {}, wizardOpen: false, wizard: null, copyPath() {}, copied: false },
-    diagnostics: { issue: false, open: false },
   }))
   const header = render(client.PageHeader({ t, view: { state: 'ok', label: 'ok', parts: [], where: null }, enabled: draft.enabled, onToggleEnabled: (value) => setField('enabled', value), onCheck() {}, checking: false }))
   return { settings, maintenance, header }
@@ -259,18 +257,8 @@ for (const [lang, one] of [['en', '1 memory problem not recovered yet.'], ['zh',
       const banners = client.bannerItems(tl, data, { phase })
       const view = client.diagnosticsMeta(tl, { data, banners, phase })
       let found
-      walk(render(client.MaintenanceTab({
-        t: tl,
-        draft: {},
-        setField() {},
-        data,
-        status: { phase, message: '' },
-        hygiene: { run() {}, state: 'idle', message: '' },
-        reportTexts: null,
-        local: { openWizard() {}, wizardOpen: false, wizard: null, copyPath() {}, copied: false },
-        diagnostics: { issue: view.issue, meta: view.text, open: false },
-      })), (node) => {
-        if (node.props?.id === 'mem0-diagnostics') found = node.props.children.find((child) => child?.type === 'summary')
+      walk(render(client.DiagnosticsTab({ t: tl, data, status: { phase, message: '' }, diagnostics: view })), (node) => {
+        if (node.props?.className === 'mem0-card-head') found = node
       })
       const span = found.props.children.find((child) => child?.props?.className?.includes('mem0-hint'))
       return { text: textOf(span), warn: span.props.className.includes('mem0-warn-text') }
@@ -464,4 +452,82 @@ test('the local database path field shows the path in use as its placeholder, an
   assert.match(textOf(tree), /Leave blank to use the default path\./)
   assert.equal(calls, 0)
   assert.equal(draft.storePath, '')
+})
+
+// ---- the Diagnostics tab ------------------------------------------------------
+
+function maintenanceTab(data) {
+  return render(client.MaintenanceTab({
+    t,
+    draft: { ...client.normalise({}), backend: 'oss' },
+    setField() {},
+    data,
+    hygiene: { run() {}, state: 'idle', message: '' },
+    reportTexts: null,
+    local: { openWizard() {}, wizardOpen: false, wizard: null, copyPath() {}, copied: false },
+  }))
+}
+
+function texts(tree) {
+  const out = []
+  walk(tree, (node) => {
+    for (const child of node.props?.children ?? []) if (typeof child === 'string') out.push(child)
+  })
+  return out
+}
+
+test('four tabs: Memories, Settings, Maintenance, Diagnostics, in both languages', () => {
+  const tree = render(client.TabBar({ t, tab: 'diagnostics', onSelect() {}, memoryCount: 3 }))
+  const tabs = []
+  walk(tree, (node) => { if (node.props?.role === 'tab') tabs.push(node) })
+  assert.deepEqual(tabs.map((node) => textOf(node).replace(/\d+$/, '')), ['tabMemories', 'tabSettings', 'tabMaintenance', 'tabDiagnostics'])
+  assert.equal(tabs[3].props['aria-selected'], 'true')
+  assert.equal(client.en.tabDiagnostics, 'Diagnostics')
+  assert.equal(client.zh.tabDiagnostics, '诊断')
+})
+
+test('tab dots: the setup wizard marks Maintenance, failures mark Diagnostics', () => {
+  const dots = (props) => {
+    const marked = []
+    walk(render(client.TabBar({ t, tab: 'memories', onSelect() {}, ...props })), (node) => {
+      if (node.props?.role === 'tab' && node.props.children.some((child) => child?.props?.className === 'mem0-tab-dot')) marked.push(textOf(node))
+    })
+    return marked
+  }
+  assert.deepEqual(dots({ maintenanceIssue: true }), ['tabMaintenance'])
+  assert.deepEqual(dots({ diagnosticsIssue: true }), ['tabDiagnostics'])
+  assert.deepEqual(dots({}), [])
+})
+
+test('failures, hints and the diagnosis buttons are on Diagnostics, not Maintenance', () => {
+  const data = {
+    ok: true,
+    backend: 'oss',
+    store: { ok: true, kind: 'sqlite', path: '~/.dsh/mem0/memory.sqlite', running: true },
+    failures: [
+      { at: '2026-11-25T07:00:00.000Z', kind: 'capture', backend: 'oss', cause: 'other', component: 'llm', status: 502, message: 'HTTP 502', count: 1 },
+      { at: '2026-11-25T06:00:00.000Z', kind: 'recall', backend: 'oss', cause: 'auth', component: 'embedder', status: 429, message: 'slow down', count: 1 },
+      { at: '2026-11-25T05:00:00.000Z', kind: 'recall', backend: 'oss', cause: 'timeout', component: 'embedder', message: 'timed out', count: 1, recovered: true, recoveredAt: '2026-11-25T05:30:00.000Z' },
+    ],
+  }
+  const diagnose = { canOpen: true, state: {}, start() {}, copy() {}, onAction() {} }
+  const diagnostics = render(client.DiagnosticsTab({ t, data, status: { phase: 'ready', message: '' }, diagnostics: { issue: true, text: 'diagMetaIssue' }, diagnose }))
+  const shown = texts(diagnostics)
+  for (const key of ['diagTitle', 'diagMetaIssue', 'diagHint', 'failuresTitle', 'diagnoseAsk', 'diagnoseCopy', 'adviceQuota', 'storeTitle']) assert.ok(shown.includes(key), `${key} on Diagnostics`)
+  let recovered = 0
+  walk(diagnostics, (node) => { if (String(node.props?.className ?? '').includes('mem0-failure-recovered')) recovered += 1 })
+  assert.ok(recovered >= 1, 'the recovered mark moved with the list')
+
+  const maintenance = maintenanceTab(data)
+  const kept = texts(maintenance)
+  for (const key of ['diagTitle', 'failuresTitle', 'diagnoseAsk', 'diagnoseCopy', 'adviceQuota', 'storeTitle']) assert.ok(!kept.includes(key), `${key} not on Maintenance`)
+  assert.ok(kept.includes('hygieneTitle'), 'Maintenance keeps the memory check')
+  let ids = []
+  walk(maintenance, (node) => { if (node.props?.id) ids.push(node.props.id) })
+  assert.ok(!ids.includes('mem0-diagnostics'))
+})
+
+test('the dock points to the Diagnostics tab', () => {
+  assert.equal(client.en.dockFailNext, 'All failures: Mem0 settings › Diagnostics.')
+  assert.equal(client.zh.dockFailNext, '全部失败记录：Mem0 设置 › 诊断。')
 })

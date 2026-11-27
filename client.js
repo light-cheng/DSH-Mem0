@@ -656,7 +656,7 @@ window.__ModuleLoader__.load({
       dockPopSettings: 'Open settings',
       dockPopQuery: 'Query: {query}',
       dockPopReturned: '{count} returned',
-      dockFailNext: 'All failures: Mem0 settings › Maintenance › Diagnostics.',
+      dockFailNext: 'All failures: Mem0 settings › Diagnostics.',
       scopeChipLong: 'Project {name}',
       scopeChipProject: 'Project',
       scopeChipGlobal: 'Global',
@@ -757,6 +757,7 @@ window.__ModuleLoader__.load({
       tabMemories: 'Memories',
       tabSettings: 'Settings',
       tabMaintenance: 'Maintenance',
+      tabDiagnostics: 'Diagnostics',
       bannerNotConnected: 'Not connected to the memory backend: {error}',
       bannerCircuit: 'Automatic memory is paused after repeated failures.',
       bannerFailuresOne: '{count} memory problem not recovered yet.',
@@ -824,6 +825,7 @@ window.__ModuleLoader__.load({
       copyPath: 'Copy path',
       pathCopied: 'Copied',
       diagTitle: 'Diagnostics',
+      diagHint: 'Connection details, the local store and recent memory failures. Known causes come with a fixed hint; anything else can be handed to DSH to diagnose.',
       diagMetaIssue: 'Connection details, store, recent failures',
       diagMetaOk: 'All good',
       diagMetaRecoveredOne: 'All good · {count} recovered failure',
@@ -1460,7 +1462,7 @@ window.__ModuleLoader__.load({
       dockPopSettings: '打开设置',
       dockPopQuery: '查询：{query}',
       dockPopReturned: '返回 {count} 条',
-      dockFailNext: '全部失败记录：Mem0 设置 › 维护 › 诊断。',
+      dockFailNext: '全部失败记录：Mem0 设置 › 诊断。',
       scopeChipLong: '项目 {name}',
       scopeChipProject: '项目',
       scopeChipGlobal: '全局',
@@ -1561,6 +1563,7 @@ window.__ModuleLoader__.load({
       tabMemories: '记忆',
       tabSettings: '设置',
       tabMaintenance: '维护',
+      tabDiagnostics: '诊断',
       bannerNotConnected: '还没连上记忆后端：{error}',
       bannerCircuit: '连续失败后，自动记忆暂时停用。',
       bannerFailuresOne: '有 {count} 个记忆问题还没恢复。',
@@ -1628,6 +1631,7 @@ window.__ModuleLoader__.load({
       copyPath: '复制路径',
       pathCopied: '已复制',
       diagTitle: '诊断',
+      diagHint: '连接详情、本地存储和最近的记忆失败。已知原因直接给出提示；其他问题可以交给 DSH 诊断。',
       diagMetaIssue: '连接详情、存储状态、最近失败',
       diagMetaOk: '一切正常',
       diagMetaRecoveredOne: '一切正常 · {count} 条已恢复的失败记录',
@@ -5629,7 +5633,7 @@ window.__ModuleLoader__.load({
 
     // ---- page layout: header, tabs and their cards -------------------------
 
-    const TABS = ['memories', 'settings', 'maintenance']
+    const TABS = ['memories', 'settings', 'maintenance', 'diagnostics']
     const LIBRARY_PAGE_SIZE = 20
 
     /**
@@ -5940,12 +5944,12 @@ window.__ModuleLoader__.load({
       return 'none'
     }
 
-    function Card({ title, meta, actions, hint, children, id, className }) {
+    function Card({ title, meta, metaWarn, actions, hint, children, id, className }) {
       return h(
         'section',
         { className: ['mem0-card mem0-section', className].filter(Boolean).join(' '), id },
         title || actions
-          ? h('div', { className: 'mem0-card-head' }, h('h3', { className: 'mem0-section-title' }, title), meta ? h('span', { className: 'mem0-hint' }, meta) : null, actions ?? null)
+          ? h('div', { className: 'mem0-card-head' }, h('h3', { className: 'mem0-section-title' }, title), meta ? h('span', { className: metaWarn ? 'mem0-hint mem0-warn-text' : 'mem0-hint' }, meta) : null, actions ?? null)
           : null,
         hint ? h('p', { className: 'mem0-section-hint' }, hint) : null,
         children,
@@ -6023,8 +6027,8 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function TabBar({ t, tab, onSelect, memoryCount, maintenanceIssue }) {
-      const labels = { memories: 'tabMemories', settings: 'tabSettings', maintenance: 'tabMaintenance' }
+    function TabBar({ t, tab, onSelect, memoryCount, maintenanceIssue, diagnosticsIssue }) {
+      const labels = { memories: 'tabMemories', settings: 'tabSettings', maintenance: 'tabMaintenance', diagnostics: 'tabDiagnostics' }
       return h(
         'div',
         { className: 'mem0-tabs', role: 'tablist' },
@@ -6034,7 +6038,7 @@ window.__ModuleLoader__.load({
             { key: id, type: 'button', role: 'tab', className: 'mem0-tab', 'aria-selected': tab === id ? 'true' : 'false', onClick: () => onSelect(id) },
             t(labels[id]),
             id === 'memories' && Number.isFinite(memoryCount) ? h('span', { className: 'mem0-tab-count' }, memoryCount.toLocaleString()) : null,
-            id === 'maintenance' && maintenanceIssue ? h('span', { className: 'mem0-tab-dot', 'aria-hidden': true }) : null,
+            (id === 'maintenance' && maintenanceIssue) || (id === 'diagnostics' && diagnosticsIssue) ? h('span', { className: 'mem0-tab-dot', 'aria-hidden': true }) : null,
           ),
         ),
       )
@@ -6420,7 +6424,7 @@ window.__ModuleLoader__.load({
     }
 
     /** The maintenance tab: memory check, its settings, local setup and migration, diagnostics. */
-    function MaintenanceTab({ t, draft, setField, data, status, hygiene, reportTexts, local, diagnostics, diagnose }) {
+    function MaintenanceTab({ t, draft, setField, data, hygiene, reportTexts, local }) {
       const maintenance = data?.maintenance ?? null
       const fields = (group) => settingControls({ t, names: visibleFields(SETTINGS_LAYOUT[group], draft.backend), draft, setField })
       const migration = migrationState(data)
@@ -6487,14 +6491,25 @@ window.__ModuleLoader__.load({
             )
           : null,
         local.wizard,
-        h(
-          FoldCard,
-          { id: 'mem0-diagnostics', title: t('diagTitle'), meta: diagnostics.meta ?? (diagnostics.issue ? t('diagMetaIssue') : t('diagMetaOk')), metaWarn: diagnostics.issue, open: diagnostics.open },
-          h(StatusGrid, { items: statusItemsFor(t, data) }),
-          status.phase === 'error' || data?.ok === false ? h('p', { className: 'mem0-error' }, data?.error ?? status.message) : null,
-          data?.store ? h(StoreStatus, { t, store: data.store }) : null,
-          h(FailureList, { t, failures: data?.failures, diagnose }),
-        ),
+      )
+    }
+
+    /**
+     * The Diagnostics tab: one card with the connection details, the local
+     * store and the failure list (hints, recovered marks, "Ask DSH to
+     * diagnose"). `diagnostics` is diagnosticsMeta's view `{ issue, text }`:
+     * the card's top-right status comes only from there, so a new state
+     * (e.g. failures the user acknowledged that did not recover) is one
+     * change in diagnosticsMeta.
+     */
+    function DiagnosticsTab({ t, data, status, diagnostics, diagnose }) {
+      return h(
+        Card,
+        { id: 'mem0-diagnostics', title: t('diagTitle'), meta: diagnostics?.text ?? (diagnostics?.issue ? t('diagMetaIssue') : t('diagMetaOk')), metaWarn: Boolean(diagnostics?.issue), hint: t('diagHint') },
+        h(StatusGrid, { items: statusItemsFor(t, data) }),
+        status?.phase === 'error' || data?.ok === false ? h('p', { className: 'mem0-error' }, data?.error ?? status?.message) : null,
+        data?.store ? h(StoreStatus, { t, store: data.store }) : null,
+        h(FailureList, { t, failures: data?.failures, diagnose }),
       )
     }
 
@@ -6555,7 +6570,6 @@ window.__ModuleLoader__.load({
       // backend while it is not set up yet.
       const [wizardOpen, setWizardOpen] = useState(false)
       const [switchPrompt, setSwitchPrompt] = useState(null)
-      const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
       const [pathCopied, setPathCopied] = useState(false)
       // Where to scroll after the next render (banner buttons, jumps).
       const [scrollTarget, setScrollTarget] = useState(null)
@@ -7196,7 +7210,8 @@ window.__ModuleLoader__.load({
       // The header shows what is saved; the switch shows the draft.
       const headerView = headerStatusView(t, { phase: status.phase, data, enabled: initial?.enabled !== false, memoryCount })
       const banners = bannerItems(t, data, { phase: status.phase, message: status.message, enabled: initial?.enabled !== false })
-      const maintenanceIssue = banners.some((item) => item.action === 'wizard' || item.action === 'diagnostics')
+      // Tab dots: the setup wizard lives on Maintenance, failures on Diagnostics.
+      const maintenanceIssue = banners.some((item) => item.action === 'wizard')
       const diagnosticsView = diagnosticsMeta(t, { data, banners, phase: status.phase })
       const diagnosticsIssue = diagnosticsView.issue
       const profile = {
@@ -7224,8 +7239,7 @@ window.__ModuleLoader__.load({
         if (action === 'dismiss') return void dismissBackup(item?.file ?? '')
         if (action === 'acknowledge') return void acknowledgeFailures(item?.at ?? '')
         if (action === 'diagnostics') {
-          setTab('maintenance')
-          setDiagnosticsOpen(true)
+          setTab('diagnostics')
           setScrollTarget('mem0-diagnostics')
           return undefined
         }
@@ -7280,13 +7294,12 @@ window.__ModuleLoader__.load({
           draft,
           setField,
           data,
-          status,
           hygiene: { run: () => void runHygiene(), state: hygieneState, message: hygieneMessage },
           reportTexts,
           local: { openWizard, wizardOpen, wizard, copyPath: (path) => void copyPath(path), copied: pathCopied },
-          diagnostics: { issue: diagnosticsIssue, meta: diagnosticsView.text, open: diagnosticsOpen || diagnosticsIssue },
-          diagnose,
         })
+      } else if (tab === 'diagnostics') {
+        body = h(DiagnosticsTab, { t, data, status, diagnostics: diagnosticsView, diagnose })
       } else {
         body = h(
           React.Fragment,
@@ -7325,7 +7338,7 @@ window.__ModuleLoader__.load({
           checking: status.phase === 'loading',
         }),
         h(Banners, { t, items: banners, onAction: onBannerAction }),
-        h(TabBar, { t, tab, onSelect: setTab, memoryCount, maintenanceIssue }),
+        h(TabBar, { t, tab, onSelect: setTab, memoryCount, maintenanceIssue, diagnosticsIssue }),
         !snapshot.writable ? h('p', { className: 'mem0-error' }, t('readOnly')) : null,
         h('div', { className: 'mem0-tab-body', role: 'tabpanel' }, body),
         h(SaveBar, { t, dirty, saveState, saveMessage, onSave: () => void save(), onDiscard: discard, writable: snapshot.writable }),
@@ -7380,6 +7393,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder, diagnoseAdvice, diagnoseServices, runDiagnosis, permissionOf, diagnosePayload, FailureAdvice, DIAGNOSE_REPEAT_COUNT } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, DiagnosticsTab, TabBar, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder, diagnoseAdvice, diagnoseServices, runDiagnosis, permissionOf, diagnosePayload, FailureAdvice, DIAGNOSE_REPEAT_COUNT } }
   },
 })
