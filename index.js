@@ -26,7 +26,8 @@ import { CONFIG_FINGERPRINT_FILE, ConfigGuard, describeConfigWarning } from './l
 import { createMem0Tools } from './lib/tools.js'
 import { registerGuiRoutes } from './lib/gui-routes.js'
 import { createDiagnoseGate, DIAGNOSE_SESSIONS_FILE, DiagnoseSessions, isDiagnoseSession } from './lib/diagnose-sessions.js'
-import { registerDiagnoseRoutes } from './lib/diagnose-routes.js'
+import { diagnoseDirectoryPath, registerDiagnoseRoutes } from './lib/diagnose-routes.js'
+import { registerDiagnoseSkill } from './lib/diagnose-kb.js'
 import { dshDefaultWorkspaces, ProjectResolver, SESSION_PROJECTS } from './lib/project-scope.js'
 
 export const name = 'dsh-mem0'
@@ -182,6 +183,17 @@ export async function apply(ctx, rawConfig) {
 
   registerGuiRoutes(ctx, () => runtime)
   registerDiagnoseRoutes(ctx, () => runtime)
+  // The diagnosis checklists as a skill, offered in the diagnosis folder
+  // only; until DSH's skill registry takes it, drafts carry the checklist.
+  runtime.diagnoseSkill = { ready: false, lang: 'en' }
+  registerDiagnoseSkill(ctx, {
+    directory: () => diagnoseDirectoryPath(runtime),
+    lang: () => runtime.diagnoseSkill.lang,
+    onReady: () => {
+      runtime.diagnoseSkill.ready = true
+    },
+    logger,
+  })
   if (!config.enabled) return
 
   // Without a literal apiKey, every REST request asks DSH credentials first
