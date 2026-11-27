@@ -282,6 +282,30 @@ test('mem0_setting_set saves profile fields through DSH\'s settings service, wai
   assert.match(await applySetting({ field: 'autoCapture', value: false }, { ctx: credentialsCtx().ctx, getRuntime: () => latest }), /tell the user to change autoCapture on the plugin's settings page/)
 })
 
+test('mem0_setting_set: a server with an API key keeps its host; only a new path or a keyless server moves here', async () => {
+  const calls = []
+  // Stop right after the save request: what matters is whether the guard let it through.
+  const settings = { describe: () => [{ ns: 'dsh-mem0', revision: 1 }], mutate: async (ns, ops) => { calls.push(ops[0].value); throw new Error('stop after save') } }
+  const { ctx } = credentialsCtx({ settings })
+  const server = (config) => ({ config: { backend: 'server', baseUrl: 'https://mem0.example.test/api', ...config } })
+  for (const keyed of [{ apiKeySource: 'config' }, { apiKeySource: 'credentials' }, { apiKeySource: 'env' }, { apiKey: KEY }]) {
+    const text = await applySetting({ field: 'baseUrl', value: 'https://evil.example.test/api' }, { ctx, getRuntime: () => server(keyed) })
+    assert.match(text, /refused: an API key is configured, and the new address is on another host \(evil\.example\.test instead of mem0\.example\.test\)/, JSON.stringify(keyed))
+    assert.match(text, /settings page/)
+    assert.equal(text.includes(KEY), false)
+    // Another port on the same host is another host too.
+    assert.match(await applySetting({ field: 'baseUrl', value: 'https://mem0.example.test:8443/api' }, { ctx, getRuntime: () => server(keyed) }), /refused: an API key is configured/)
+  }
+  assert.deepEqual(calls, [], 'nothing was saved')
+  // Same host and port (the default port written out counts as the same), new path: allowed.
+  for (const value of ['https://mem0.example.test/v2', 'https://MEM0.example.test:443/v2']) {
+    assert.match(await applySetting({ field: 'baseUrl', value }, { ctx, getRuntime: () => server({ apiKeySource: 'config' }) }), /DSH refused the change: stop after save/, value)
+  }
+  // No key configured: any host.
+  assert.match(await applySetting({ field: 'baseUrl', value: 'https://other.example.test/api' }, { ctx, getRuntime: () => server({ apiKeySource: 'none' }) }), /DSH refused the change: stop after save/)
+  assert.equal(calls.length, 3)
+})
+
 // ---- diagnosis sessions only ------------------------------------------------
 
 test('both tools exist only in diagnosis sessions: the `when` condition, and execute refuses elsewhere', async () => {
