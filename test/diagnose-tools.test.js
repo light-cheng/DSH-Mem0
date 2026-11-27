@@ -176,6 +176,9 @@ test('mem0_check on the local backend: a wrong model name is found, the model li
   }
   assert.ok(seen.every((call) => call.auth === `Bearer ${KEY}`), 'the stored key was used inside the plugin')
   assert.deepEqual(writes, [], 'a check stores nothing')
+  // The llm target names the LLM's server and model, not the embedder's.
+  const llm = await runCheck(ctx, runtime, { target: 'llm' }, { fetchImpl: embedFetch() })
+  assert.match(llm, /^mem0_check llm: \{"component":"llm","at":"embed\.example\.test","model":"test-llm"/)
   const status = await runCheck(ctx, runtime, { target: 'status' })
   assert.match(status, /backend: oss/)
   assert.match(status, /embedder: openai wrong-embed at embed\.example\.test/)
@@ -204,8 +207,9 @@ test('mem0_setting_set fixes the model name through the wizard: self-test, oss.j
     latest = localRuntime(dir)
   }
   const text = await applySetting({ field: 'embedderModel', value: 'test-embed' }, { ctx, getRuntime: () => latest, fetchImpl: embedFetch(), restart, reloadTimeoutMs: 2000 })
-  assert.match(text, /^mem0_setting_set embedderModel: saved through the setup wizard \("wrong-embed" → "test-embed", self-test passed\); the plugin reloaded with it\./, text)
+  assert.match(text, /^mem0_setting_set embedderModel: saved through the setup wizard \("wrong-embed" → "test-embed", self-test passed: write, search and delete of a test memory\); the plugin reloaded with it\./, text)
   assert.match(text, /mem0_check embedder: .*"ok":true/)
+  assert.match(text, /without further checks unless they ask\.$/)
   assert.notEqual(latest, before)
   assert.equal(restarts, 1)
   const saved = JSON.parse(fs.readFileSync(path.join(dir, 'oss.json'), 'utf8')).dsh_mem0
