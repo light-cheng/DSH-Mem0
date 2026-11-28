@@ -28,6 +28,7 @@ A large update. The settings page now has four tabs and always shows the memory 
 5. **If DSH desktop fails to start, choose "Restart" first.** Use *Disable third-party plugins, back up the profile patch and restart* only when DSH still cannot start: it moves all profile settings aside. The plugin now names that backup and can restore its own settings from it. Its safety copy of the key settings is written on each save on the settings page, so it is complete after your next save there.
 6. **One save on the settings page drops retired keys,** such as `pythonPath` from the Python sidecar era. That is expected.
 7. **Library search matches the stored text and the ID only,** not the translation shown with **Translate memories on this page**.
+8. **`timeoutMs` now also caps each embedding of an auto-save** (the first one of a save gets at least 60 s). If you raised `addTimeoutMs` for a slow embedder, raise `timeoutMs` too.
 
 #### What changes for you
 
@@ -62,6 +63,7 @@ A large update. The settings page now has four tabs and always shows the memory 
 
 **Extraction**
 
+- **Auto-save timeouts say where the time went.** All steps of one save share the write timeout (`addTimeoutMs`, 120 s). An embedding now gets at most the request timeout (`timeoutMs`, 30 s), except the first one of a save, which gets at least 60 s so a local model can finish loading. So a slow or stuck embedder is reported as the embedder, and fact extraction keeps the rest of the time. Before, it looked like an 11 s LLM timeout. A timeout now says how much of the write timeout was left, which earlier step used it, and how long the save waited behind an earlier write (that wait does not count against the timeout). The Diagnostics tab's advice names the step or setting to look at.
 - **A gateway that reports a cut-off answer as an HTTP error is handled as a cut-off answer.** Some local gateways answer HTTP 502 when the model spent all of `max_tokens` on reasoning, e.g. "… cut at its length, the whole output spent on reasoning …". Before, Mem0 treated that as a plain server error. Now the capture is retried once with twice the `max_tokens`, it does not count toward the pause after repeated failures, and it is filed as an extraction failure (answer cut off). Nothing is stored before the LLM answers, so the retry cannot store a memory twice. Any other HTTP 502 behaves as before.
 - **The failure says what to change.** The failure list, the setup wizard's **Test** and `mem0_status` say that the answer reached its output limit (max_tokens N) because reasoning used it up: raise Mem0's `llmMaxTokens` (8000 or more) or set `llmReasoningEffort` to `low`. This is Mem0's setting, not DSH's model setting. The gateway's own words are kept in full.
 - **`mem0_status` shows the extraction budget.** The "extraction LLM:" line shows the `max_tokens` in use and where it comes from: the plugin setting `llmMaxTokens`, `llm.config.max_tokens` of a Mem0-format oss.json, or the default 8000. "last extraction:" is also written when the LLM server answers with an HTTP error.
@@ -272,6 +274,7 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 5. **DSH 桌面版起不来时，先选「重启」。** 只有 DSH 仍然起不来时，才用「禁用第三方插件、备份 profile patch 并重启」：这个按钮会把整份 profile 设置移走。现在插件会写出备份文件名，并能从备份里恢复自己的设置。插件在设置页每次保存时更新关键设置的副本，所以下次在设置页保存之后，副本就完整了。
 6. **在设置页保存一次，会删掉退役的键**，比如 Python sidecar 时代的 `pythonPath`。这是预期行为。
 7. **记忆库搜索只匹配原文和 ID**，不匹配「在本页翻译记忆」显示出来的译文。
+8. **`timeoutMs` 现在也是自动保存时每次向量化的上限**（每次保存的第一次向量化至少有 60 秒）。如果你以前为了慢的 embedder 调高过 `addTimeoutMs`，也要一起调高 `timeoutMs`。
 
 #### 你会看到的变化
 
@@ -306,6 +309,7 @@ Verification: 59 Node tests and 4 Python tests pass; `npm run check` and `npm pa
 
 **抽取**
 
+- **自动保存超时时，会说明时间花在了哪里。** 一次保存的所有步骤共用写入超时（`addTimeoutMs`，120 秒）。向量化每次最多用请求超时（`timeoutMs`，30 秒）；每次保存的第一次向量化至少有 60 秒，给本地模型留出加载的时间。所以向量化慢或卡住时，报的是 embedder 超时，事实抽取也能保住剩下的时间。以前这种情况看起来像是「LLM 11 秒就超时」。现在超时报错会写明：写入超时还剩多少、前面哪一步用掉了时间、保存前排在其他写入后面等了多久（这段等待不计入超时）。诊断页的建议会指出该看哪一步、哪个设置。
 - **网关用 HTTP 错误报告「输出被截断」时，按截断处理。** 有些本地网关在模型把 `max_tokens` 全部用在推理时，会返回 HTTP 502，例如「… cut at its length, the whole output spent on reasoning …」。以前 Mem0 把它当普通服务器错误。现在自动保存会重试一次，`max_tokens` 翻倍；不计入连续失败后的暂停；失败记录归为「LLM 抽取失败：回复被截断」。LLM 回复之前什么都没写入，所以重试不会把同一条记忆存两次。其他 HTTP 502 的行为不变。
 - **失败提示会说明要改什么。** 失败列表、设置向导的「测试」和 `mem0_status` 都会提示：回复达到输出上限（max_tokens N），推理把输出用完了；请调高 Mem0 的 `llmMaxTokens`（建议 ≥ 8000），或把 `llmReasoningEffort` 设成 `low`。这是 Mem0 的设置，不是 DSH 的模型设置。网关的原话完整保留。
 - **`mem0_status` 显示抽取的输出上限。** 「extraction LLM:」一行显示当前的 `max_tokens` 和它的来源：插件设置 `llmMaxTokens`、Mem0 格式 oss.json 的 `llm.config.max_tokens`，或默认值 8000。LLM 服务返回 HTTP 错误时，也会写「last extraction:」一行。
