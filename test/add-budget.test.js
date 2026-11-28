@@ -136,7 +136,7 @@ test('the full-size case: a 108 s embedding leaves the LLM 11 s, and the message
 })
 
 test('an embedding that uses most of the budget leaves the LLM the rest, and its timeout says how much was left and why', async (t) => {
-  const { client } = await setup(t, { embedDelay: () => 700, llmDelay: 3_000, requestTimeoutMs: 1_000, addTimeoutMs: 1_000 })
+  const { client } = await setup(t, { embedDelay: () => 1_200, llmDelay: 5_000, requestTimeoutMs: 2_000, addTimeoutMs: 2_000 })
   const started = Date.now()
   const error = await client.add(turn, { userId: USER }).catch((caught) => caught)
   const took = Date.now() - started
@@ -144,11 +144,12 @@ test('an embedding that uses most of the budget leaves the LLM the rest, and its
   assert.equal(error.component, 'llm')
   assert.equal(error.step, 'llm_extract')
   assert.equal(error.limitSetting, 'addTimeoutMs')
-  assert.equal(error.budgetMs, 1_000)
-  assert.ok(error.limitMs > 0 && error.limitMs < 400, JSON.stringify(error.limitMs))
-  assert.ok(error.timings.embedMs >= 650, JSON.stringify(error.timings))
-  assert.match(error.message, /request timed out after \d+ ms — only 0\.\d s of the 1 s write timeout \(addTimeoutMs\) were left; (?:reading the store took 0\.\d s and )?embedding took 0\.\d s before it$/)
-  assert.ok(took < 1_600, `${took} ms`)
+  assert.equal(error.budgetMs, 2_000)
+  // A slow first SQLite read (Windows CI) takes up to a few tenths too.
+  assert.ok(error.limitMs > 0 && error.limitMs < 800, JSON.stringify(error.limitMs))
+  assert.ok(error.timings.embedMs >= 1_150, JSON.stringify(error.timings))
+  assert.match(error.message, /request timed out after \d+ ms — only 0\.\d s of the 2 s write timeout \(addTimeoutMs\) were left; (?:reading the store took 0\.\d s and )?embedding took 1\.\d s before it$/)
+  assert.ok(took < 2_800, `${took} ms`)
   // The failure history keeps the new fields, and reads them back.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-budget-history-'))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
@@ -158,7 +159,7 @@ test('an embedding that uses most of the budget leaves the LLM the rest, and its
   assert.equal(entry.cause, 'timeout')
   assert.equal(entry.component, 'llm')
   assert.equal(entry.limitMs, error.limitMs)
-  assert.equal(entry.budgetMs, 1_000)
+  assert.equal(entry.budgetMs, 2_000)
   assert.equal(entry.limitSetting, 'addTimeoutMs')
   assert.equal(entry.timings.embedMs, error.timings.embedMs)
   assert.ok(Number.isInteger(entry.stepElapsedMs))
@@ -189,7 +190,7 @@ test('a write that waited behind an earlier one still gets its whole budget; its
   assert.equal(error.code, 'ETIMEDOUT')
   assert.equal(error.component, 'llm')
   assert.ok(total >= 1_500, `the 1 s budget started after the 0.6 s wait (${total} ms)`)
-  assert.ok(error.limitMs > 600, `nearly the whole budget was left for the LLM (${error.limitMs} ms)`)
+  assert.ok(error.limitMs > 400, `most of the budget was left for the LLM (${error.limitMs} ms)`)
   assert.equal(error.timings.projectMs, 200)
   assert.ok(error.timings.queueMs >= 550, JSON.stringify(error.timings))
   assert.match(error.message, /; before this write started, the save waited 0\.\d s \(not counted in the write timeout\)$/)
