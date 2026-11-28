@@ -374,3 +374,45 @@ test('diagnosis: the budget fields go out as x. fields; the standard fields (for
   const [, oldLine] = failureLines([{ ...BUDGET_FAILURE, limitMs: undefined, budgetMs: undefined, limitSetting: undefined, timings: undefined }])
   assert.doesNotMatch(oldLine, /x\./)
 })
+
+// ---- the main path is unchanged -----------------------------------------
+
+test('main path: a normal capture (fast embedder and LLM) is saved as before, with no failure and no time limit in the way', async (t) => {
+  const { client, embedder, llm } = await setup(t, { requestTimeoutMs: 30_000, addTimeoutMs: 120_000 })
+  const failures = new FailureHistory({ backend: 'oss' })
+  const activity = { recall: null, capture: null }
+  const engine = new MemoryLifecycle({
+    client,
+    config: { userId: USER, agentId: AGENT, recallTopK: 5, captureMaxChars: 450, autoRecall: true, autoCapture: true, includeSubagents: false, captureFilter: 'heuristic' },
+    logger: { debug() {}, warn() {} },
+    breaker: new CircuitBreaker(),
+    activity,
+    failures,
+  })
+  t.after(() => engine.dispose())
+  const session = { id: 'session-1', header: { cwd: '/tmp/project' }, deriveMessages: () => [] }
+  const text = (value) => [{ type: 'text', text: value }]
+  const started = Date.now()
+  engine.onSessionEvent(session, { type: 'turn/start', data: { turn: 1 } })
+  engine.onSessionEvent(session, { type: 'user/message', data: { role: 'user', content: text('Please remember: I always drink green tea in the morning, every single day.'), source: { kind: 'user' } } })
+  engine.onSessionEvent(session, { type: 'assistant/message', data: { message: { role: 'assistant', content: text('Noted. You drink green tea every morning.') } } })
+  engine.onSessionEvent(session, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
+  for (let index = 0; index < 100 && activity.capture?.status !== 'saved'; index += 1) await sleep(20)
+  assert.equal(activity.capture.status, 'saved')
+  assert.equal(activity.capture.count, 1)
+  assert.equal(failures.list().length, 0)
+  assert.equal(embedder.calls(), 2, 'one query embedding, one for the new fact')
+  assert.equal(llm.calls(), 1)
+  assert.ok(Date.now() - started < 1_500)
+  const stored = await client.list({ user_id: USER })
+  assert.deepEqual(stored.results.map((row) => row.memory), ['User likes green tea'])
+})
+
+test('main path: a capture that waited behind an earlier write but fits the budget is saved', async (t) => {
+  const { client } = await setup(t, { embedDelay: (count) => (count === 1 ? 300 : 100), requestTimeoutMs: 5_000, addTimeoutMs: 1_500 })
+  const explicit = client.add([{ role: 'user', content: 'tea' }], { infer: false, userId: USER })
+  const startedAt = Date.now()
+  const result = await client.add(turn, { userId: USER, startedAt, timings: { projectMs: 0 } })
+  await explicit
+  assert.equal(result.summary.add, 1, 'wait 0.3 s + embeddings 0.2 s fit the 1.5 s budget')
+})
