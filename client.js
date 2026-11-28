@@ -643,8 +643,6 @@ window.__ModuleLoader__.load({
       timeoutSetting_addTimeoutMs: 'Write timeout',
       timeoutSetting_timeoutMs: 'Request timeout',
       timeoutSetting_recallTimeoutMs: 'Recall timeout',
-      writeStep_projectMs: 'finding the project',
-      writeStep_queueMs: 'waiting for an earlier save',
       writeStep_storeMs: 'reading the store',
       writeStep_embedMs: 'embedding',
       writeStep_llmKeyMs: 'the LLM key lookup',
@@ -1483,8 +1481,6 @@ window.__ModuleLoader__.load({
       timeoutSetting_addTimeoutMs: '写入超时',
       timeoutSetting_timeoutMs: '请求超时',
       timeoutSetting_recallTimeoutMs: '召回超时',
-      writeStep_projectMs: '识别项目',
-      writeStep_queueMs: '等前一次保存',
       writeStep_storeMs: '读取记忆库',
       writeStep_embedMs: '向量化',
       writeStep_llmKeyMs: '读取 LLM 的 key',
@@ -4181,7 +4177,8 @@ window.__ModuleLoader__.load({
     }
 
     const TIMEOUT_SETTINGS = ['addTimeoutMs', 'timeoutMs', 'recallTimeoutMs']
-    const WRITE_TIMING_STEPS = ['projectMs', 'queueMs', 'storeMs', 'embedMs', 'llmKeyMs', 'llmMs', 'factsEmbedMs']
+    // The steps inside a write's budget (projectMs and queueMs come before it).
+    const WRITE_TIMING_STEPS = ['storeMs', 'embedMs', 'llmKeyMs', 'llmMs', 'factsEmbedMs']
     /** Earlier steps shorter than this did not use the budget up. */
     const NOTABLE_PRIOR_MS = 100
 
