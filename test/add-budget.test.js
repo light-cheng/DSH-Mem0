@@ -163,7 +163,7 @@ test('an embedding that uses most of the budget leaves the LLM the rest, and its
   assert.equal(error.budgetMs, 1_000)
   assert.ok(error.limitMs > 0 && error.limitMs < 400, JSON.stringify(error.limitMs))
   assert.ok(error.timings.embedMs >= 650, JSON.stringify(error.timings))
-  assert.match(error.message, /request timed out after \d+ ms — only 0\.\d s of the 1 s write timeout \(addTimeoutMs\) were left; embedding took 0\.\d s before it$/)
+  assert.match(error.message, /request timed out after \d+ ms — only 0\.\d s of the 1 s write timeout \(addTimeoutMs\) were left; (?:reading the store took 0\.\d s and )?embedding took 0\.\d s before it$/)
   assert.ok(took < 1_600, `${took} ms`)
   // The failure history keeps the new fields, and reads them back.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-budget-history-'))
@@ -187,7 +187,10 @@ test('the full budget used by one step is said so (write timeout shorter than th
   const error = await client.add(turn, { userId: USER }).catch((caught) => caught)
   assert.equal(error.component, 'embedder')
   assert.equal(error.limitSetting, 'addTimeoutMs')
-  assert.match(error.message, /— embedding used the whole 0\.3 s write timeout \(addTimeoutMs\)$/)
+  // A slow first SQLite read (Windows CI) is an earlier step of its own; the
+  // whole-budget wording is for when earlier steps took under 100 ms.
+  if ((error.timings?.storeMs ?? 0) < 90) assert.match(error.message, /— embedding used the whole 0\.3 s write timeout \(addTimeoutMs\)$/)
+  else assert.match(error.message, /— only 0\.\d s of the 0\.3 s write timeout \(addTimeoutMs\) were left; reading the store took 0\.\d s before it$/)
 })
 
 test('a capture counts its project lookup and its wait behind an earlier write: the total stays within addTimeoutMs', async (t) => {
@@ -208,13 +211,16 @@ test('a capture counts its project lookup and its wait behind an earlier write: 
 })
 
 test('without startedAt the wait behind an earlier write is recorded but not counted', async (t) => {
-  const { client } = await setup(t, { embedDelay: (count) => (count === 1 ? 200 : 5_000), requestTimeoutMs: 5_000, addTimeoutMs: 300 })
+  const { client } = await setup(t, { embedDelay: (count) => (count === 1 ? 600 : 5_000), requestTimeoutMs: 5_000, addTimeoutMs: 1_500 })
   const explicit = client.add([{ role: 'user', content: 'tea' }], { infer: false, userId: USER })
   const error = await client.add(turn, { userId: USER }).catch((caught) => caught)
   await explicit
-  assert.ok(error.limitMs >= 290, 'the full 300 ms from when it ran')
-  assert.match(error.message, /embedding used the whole 0\.3 s write timeout/)
+  // Counted, the 0.6 s wait would leave at most 0.9 s; only the store reads
+  // of this add itself (slow on Windows CI) come off the 1.5 s.
+  assert.ok(error.limitMs > 1_500 - 400, `the budget counts from when the add ran (${error.limitMs} ms)`)
+  assert.equal(error.limitSetting, 'addTimeoutMs')
   assert.equal(error.timings?.queueMs, undefined, 'the uncounted wait is no earlier step of this budget')
+  assert.doesNotMatch(error.message, /waiting for an earlier write/)
 })
 
 test('a write whose budget ran out before a step does not start it, and says what took the time', async (t) => {
