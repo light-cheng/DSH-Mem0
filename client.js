@@ -637,7 +637,17 @@ window.__ModuleLoader__.load({
       dlgOpening: 'Opening the session…',
       adviceAuthKey: 'The API key was refused (invalid, expired or without access). Check the key.',
       adviceQuota: 'Quota used up or rate-limited by the provider. Wait and retry, or check the account balance and limits.',
-      adviceTimeout: 'The call took longer than the timeout. If the service is just slow, raise the timeout in the settings.',
+      adviceTimeout: 'The call timed out. Saves are limited by Write timeout, recall by Recall timeout, other requests by Request timeout; if the service is just slow, raise the one that applies.',
+      adviceTimeoutBudget: 'A save gets {budget} s in all (Write timeout, addTimeoutMs). Earlier steps used {prior} s ({slowest} took {slowestSec} s), leaving {step} only {limit} s, and it was cut off when that ran out. Find out why the earlier step was slow; raising the timeout only hides it.',
+      adviceTimeoutLimit: '{step} ran for {elapsed} s and hit its {limit} s limit ({settingLabel}, {setting}). If the service is just slow, raise that setting.',
+      timeoutSetting_addTimeoutMs: 'Write timeout',
+      timeoutSetting_timeoutMs: 'Request timeout',
+      timeoutSetting_recallTimeoutMs: 'Recall timeout',
+      writeStep_storeMs: 'reading the store',
+      writeStep_embedMs: 'embedding',
+      writeStep_llmKeyMs: 'the LLM key lookup',
+      writeStep_llmMs: 'fact extraction',
+      writeStep_factsEmbedMs: 'embedding the facts',
       adviceConnection: 'The service did not answer. Check that it runs and that the address in the settings is right.',
       adviceConfig: 'The settings cannot be used as they are; retrying does not help until they are fixed.',
       adviceCircuit: 'Skipped after repeated failures; the earlier failure in this list is the cause.',
@@ -1465,7 +1475,17 @@ window.__ModuleLoader__.load({
       dlgOpening: '正在开会话…',
       adviceAuthKey: 'API key 被拒绝（无效、过期或没有权限）。请检查 key。',
       adviceQuota: '服务商的额度用完了，或者触发了限流。稍后重试，或检查账户余额和限额。',
-      adviceTimeout: '调用超过了超时时间。如果只是服务慢，可以在设置里调高超时。',
+      adviceTimeout: '调用超时了。保存受「写入超时」控制，召回受「召回超时」控制，其它请求受「请求超时」控制；如果只是服务慢，可以调高对应的那一项。',
+      adviceTimeoutBudget: '这次保存总共只能用 {budget} 秒（设置里的「写入超时」addTimeoutMs）。前面的步骤已经用了 {prior} 秒（最慢的是{slowest}，{slowestSec} 秒），留给{step}的只有 {limit} 秒，到点就被中断了。应该先查前面那步为什么慢，调高超时只能掩盖问题。',
+      adviceTimeoutLimit: '{step}用了 {elapsed} 秒，达到上限 {limit} 秒（设置里的「{settingLabel}」{setting}）。如果只是服务慢，可以调高这一项。',
+      timeoutSetting_addTimeoutMs: '写入超时',
+      timeoutSetting_timeoutMs: '请求超时',
+      timeoutSetting_recallTimeoutMs: '召回超时',
+      writeStep_storeMs: '读取记忆库',
+      writeStep_embedMs: '向量化',
+      writeStep_llmKeyMs: '读取 LLM 的 key',
+      writeStep_llmMs: '事实抽取',
+      writeStep_factsEmbedMs: '事实向量化',
       adviceConnection: '服务没有响应。请确认它在运行，设置里的地址也正确。',
       adviceConfig: '当前设置没法使用，改好之前重试也没用。',
       adviceCircuit: '连续失败后被跳过；原因是列表里更早的那条失败。',
@@ -4108,14 +4128,20 @@ window.__ModuleLoader__.load({
       let hint = null
       let action = null
       let diagnose = false
+      let params
       if (cause === 'auth') {
         const status = Number(failure?.status)
         const quota = status === 429 || (status !== 401 && status !== 403 && QUOTA_PATTERN.test(String(failure?.message ?? '')))
         hint = quota ? 'adviceQuota' : 'adviceAuthKey'
         action = quota ? null : local ? 'wizard' : 'settings'
       } else if (cause === 'timeout') {
-        hint = 'adviceTimeout'
-        action = 'settings'
+        // A write that recorded its limit (lib/add-budget.js) says which of
+        // the two it was: the earlier steps used the budget, or this step hit
+        // its own limit. Older entries and other calls: the general advice.
+        const budget = timeoutBudgetAdvice(failure)
+        hint = budget?.hint ?? 'adviceTimeout'
+        action = budget?.action ?? 'settings'
+        params = budget?.params
       } else if (cause === 'connection') {
         hint = failure?.endpoint ? 'unreachable' : 'adviceConnection'
         action = local ? 'wizard' : 'settings'
@@ -4147,7 +4173,67 @@ window.__ModuleLoader__.load({
       // A breaker skip names the component of the failure that tripped it.
       if (cause !== 'circuit' && (failure?.component || 'unknown') === 'unknown') diagnose = true
       if (cause !== 'circuit' && Number(failure?.count) >= DIAGNOSE_REPEAT_COUNT && failure?.recovered !== true) diagnose = true
-      return { hint, action, diagnose }
+      return params ? { hint, action, diagnose, params } : { hint, action, diagnose }
+    }
+
+    const TIMEOUT_SETTINGS = ['addTimeoutMs', 'timeoutMs', 'recallTimeoutMs']
+    // The steps inside a write's budget (projectMs and queueMs come before it).
+    const WRITE_TIMING_STEPS = ['storeMs', 'embedMs', 'llmKeyMs', 'llmMs', 'factsEmbedMs']
+    /** Earlier steps shorter than this did not use the budget up. */
+    const NOTABLE_PRIOR_MS = 100
+
+    /** Seconds with one decimal, whole seconds without ("120", "11.1"). */
+    function adviceSeconds(ms) {
+      const value = Math.max(0, Number(ms) || 0) / 1000
+      return Number.isInteger(value) ? String(value) : value.toFixed(1)
+    }
+
+    /**
+     * The timeout advice of a write that recorded its limit: `{ hint,
+     * action, params }`, or null without `limitMs`/`budgetMs`. Pure: the
+     * params carry keys (step, setting, slowest), FailureAdvice names them.
+     * - adviceTimeoutBudget: what was left of the write timeout ran out
+     *   after earlier steps used it; points at the slow step (a slow
+     *   embedding at the embedder setup);
+     * - adviceTimeoutLimit: the step hit its own limit (the request timeout
+     *   of an embedding, or the whole write timeout).
+     */
+    function timeoutBudgetAdvice(failure) {
+      const limit = Number(failure?.limitMs)
+      const budget = Number(failure?.budgetMs)
+      if (failure?.limitMs == null || failure?.budgetMs == null || !Number.isFinite(limit) || !(budget > 0)) return null
+      const setting = TIMEOUT_SETTINGS.includes(failure?.limitSetting) ? failure.limitSetting : null
+      const timings = failure?.timings && typeof failure.timings === 'object' ? failure.timings : {}
+      const prior = WRITE_TIMING_STEPS.filter((key) => Number.isFinite(timings[key]) && timings[key] >= 0).map((key) => [key, timings[key]])
+      const priorMs = prior.reduce((sum, [, ms]) => sum + ms, 0)
+      const step = failure?.step || 'store'
+      if (setting !== 'timeoutMs' && limit < budget && priorMs >= NOTABLE_PRIOR_MS) {
+        const [slowest, slowestMs] = prior.reduce((best, entry) => (entry[1] > best[1] ? entry : best))
+        const embedding = slowest === 'embedMs' || slowest === 'factsEmbedMs'
+        return {
+          hint: 'adviceTimeoutBudget',
+          action: embedding && failure?.backend === 'oss' ? 'wizard' : 'settings',
+          params: { budget: adviceSeconds(budget), prior: adviceSeconds(priorMs), limit: adviceSeconds(limit), step, slowest, slowestSec: adviceSeconds(slowestMs) },
+        }
+      }
+      return {
+        hint: 'adviceTimeoutLimit',
+        action: 'settings',
+        params: { step, limit: adviceSeconds(limit), elapsed: adviceSeconds(Number.isFinite(failure?.stepElapsedMs) ? failure.stepElapsedMs : limit), setting: setting ?? 'addTimeoutMs' },
+      }
+    }
+
+    /** The advice text of a failure row, its params named in the page's language. */
+    function adviceText(t, advice) {
+      if (!advice?.hint) return ''
+      const params = advice.params
+      if (!params) return t(advice.hint)
+      return template(t(advice.hint), {
+        ...params,
+        step: t(`failureStep_${params.step}`),
+        settingLabel: params.setting ? t(`timeoutSetting_${params.setting}`) : '',
+        slowest: params.slowest ? t(`writeStep_${params.slowest}`) : '',
+      })
     }
 
     /**
@@ -4440,7 +4526,7 @@ window.__ModuleLoader__.load({
     function FailureAdvice({ t, failure, rowKey, diagnose }) {
       const advice = diagnoseAdvice(failure)
       const state = diagnose?.state?.[rowKey]
-      const hintText = advice.hint === 'unreachable' ? unreachableHint(t, failure) : advice.hint ? t(advice.hint) : ''
+      const hintText = advice.hint === 'unreachable' ? unreachableHint(t, failure) : adviceText(t, advice)
       const canOpen = Boolean(diagnose?.canOpen)
       if (!hintText && !advice.diagnose) return null
       const busy = Boolean(diagnose?.busy)
@@ -7812,6 +7898,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, lastWriteView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, DiagnosticsTab, TabBar, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder, diagnoseAdvice, diagnoseServices, runDiagnosis, permissionOf, diagnosePayload, FailureAdvice, DIAGNOSE_REPEAT_COUNT, DiagnoseDialog, DiagnoseEntry, diagnoseDialogState, diagnoseRowAction, diagnoseWorkspaceOptions, diagnoseModelOptions, diagnosePermission, DIAGNOSE_WORKSPACE, useDiagnose } }
+    return { inject: ['slots', 'locale', 'configForms'], apply, __test__: { en, zh, pageLanguage, dockView, dockChip, dockNotices, dockDisplay, createDockFeed, withoutStaleError, clockTime, DockPanel, ScopeChip, MemoryDockStatus, DOCK_DWELL_MS, DOCK_RECENT_MAX, captureWritten, chipState, activityChipSpec, deleteMemoryFlow, deleteErrorText, failureSummary, activityDetails, storeLines, formatDuration, emptyWizardDraft, wizardPayload, storeCheckText, llmAdvice, llmTestView, recallTimingLine, missingLocalSetup, migrationText, storedKeyApplies, wizardError, failureText, probeLineText, probeAutofill, omlxActionText, SuggestedUrl, wizardStepName, reportMemoryIds, reportBody, mergeLine, importanceLine, treeEntries, scopeLabel, projectName, sessionLabel, makeGlobalReason, scopeChipView, numericDraft, normalise, FIELD_ORDER, FIELD_SPECS, SETTINGS_LAYOUT, visibleFields, headerStatusView, bannerItems, openFailures, diagnosticsMeta, settingsCopyPayload, restoreOps, COPY_FIELDS, Banners, captureView, lastWriteView, captureMetaLine, recallMetaLine, projectOptions, libraryPartitionKey, libraryUrl, libraryView, memoryScopeTag, migrationState, PageHeader, SettingsTab, MaintenanceTab, DiagnosticsTab, TabBar, CapturePanel, RecallPanel, ActivityCard, MemoryLibrary, SaveBar, DeleteDialog, FailureList, failureMessage, storePathPlaceholder, diagnoseAdvice, diagnoseServices, runDiagnosis, permissionOf, diagnosePayload, FailureAdvice, adviceText, timeoutBudgetAdvice, DIAGNOSE_REPEAT_COUNT, DiagnoseDialog, DiagnoseEntry, diagnoseDialogState, diagnoseRowAction, diagnoseWorkspaceOptions, diagnoseModelOptions, diagnosePermission, DIAGNOSE_WORKSPACE, useDiagnose } }
   },
 })
