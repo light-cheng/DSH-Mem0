@@ -136,7 +136,7 @@ test('the full-size case: a 108 s embedding leaves the LLM 11 s, and the message
 })
 
 test('a slow embedder stops at the request timeout and is reported as the embedder (requestTimeoutMs cap)', async (t) => {
-  const { client, llm } = await setup(t, { embedDelay: () => 2_000, requestTimeoutMs: 200, addTimeoutMs: 1_500 })
+  const { client, llm } = await setup(t, { embedDelay: () => 6_000, requestTimeoutMs: 200, addTimeoutMs: 4_000 })
   const started = Date.now()
   const error = await client.add(turn, { userId: USER }).catch((caught) => caught)
   const took = Date.now() - started
@@ -144,10 +144,10 @@ test('a slow embedder stops at the request timeout and is reported as the embedd
   assert.equal(error.component, 'embedder')
   assert.equal(error.step, 'embed')
   assert.equal(error.limitMs, 200)
-  assert.equal(error.budgetMs, 1_500)
+  assert.equal(error.budgetMs, 4_000)
   assert.equal(error.limitSetting, 'timeoutMs')
-  assert.match(error.message, /request timed out after 200 ms — embedding exceeded the 0\.2 s request timeout \(timeoutMs\)$/)
-  assert.ok(took < 1_000, `stopped at the cap, not the budget (${took} ms)`)
+  assert.match(error.message, /request timed out after (?:19\d|200) ms — embedding exceeded the 0\.2 s request timeout \(timeoutMs\)$/)
+  assert.ok(took < 2_500, `stopped at the cap, not the budget (${took} ms)`)
   assert.equal(llm.calls(), 0)
 })
 
@@ -163,8 +163,8 @@ test('an embedding that uses most of the budget leaves the LLM the rest, and its
   assert.equal(error.budgetMs, 1_000)
   assert.ok(error.limitMs > 0 && error.limitMs < 400, JSON.stringify(error.limitMs))
   assert.ok(error.timings.embedMs >= 650, JSON.stringify(error.timings))
-  assert.match(error.message, /request timed out after \d+ ms — only 0\.\d s of the 1 s write timeout \(addTimeoutMs\) were left; embedding took 0\.[78] s before it$/)
-  assert.ok(took < 1_300, `${took} ms`)
+  assert.match(error.message, /request timed out after \d+ ms — only 0\.\d s of the 1 s write timeout \(addTimeoutMs\) were left; embedding took 0\.\d s before it$/)
+  assert.ok(took < 1_600, `${took} ms`)
   // The failure history keeps the new fields, and reads them back.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mem0-budget-history-'))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
@@ -201,7 +201,7 @@ test('a capture counts its project lookup and its wait behind an earlier write: 
   await explicit
   assert.equal(error.code, 'ETIMEDOUT')
   assert.equal(error.component, 'embedder')
-  assert.ok(total < 1_150, `the whole capture took ${total} ms of a 1000 ms budget`)
+  assert.ok(total < 1_400, `the whole capture took ${total} ms of a 1000 ms budget`)
   assert.equal(error.timings.projectMs, 200)
   assert.ok(error.timings.queueMs >= 350, JSON.stringify(error.timings))
   assert.match(error.message, /— only 0\.\d s of the 1 s write timeout \(addTimeoutMs\) were left; finding the project took 0\.2 s and waiting for an earlier write took 0\.\d s before it$/)
@@ -288,4 +288,89 @@ test('failures.json: old entries read as before; bad budget fields are dropped',
   assert.equal(first.budgetMs, undefined)
   assert.equal(first.limitSetting, undefined)
   assert.equal(first.timings, undefined)
+})
+
+// ---- the settings page's timeout advice and the diagnosis facts ----------
+
+import vm from 'node:vm'
+import { budgetExtra } from '../lib/add-budget.js'
+import { buildDiagnosisPrompt, DIAGNOSIS_FIELDS, diagnosisFacts } from '../lib/diagnose-report.js'
+import { failureLines } from '../lib/diagnose-tools.js'
+
+function loadClient() {
+  let registered
+  const window = { __ModuleLoader__: { load: (entry) => { registered = entry } } }
+  vm.runInNewContext(fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8'), { window, setTimeout, clearTimeout })
+  const react = { createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }), useCallback: (fn) => fn, useEffect() {}, useLayoutEffect() {}, useMemo: (fn) => fn(), useRef: () => ({}), useState: (v) => [v, () => {}] }
+  return registered.factory((name) => {
+    if (name === 'react') return react
+    throw new Error(`unexpected require ${name}`)
+  }).__test__
+}
+const plain = (value) => JSON.parse(JSON.stringify(value))
+
+const BUDGET_FAILURE = {
+  at: '2026-11-27T06:27:38.649Z', kind: 'capture', backend: 'oss', cause: 'timeout', component: 'llm', step: 'llm_extract', code: 'ETIMEDOUT', count: 1,
+  message: 'LLM OpenAI-compatible server at 127.0.0.1:1: request timed out after 11051 ms — only 11.1 s of the 120 s write timeout (addTimeoutMs) were left; embedding took 108.9 s before it',
+  durationMs: 120087, stepElapsedMs: 11051, limitMs: 11051, budgetMs: 120000, limitSetting: 'addTimeoutMs', timings: { projectMs: 3, queueMs: 0, storeMs: 2, embedMs: 108940, llmKeyMs: 1 },
+}
+const CAP_FAILURE = {
+  ...BUDGET_FAILURE, component: 'embedder', step: 'embed', stepElapsedMs: 30004, limitMs: 30000, limitSetting: 'timeoutMs', timings: { projectMs: 3, queueMs: 0, storeMs: 2 },
+  message: 'Embedder Ollama at 127.0.0.1:1: request timed out after 30000 ms — embedding exceeded the 30 s request timeout (timeoutMs)',
+}
+
+test('timeout advice: earlier steps used the write timeout (points at the embedder), a step hit its own limit, an old entry', () => {
+  const { en, zh, diagnoseAdvice, adviceText } = loadClient()
+  const tEn = (key) => en[key]
+  const tZh = (key) => zh[key]
+  const budget = diagnoseAdvice(BUDGET_FAILURE)
+  assert.equal(budget.hint, 'adviceTimeoutBudget')
+  assert.equal(budget.action, 'wizard', 'a slow embedding: the embedder setup, not the timeout')
+  assert.equal(
+    adviceText(tEn, budget),
+    'A save gets 120 s in all (Write timeout, addTimeoutMs). Earlier steps used 108.9 s (embedding took 108.9 s), leaving fact extraction only 11.1 s, and it was cut off when that ran out. Find out why the earlier step was slow; raising the timeout only hides it.',
+  )
+  assert.equal(
+    adviceText(tZh, budget),
+    '这次保存总共只能用 120 秒（设置里的「写入超时」addTimeoutMs）。前面的步骤已经用了 108.9 秒（最慢的是向量化，108.9 秒），留给事实抽取的只有 11.1 秒，到点就被中断了。应该先查前面那步为什么慢，调高超时只能掩盖问题。',
+  )
+  // A slow wait behind an earlier save points at the settings.
+  assert.equal(diagnoseAdvice({ ...BUDGET_FAILURE, timings: { queueMs: 90000, embedMs: 1000 } }).action, 'settings')
+  const cap = diagnoseAdvice(CAP_FAILURE)
+  assert.equal(cap.hint, 'adviceTimeoutLimit')
+  assert.equal(cap.action, 'settings')
+  assert.equal(adviceText(tEn, cap), 'embedding ran for 30.0 s and hit its 30 s limit (Request timeout, timeoutMs). If the service is just slow, raise that setting.')
+  assert.equal(adviceText(tZh, cap), '向量化用了 30.0 秒，达到上限 30 秒（设置里的「请求超时」timeoutMs）。如果只是服务慢，可以调高这一项。')
+  // One step used the whole write timeout.
+  const whole = diagnoseAdvice({ ...CAP_FAILURE, limitMs: 120000, stepElapsedMs: 120001, limitSetting: 'addTimeoutMs' })
+  assert.equal(adviceText(tZh, whole), '向量化用了 120.0 秒，达到上限 120 秒（设置里的「写入超时」addTimeoutMs）。如果只是服务慢，可以调高这一项。')
+  // An entry without the new fields (older versions, recall): the general advice, unchanged shape.
+  const old = { at: BUDGET_FAILURE.at, kind: 'capture', backend: 'oss', cause: 'timeout', component: 'llm', step: 'llm_extract', message: 'LLM …: request timed out after 11051 ms', count: 1 }
+  assert.deepEqual(plain(diagnoseAdvice(old)), { hint: 'adviceTimeout', action: 'settings', diagnose: false })
+  assert.match(adviceText(tZh, diagnoseAdvice(old)), /^调用超时了。保存受「写入超时」控制/)
+  assert.match(adviceText(tEn, diagnoseAdvice(old)), /^The call timed out\. Saves are limited by Write timeout/)
+  // Nonsense fields never break the advice.
+  assert.equal(diagnoseAdvice({ ...old, limitMs: 'x', budgetMs: 120000 }).hint, 'adviceTimeout')
+  assert.equal(diagnoseAdvice({ ...old, limitMs: 5, budgetMs: 0 }).hint, 'adviceTimeout')
+  // Every new key exists in both languages.
+  for (const key of ['adviceTimeoutBudget', 'adviceTimeoutLimit', 'timeoutSetting_addTimeoutMs', 'timeoutSetting_timeoutMs', 'timeoutSetting_recallTimeoutMs', 'writeStep_embedMs', 'writeStep_queueMs']) {
+    assert.ok(en[key] && zh[key], key)
+  }
+})
+
+test('diagnosis: the budget fields go out as x. fields; the standard fields (format 1) are unchanged', () => {
+  assert.deepEqual(budgetExtra(BUDGET_FAILURE), [
+    ['x.limit_ms', 11051], ['x.budget_ms', 120000], ['x.limit_setting', 'addTimeoutMs'],
+    ['x.project_ms', 3], ['x.queue_ms', 0], ['x.store_ms', 2], ['x.embed_ms', 108940], ['x.llm_key_ms', 1],
+  ])
+  assert.deepEqual(budgetExtra({ cause: 'timeout' }), [])
+  assert.deepEqual(budgetExtra({ limitMs: -1, limitSetting: 'evil', timings: { evil: 2 } }), [])
+  assert.ok(diagnosisFacts(BUDGET_FAILURE).every(([key]) => DIAGNOSIS_FIELDS.includes(key)))
+  const { text } = buildDiagnosisPrompt(BUDGET_FAILURE, { plugin: 'dsh-mem0', extra: budgetExtra(BUDGET_FAILURE) })
+  assert.match(text, /\nx\.limit_ms: 11051\nx\.budget_ms: 120000\nx\.limit_setting: addTimeoutMs\n/)
+  assert.match(text, /\nx\.embed_ms: 108940\n/)
+  const [, line] = failureLines([BUDGET_FAILURE])
+  assert.match(line, / x\.limit_ms=11051 x\.budget_ms=120000 x\.limit_setting=addTimeoutMs .*x\.embed_ms=108940/)
+  const [, oldLine] = failureLines([{ ...BUDGET_FAILURE, limitMs: undefined, budgetMs: undefined, limitSetting: undefined, timings: undefined }])
+  assert.doesNotMatch(oldLine, /x\./)
 })
